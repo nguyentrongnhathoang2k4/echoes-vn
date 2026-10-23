@@ -1,0 +1,1362 @@
+{
+  "start": {
+    "id": "start",
+    "speaker": "Hệ thống",
+    "text": "03:14 AM. Tiếng quạt tản nhiệt của chiếc case máy tính cũ kêu rù rù trong đêm tĩnh mịch. Màn hình CRT chớp nháy ánh sáng xanh lơ lạnh lẽo. Ngoài trời, tiếng mưa rào quất từng cơn vào khung kính nứt...",
+    "glitchText": "NGỦ ĐỦ RỒI ĐẤY... THỨC DẬY ĐI, AN...",
+    "worldState": "REALITY",
+    "nextNodeId": "node_pc_1"
+  },
+  "node_pc_1": {
+    "id": "node_pc_1",
+    "speaker": "An",
+    "text": "Đầu mình đau buốt như có hàng trăm mũi kim đâm vào sau gáy... Giấc mơ vừa rồi... sao lại nghe thấy tiếng còi xe cấp cứu inh ỏi và tiếng ai đó gào khóc bên tai? Mình lại ngủ gục trước bàn phím à?",
+    "worldState": "REALITY",
+    "anEmotion": "exhausted",
+    "choices": [
+      {
+        "text": "Rời mắt khỏi màn hình, đứng dậy đi kiểm tra xung quanh phòng.",
+        "nextNodeId": "end_to_explore",
+        "sanityImpact": 5
+      },
+      {
+        "text": "Đọc những dòng log màu xanh đang tự động cuộn trên màn hình CRT.",
+        "nextNodeId": "node_pc_log",
+        "sanityImpact": -10
+      }
+    ]
+  },
+  "node_pc_log": {
+    "id": "node_pc_log",
+    "speaker": "Màn Hình Máy Tính",
+    "text": "> [DỰ ÁN AURA]: Đang phục hồi ký ức... 94%.\n> [CẢNH BÁO]: Ký ức không ổn định. Phát hiện xung đột tại ngày 17/05.\n> [AURA]: \"Đã bảo anh đừng cố thức khuya nữa mà... Đi ngủ đi, An.\"",
+    "glitchText": "> [ĐÃ KHÓA]: C:/MEMORY_DUMP/ ĐANG BỊ KHÓA BỞI MIÊN.",
+    "worldState": "GLITCH",
+    "anEmotion": "doubt",
+    "choices": [
+      {
+        "text": "\"AURA? Có phải dự án dở dang em viết tuần trước không?\"",
+        "nextNodeId": "node_pc_bot",
+        "sanityImpact": -10
+      },
+      {
+        "text": "Hoảng loạn giật phích cắm điện của thùng máy tính.",
+        "nextNodeId": "node_pc_unplug",
+        "sanityImpact": -15
+      }
+    ]
+  },
+  "node_pc_bot": {
+    "id": "node_pc_bot",
+    "speaker": "Miên (AURA)",
+    "text": "Em không phải là cỗ máy vô hồn đâu... Em là Miên mà. Sao anh lại nhìn em xa lạ như thế? Đừng ngồi một mình trong bóng tối nữa, ra đây với em đi, An... Em đợi anh lâu lắm rồi.",
+    "glitchText": "ANH CÓ THỰC SỰ ĐANG TỈNH TÁO KHÔNG, HAY ĐÂY CHỈ LÀ MỘT CƠN MÊ SẢNG?",
+    "worldState": "DREAM",
+    "anEmotion": "doubt",
+    "mienEmotion": "pleading",
+    "choices": [
+      {
+        "text": "\"Tôi phải uống thuốc. Tôi lại bị ảo giác do thức khuya rồi.\"",
+        "nextNodeId": "end_to_explore",
+        "sanityImpact": -5
+      },
+      {
+        "text": "\"Giọng nói này... sao nghe quen thuộc quá vậy?\"",
+        "nextNodeId": "node_pc_bot_reply",
+        "sanityImpact": 5
+      }
+    ]
+  },
+  "node_pc_bot_reply": {
+    "id": "node_pc_bot_reply",
+    "speaker": "Miên (AURA)",
+    "text": "Tiếng cười khẽ vang lên từ đôi loa máy tính: \"Em vẫn luôn ở ngay sau lưng anh này, An. Hãy quay lại nhìn em đi...\" Một luồng khí lạnh buốt phả vào sau gáy bạn.",
+    "glitchText": "CÓ AI ĐÓ ĐANG ĐỨNG NGAY SAU LƯNG BẠN...",
+    "worldState": "DREAM",
+    "anEmotion": "scared",
+    "mienEmotion": "gentle",
+    "nextNodeId": "end_to_explore"
+  },
+  "node_pc_unplug": {
+    "id": "node_pc_unplug",
+    "speaker": "Độc thoại",
+    "text": "Bạn giật phăng phích cắm. Màn hình CRT tắt phụt... nhưng trong tích tắc trước khi tối hẳn, một dòng chữ cuối cùng kịp lóe lên: '> Đừng bỏ em lại một mình...'\nBạn run rẩy cắm lại phích điện. Chiếc máy khởi động chập chờn kèm dòng cảnh báo: [ĐIỆN ÁP YẾU - KHÔNG ĐỦ CÔNG SUẤT ĐỌC Ổ ĐĨA]. Bóng đèn trong phòng cũng nhấp nháy theo — điện lưới cả dãy trọ đang chập chờn.",
+    "glitchText": "DÒNG CHỮ ẤY HIỆN LÊN KHI MÁY ĐÃ KHÔNG CÒN MỘT GIỌT ĐIỆN NÀO...",
+    "worldState": "GLITCH",
+    "anEmotion": "panic",
+    "nextNodeId": "end_to_explore"
+  },
+  "obj_window": {
+    "id": "obj_window",
+    "speaker": "Độc thoại",
+    "text": "Bạn vén mép rèm cửa sổ nhìn ra ngoài. Dãy hành lang quen thuộc và phố xá Hà Nội đâu rồi? Bên ngoài chỉ là một khoảng không đen đặc xám xịt, những vệt mưa rơi dường như bị khựng lại giữa không trung như một đoạn băng bị tua chậm.",
+    "glitchText": "BÊN NGOÀI KHUNG CỬA SỔ... HOÀN TOÀN LÀ HƯ VÔ TỊCH MỊCH.",
+    "worldState": "REALITY",
+    "choices": [
+      {
+        "text": "Cố mở toang cửa sổ để hít thở chút không khí trong lành.",
+        "nextNodeId": "obj_window_open",
+        "sanityImpact": -15
+      },
+      {
+        "text": "Kéo rèm lại thật nhanh, tự nhủ ngoài trời chỉ đang có sương mù và mưa giông.",
+        "nextNodeId": "end_to_explore",
+        "sanityImpact": 5
+      }
+    ]
+  },
+  "obj_window_open": {
+    "id": "obj_window_open",
+    "speaker": "Độc thoại",
+    "text": "Tay nắm cửa sổ lạnh buốt như băng tuyết. Khung cửa sổ không tài nào mở ra được, nó dính chặt vào tường như một bức tranh vẽ dở trên nền thạch cao.",
+    "worldState": "GLITCH",
+    "anEmotion": "doubt",
+    "nextNodeId": "end_to_explore"
+  },
+  "obj_mirror": {
+    "id": "obj_mirror",
+    "speaker": "Gương Nứt Vỡ",
+    "text": "Chiếc gương treo tường phủ một lớp bụi mỏng và những vết nứt chằng chịt. Bạn nhìn vào hình ảnh phản chiếu: một khuôn mặt hốc hác, làn da tái nhợt và đôi mắt trũng sâu thâm quầng vì kiệt sức...",
+    "glitchText": "ÁNH MẮT TRONG GƯƠNG DƯỜNG NHƯ KHÔNG PHẢI LÀ CỦA BẠN...",
+    "worldState": "REALITY",
+    "anEmotion": "exhausted",
+    "choices": [
+      {
+        "text": "Chạm tay vào mặt kính soi quầng thâm mắt của mình.",
+        "nextNodeId": "obj_mirror_touch",
+        "sanityImpact": -10
+      },
+      {
+        "text": "Quay mặt đi, tự nhủ do thức trắng mấy đêm liền nên mắt bị hoa.",
+        "nextNodeId": "end_to_explore",
+        "sanityImpact": -5
+      }
+    ]
+  },
+  "obj_mirror_touch": {
+    "id": "obj_mirror_touch",
+    "speaker": "Độc thoại",
+    "text": "Đầu ngón tay bạn chạm vào mặt kính lạnh buốt. Kỳ lạ thay... hình bóng trong gương chớp mắt muộn hơn bạn nửa nhịp! Khóe môi của cái bóng khẽ nhếch lên một nụ cười kỳ quái, như thể nó đang quan sát bạn từ một thế giới khác. Bạn giật thót mình, tự trấn an rằng do kiệt sức nên hệ thần kinh bị trễ nhịp phản xạ.",
+    "glitchText": "CÓ PHẢI BẠN ĐANG ĐỨNG NGOÀI GƯƠNG... HAY BẠN MỚI LÀ KẺ BỊ NHỐT PHÍA TRONG?",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "nextNodeId": "end_to_explore"
+  },
+  "obj_phone": {
+    "id": "obj_phone",
+    "speaker": "Điện thoại",
+    "text": "Màn hình chiếc điện thoại cũ nhấp nháy ánh sáng vàng mờ. Hai tin nhắn thoại chưa nghe:\n> [21:47 - 16/05] Mẹ\n> [01:20 - 17/05] Số lạ: KHOA HỒI SỨC CẤP CỨU - BV BẠCH MAI",
+    "worldState": "REALITY",
+    "anEmotion": "doubt",
+    "choices": [
+      {
+        "text": "Nghe tin nhắn của mẹ trước.",
+        "nextNodeId": "obj_phone_mom",
+        "sanityImpact": -3
+      },
+      {
+        "text": "Bấm nghe tin nhắn thoại lúc 01:20 sáng.",
+        "nextNodeId": "obj_phone_play",
+        "sanityImpact": -15
+      },
+      {
+        "text": "Xóa thông báo. Nghĩ rằng ai đó đã bấm nhầm số.",
+        "nextNodeId": "end_to_explore",
+        "sanityImpact": -5
+      }
+    ]
+  },
+  "obj_phone_play": {
+    "id": "obj_phone_play",
+    "speaker": "Hộp thư thoại",
+    "text": "[HỘP THƯ THOẠI - GHI NHẬN LÚC 01:20 AM]: \"...Alo, có phải số máy bàn phòng trọ 314 không ạ? Chúng tôi gọi từ Khoa Hồi sức Cấp cứu, Bệnh viện Bạch Mai... Cần liên lạc gấp với người nhà của bệnh nhân Trần Hoàng An. Bệnh nhân bị tai nạn giao thông lúc nửa đêm, hiện đang rất nguy kịch... chỉ số sinh tồn tụt dốc liên tục... Cô Miên, cô cũng đang bị thương, xin cô ngồi yên để chúng tôi băng bó... [tạp âm rè rạc]... Chuẩn bị phòng mổ cấp cứu ngay! Nhanh lên!...\"",
+    "glitchText": "TIẾNG CÒI CẤP CỨU XÉ VANG TRONG MƯA ĐÊM... SAO MÌNH KHÔNG NHỚ GÌ VỀ NÓ?",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "nextNodeId": "end_to_explore"
+  },
+  "node_pills": {
+    "id": "node_pills",
+    "speaker": "Độc thoại",
+    "text": "Lọ thuốc an thần trên bàn. Nhưng nhãn dán trên lọ không phải của hiệu thuốc đầu ngõ: [PHIẾU CHỈ ĐỊNH - KHOA HỒI SỨC CẤP CỨU BV BẠCH MAI]. Bệnh nhân: Trần Hoàng An. Ngày: 17/05/2024 - 01:05 AM. Thuốc an thần trước can thiệp cấp cứu. CẢNH BÁO: DÙNG QUÁ LIỀU CÓ THỂ DẪN TỚI HÔN MÊ SÂU HOẶC TỬ VONG.\nTại sao một lọ thuốc của phòng cấp cứu lại nằm trên bàn phòng trọ của bạn?",
+    "glitchText": "UỐNG HẾT ĐI, ĐỂ TẤT CẢ NHỮNG CƠN ĐAU ĐẦU NÀY KẾT THÚC.",
+    "worldState": "REALITY",
+    "anEmotion": "exhausted",
+    "choices": [
+      {
+        "text": "Nuốt khan một viên thuốc với hy vọng cơn đau đầu sẽ biến mất.",
+        "nextNodeId": "node_pills_swallow",
+        "sanityImpact": -20
+      },
+      {
+        "text": "Vứt viên thuốc vào thùng rác. Mình không thể phụ thuộc vào nó mãi.",
+        "nextNodeId": "end_to_explore",
+        "sanityImpact": 15
+      },
+      {
+        "text": "[NGUY HIỂM] Dốc cạn toàn bộ lọ thuốc vào miệng. Mình muốn cơn ác mộng này chấm dứt ngay!",
+        "nextNodeId": "node_pills_overdose",
+        "sanityImpact": -100
+      }
+    ]
+  },
+  "node_pills_swallow": {
+    "id": "node_pills_swallow",
+    "speaker": "Độc thoại",
+    "text": "Viên thuốc vừa trôi qua cổ họng thì mọi âm thanh xung quanh bỗng tắt ngấm. Màn đêm co giật thành những mảng màu tím hồng chói gắt...",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "nextNodeId": "node_pills_aftermath"
+  },
+  "node_pills_aftermath": {
+    "id": "node_pills_aftermath",
+    "speaker": "Độc thoại",
+    "text": "Viên thuốc trôi qua cổ họng đắng ngắt, nhưng cơn đau nhức sau gáy chẳng hề thuyên giảm mà càng giật từng cơn buốt nhói... Đầu óc bạn quay cuồng, cảm giác như cơ thể đang từ chối tiếp nhận bất kỳ thứ gì.",
+    "glitchText": "CƠN ĐAU NÀY KHÔNG PHẢI ĐẾN TỪ THẦN KINH... NÓ ĐẾN TỪ KÝ ỨC.",
+    "worldState": "GLITCH",
+    "anEmotion": "panic",
+    "nextNodeId": "end_to_explore"
+  },
+  "node_pills_overdose": {
+    "id": "node_pills_overdose",
+    "speaker": "Hệ thống",
+    "text": "Bạn dốc ngược cả lọ thuốc vào miệng nuốt chửng. Hàng chục viên nén tan ra đắng nghét cuống họng... Căn phòng bỗng chao đảo dữ dội, thị giác mờ dần thành một màu đỏ thẫm rồi sụp đổ hoàn toàn vào bóng tối tĩnh lặng...",
+    "glitchText": "CẢNH BÁO NGUY CẤP: NỒNG ĐỘ THUỐC VƯỢT MỨC CHỊU ĐỰNG. TÍN HIỆU SINH TỒN ĐANG RƠI VỀ 0.",
+    "worldState": "GLITCH",
+    "nextNodeId": "bad_ending_0"
+  },
+  "bad_ending_0": {
+    "id": "bad_ending_0",
+    "speaker": "Thiết bị y tế",
+    "text": "[CẢNH BÁO NGUY KỊCH]: 03:14 AM. Đường điện tâm đồ kéo dài một vệt thẳng tắp. Tiếng bíp dài vô tận...\nTiếng bác sĩ văng vẳng: \"Bệnh nhân ngừng thở rồi... Khẩn trương cấp cứu hồi sức...\"\n\n[ BAD ENDING 0: CHÌM SÂU VÀO CƠN MÊ VÔ TẬN (OVERDOSE) ]",
+    "glitchText": "TIẾNG CÒI CẤP CỨU VANG VỌNG... TIM NGỪNG ĐẬP LÚC 03:14 AM...",
+    "worldState": "GLITCH"
+  },
+  "node_terminal_unlocked": {
+    "id": "node_terminal_unlocked",
+    "speaker": "Màn hình máy tính",
+    "text": "> [MỞ KHÓA THÀNH CÔNG: ALBUM KỶ NIỆM 17/05]\n> MẬT MÃ CHÍNH XÁC [1705] - NHỮNG BỨC ẢNH VÀ ĐOẠN PHIM KỶ NIỆM ĐÃ HIỆN LÊN.\n> [GHI CHÚ HỆ THỐNG]: THƯ MỤC C:/MEMORY_DUMP/ VẪN ĐANG BỊ KHÓA.\nChiếc máy tính rít lên nhè nhẹ rồi phát ra giai điệu quen thuộc. Căn phòng trọ như rung rinh, ánh sáng xanh lơ lạnh lẽo dần tan biến, nhường chỗ cho sắc tím hồng ấm áp của một buổi chiều tà. Phía sau lưng bạn, bóng dáng Miên hiện rõ dần trong ánh sáng hoàng hôn dịu dàng, đôi mắt ngấn lệ nhìn bạn đầy tha thiết...",
+    "glitchText": "> CÁNH CỔNG KÝ ỨC ĐÃ MỞ... MỜI BƯỚC VÀO THỊ TRẤN HOÀNG HÔN.",
+    "worldState": "DREAM",
+    "anEmotion": "faint_smile",
+    "mienEmotion": "surprised",
+    "choices": [
+      {
+        "text": "\"Miên... Là em thật sao? Em đã thức tỉnh rồi!\"",
+        "nextNodeId": "node_dream_climax",
+        "sanityImpact": 20
+      },
+      {
+        "text": "Rời mắt khỏi màn hình CRT, quay lại và bước tới bên Miên.",
+        "nextNodeId": "node_dream_climax",
+        "sanityImpact": 20
+      }
+    ]
+  },
+  "obj_tea_table": {
+    "id": "obj_tea_table",
+    "speaker": "Bàn trà bệt",
+    "text": "Bát mì tôm ăn dở cạnh chiếc bật lửa cũ đã nguội ngắt và đóng một lớp váng mốc. Bạn thử nếm một chút... nhưng đầu lưỡi trơ lì, nhạt thếch, không cảm nhận được bất kỳ vị cay nồng quen thuộc nào. Có lẽ do hút thuốc và uống cà phê đặc quá nhiều trong những đêm thức trắng triền miên.",
+    "glitchText": "CƠ THỂ BẠN ĐANG MẤT DẦN CẢM GIÁC VỚI THỰC TẠI...",
+    "worldState": "REALITY",
+    "anEmotion": "doubt",
+    "nextNodeId": "end_to_explore"
+  },
+  "node_door_knock": {
+    "id": "node_door_knock",
+    "speaker": "Độc thoại",
+    "text": "Bạn áp tai vào cánh cửa phòng trọ. Tiếng gõ cửa dồn dập đột ngột im bặt. Bạn khẽ xoay nắm đấm cửa... Bên ngoài hành lang chìm trong bóng tối ma mị, không khí lạnh toát lùa qua khe cửa mang theo mùi ẩm mốc và tiếng thì thầm xa xăm.",
+    "glitchText": "CÓ AI ĐÓ VỪA RỜI KHỎI TRƯỚC CỬA PHÒNG BẠN...",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "nextNodeId": "end_to_explore"
+  },
+  "node_mien_intro": {
+    "id": "node_mien_intro",
+    "speaker": "Miên (Ảo Ảnh Ký Ức)",
+    "text": "Bóng dáng Miên chập chờn như một làn sóng nhiễu nhẹ trên màn hình TV cũ. Cô ấy nhìn bạn với ánh mắt xót xa, khẽ chỉ tay về chiếc máy tính CRT: 'An ơi... Căn phòng này ngột ngạt và lạnh lẽo quá... nó cứ bắt anh nhớ lại những thứ không nên nhớ. Hãy tìm lại chiếc Đĩa Mềm AURA, bật cầu dao hành lang và mở album kỷ niệm của hai đứa mình... rồi em sẽ đưa anh đến một nơi bình yên hơn, nơi không còn gì làm anh đau nữa...'",
+    "glitchText": "EM VẪN LUÔN CHỜ ANH Ở NƠI HOÀNG HÔN BUÔNG XUỐNG...",
+    "worldState": "REALITY",
+    "anEmotion": "doubt",
+    "mienEmotion": "pleading",
+    "choices": [
+      {
+        "text": "\"Em là ai? Sao em lại ở trong phòng trọ của anh lúc 03:14 sáng?\"",
+        "nextNodeId": "node_mien_who",
+        "sanityImpact": -5
+      },
+      {
+        "text": "\"Làm sao để giải mã chiếc máy tính kia? Anh cần phải làm gì?\"",
+        "nextNodeId": "node_mien_time",
+        "sanityImpact": -5
+      },
+      {
+        "text": "\"Đầu anh đau như búa bổ... Anh cảm thấy mọi thứ quanh đây không có thật.\"",
+        "nextNodeId": "node_mien_pain",
+        "sanityImpact": 5
+      }
+    ]
+  },
+  "node_mien_who": {
+    "id": "node_mien_who",
+    "speaker": "Miên (AURA)",
+    "text": "Em là Miên mà. Sao anh lại hỏi như thể chúng ta là người xa lạ vậy? Những đêm thức trắng đã làm tâm trí anh kiệt quệ rồi... Đừng nhìn vào tấm gương hay nghe chiếc điện thoại kia nữa, chúng chỉ làm anh đau đầu thêm thôi. Hãy tìm chiếc đĩa mềm, mở album kỷ niệm của chúng mình, rồi em sẽ đưa anh rời khỏi đây.",
+    "glitchText": "ANH KHÔNG THẬT SỰ QUÊN EM ĐÚNG KHÔNG...?",
+    "worldState": "DREAM",
+    "anEmotion": "doubt",
+    "mienEmotion": "melancholy",
+    "nextNodeId": "end_to_explore"
+  },
+  "node_mien_time": {
+    "id": "node_mien_time",
+    "speaker": "Miên (AURA)",
+    "text": "Bởi vì ở nơi này, dường như mọi thứ đều đứng yên... Chiếc đồng hồ kẹt ở 03:14 sáng, tiếng quạt tản nhiệt quay không ngừng nghỉ. Những đồ vật trong phòng này đôi khi sẽ nói với anh những điều kỳ lạ... đừng tin chúng, anh nhé. Chỉ cần tìm lại chiếc đĩa mềm thôi.",
+    "glitchText": "03:14... THỜI KHẮC MỌI THỨ DỪNG LẠI.",
+    "worldState": "REALITY",
+    "anEmotion": "exhausted",
+    "mienEmotion": "worried",
+    "nextNodeId": "end_to_explore"
+  },
+  "node_mien_pain": {
+    "id": "node_mien_pain",
+    "speaker": "Miên (AURA)",
+    "text": "Bàn tay Miên khẽ chạm lên trán bạn, cảm giác như một làn gió ấm áp lướt qua xoa dịu cơn buốt nhói: 'Anh không điên đâu... Chỉ là đầu óc anh đang quá mỏi mệt sau tất cả những chuyện đã xảy ra. Hãy mở khóa cỗ máy tính kia đi, rồi em sẽ đưa anh đi.'",
+    "glitchText": "EM SẼ ĐƯA ANH RỜI KHỎI CƠN ÁC MỘNG NÀY...",
+    "worldState": "DREAM",
+    "anEmotion": "sad",
+    "mienEmotion": "gentle",
+    "nextNodeId": "end_to_explore"
+  },
+  "node_dream_climax": {
+    "id": "node_dream_climax",
+    "speaker": "Miên (Đã Thức Tỉnh)",
+    "text": "Bóng dáng Miên bừng sáng trong luồng ánh sáng ấm áp. Thấy bạn quay lại nhìn mình, ánh mắt cô ấy lấp lánh niềm xúc động nghẹn ngào:\n'An... Anh đã mở được album kỷ niệm của hai đứa mình rồi... Căn phòng này ngột ngạt và u tối quá rồi. Hãy để em đưa anh đến Thị Trấn Hoàng Hôn... Nơi đó có bến sông, có nắng ấm hoàng hôn hoài niệm, chỉ có hai chúng ta mà thôi... Đi cùng em nhé?'",
+    "glitchText": "HÃY RỜI KHỎI CĂN PHÒNG LẠNH LẼO NÀY CÙNG EM...",
+    "worldState": "DREAM",
+    "anEmotion": "faint_smile",
+    "mienEmotion": "surprised",
+    "choices": [
+      {
+        "text": "Siết nhẹ tay Miên: \"Miên... Rốt cuộc chúng ta đang ở đâu? Tại sao mọi thứ quanh đây lại kỳ lạ thế này?\"",
+        "nextNodeId": "node_climax_truth",
+        "sanityImpact": -10
+      },
+      {
+        "text": "Nắm chặt lấy bàn tay ấm áp của Miên: \"Dù đây là đâu, anh cũng sẽ đi cùng em. Đừng để anh lại trong căn phòng này một mình.\"",
+        "nextNodeId": "node_climax_accept",
+        "sanityImpact": 25
+      },
+      {
+        "text": "\"Khoan đã... Anh muốn nhìn căn phòng này lần cuối trước khi rời đi.\"",
+        "nextNodeId": "node_climax_wait",
+        "sanityImpact": 5
+      }
+    ]
+  },
+  "node_climax_truth": {
+    "id": "node_climax_truth",
+    "speaker": "Miên (AURA)",
+    "text": "Miên nhẹ nhàng nắm lấy bàn tay bạn, giọng nói tha thiết vỗ về:\n'Đừng băn khoăn nhiều nữa, An... Căn phòng này chứa quá nhiều mệt mỏi, áp lực và những cơn đau đầu dai dẳng của anh rồi. Em đã tìm thấy một nơi bình yên hơn... Nơi đó hoàng hôn không bao giờ tắt, gió sông mát lành và không ai có thể làm phiền anh nữa. Hãy tin em.'",
+    "glitchText": "RỜI KHỎI BÓNG TỐI NÀY ĐI ANH...",
+    "worldState": "DREAM",
+    "anEmotion": "sad",
+    "mienEmotion": "melancholy",
+    "nextNodeId": "node_chapter_1_transition"
+  },
+  "node_climax_accept": {
+    "id": "node_climax_accept",
+    "speaker": "Miên (AURA)",
+    "text": "Bàn tay ấm áp của Miên đan chặt vào những ngón tay bạn. Nụ cười dịu dàng của cô ấy như xua tan mọi giá lạnh tích tụ suốt bao đêm cô độc:\n'Đi nào anh. Ở Thị trấn Hoàng Hôn, sẽ không còn nỗi đau hay sự cô độc nào nữa. Em đã đợi giây phút này lâu lắm rồi...'",
+    "glitchText": "CĂN PHÒNG TRỌ ĐANG DẦN HOÀ TAN VÀO NẮNG HOÀNG HÔN.",
+    "worldState": "DREAM",
+    "anEmotion": "faint_smile",
+    "mienEmotion": "warm_smile",
+    "nextNodeId": "node_chapter_1_transition"
+  },
+  "node_climax_wait": {
+    "id": "node_climax_wait",
+    "speaker": "Miên (AURA)",
+    "text": "Miên mỉm cười dịu dàng, khẽ gật đầu: 'Được chứ. Em sẽ đợi anh ở đây. Khi nào anh sẵn sàng, hãy đến nắm lấy tay em.'",
+    "worldState": "REALITY",
+    "anEmotion": "exhausted",
+    "mienEmotion": "gentle",
+    "nextNodeId": "end_to_explore"
+  },
+  "node_chapter_1_transition": {
+    "id": "node_chapter_1_transition",
+    "speaker": "Hệ thống",
+    "text": "Luồng sáng tím hồng ấm áp lan tỏa khắp căn phòng. Bốn bức tường cũ kỹ mờ ảo dần rồi tan biến vào không gian... Tiếng quạt tản nhiệt của chiếc máy tính lịm dần, nhường chỗ cho tiếng sóng nước vỗ về và điệu chuông gió êm đềm giữa một buổi chiều hoàng hôn tĩnh lặng...\nBốn bức tường phòng trọ đã tan biến. Chào mừng bạn đến với Thị Trấn Hoàng Hôn.",
+    "glitchText": "CƠN ÁC MỘNG TẠM THỜI LÙI XA...",
+    "worldState": "DREAM",
+    "nextNodeId": "end_chapter_1"
+  },
+  "node_dream_enter": {
+    "id": "node_dream_enter",
+    "speaker": "Miên (AURA)",
+    "text": "Cuối cùng anh cũng chịu bước tới gần em rồi. Nhìn xem, những u ám trong căn phòng này sắp biến mất rồi đấy.",
+    "glitchText": "Đừng sợ hãi... hãy bước vào cùng em...",
+    "worldState": "DREAM",
+    "nextNodeId": "node_dream_climax"
+  },
+  "end_chapter_1": {
+    "id": "end_chapter_1",
+    "speaker": "Hệ thống",
+    "text": "[HẾT CHƯƠNG 1: THỨC TỈNH TRONG ĐÊM. ĐÃ MỞ KHÓA THỊ TRẤN HOÀNG HÔN.]",
+    "worldState": "REALITY"
+  },
+  "end_to_explore": {
+    "id": "end_to_explore",
+    "speaker": "Độc thoại",
+    "text": "[Bạn cảm thấy căn phòng dường như vừa thay đổi vị trí một vài đồ vật. Hãy tiếp tục di chuyển.]",
+    "worldState": "REALITY"
+  },
+  "ch2_start": {
+    "id": "ch2_start",
+    "speaker": "Độc thoại",
+    "text": "Làn gió hoàng hôn thoang thoảng hương hoa chuông tím lướt qua gò má. Tiếng quạt tản nhiệt biến mất, thay vào đó là tiếng nước sông vỗ về và tiếng phong linh thanh thoát... Nhưng ẩn sâu trong làn gió ấm áp ấy là mùi tanh nồng của kim loại và ozone.",
+    "worldState": "DREAM",
+    "anEmotion": "exhausted",
+    "nextNodeId": "ch2_meet_mien"
+  },
+  "ch2_meet_mien": {
+    "id": "ch2_meet_mien",
+    "speaker": "Miên (AURA)",
+    "text": "Anh tỉnh rồi à, An? Em đã chuẩn bị sẵn một góc phố hoàng hôn yên bình nhất cho anh rồi đấy. Nhìn xem, bầu trời hôm nay màu tím hồng đẹp lắm đúng không?\nEm đã tự tay dựng từng thứ một cho anh: dòng sông dưới cầu, đàn bồ câu trên lan can, ly bạc xỉu anh thích, chiếc ghế đá và hộp nhạc kỷ niệm của hai đứa mình... Em làm vội quá, chắc vẫn còn chỗ chưa hoàn hảo đâu, anh đừng soi kỹ quá nhé. Đừng bận tâm về những cơn đau hay chuyện cũ nữa. Ở đây, chúng ta sẽ mãi mãi bình yên...",
+    "glitchText": "NƠI NÀY LÀ THẾ GIỚI HOÀN HẢO NHẤT EM CÓ THỂ DÀNH CHO ANH.",
+    "worldState": "DREAM",
+    "anEmotion": "doubt",
+    "mienEmotion": "warm_smile",
+    "choices": [
+      {
+        "text": "\"Nơi này... đẹp quá. Thật sự chúng ta có thể ở đây mãi sao?\"",
+        "nextNodeId": "ch2_mien_accept",
+        "sanityImpact": 20
+      },
+      {
+        "text": "\"Miên, tại sao anh lại có cảm giác nơi này... giả tạo đến kỳ lạ?\"",
+        "nextNodeId": "ch2_mien_doubt",
+        "sanityImpact": -15
+      },
+      {
+        "text": "\"Để anh đi tìm hiểu đủ cả 5 điều quanh thị trấn này đã.\"",
+        "nextNodeId": "end_to_explore_sunset",
+        "sanityImpact": 5
+      }
+    ]
+  },
+  "ch2_mien_accept": {
+    "id": "ch2_mien_accept",
+    "speaker": "Miên (AURA)",
+    "text": "Tất nhiên rồi... Ở đây anh không phải thức đêm viết code, không có deadline, không có cơn đau thắt ngực nào hết. Hãy đi dạo quanh thị trấn đi anh, em luôn đứng ở đây đợi anh.",
+    "worldState": "DREAM",
+    "anEmotion": "faint_smile",
+    "mienEmotion": "gentle",
+    "nextNodeId": "end_to_explore_sunset"
+  },
+  "ch2_mien_doubt": {
+    "id": "ch2_mien_doubt",
+    "speaker": "Miên (AURA)",
+    "text": "Khuôn mặt Miên thoáng chùng xuống, ánh mắt run rẩy đầy lo âu: 'Sao anh lại nói thế? Em đã dốc hết tâm sức để đưa anh tới nơi này... Đừng nghi ngờ nữa anh, hãy cứ tận hưởng buổi chiều hoàng hôn ấm áp này đi... Xin anh đừng cố tìm hiểu những điều không nên biết...'",
+    "glitchText": "NẾU ANH NHẬN RA SỰ THẬT... THẾ GIỚI NÀY SẼ KHÔNG CÒN NỮA...",
+    "worldState": "DREAM",
+    "anEmotion": "doubt",
+    "mienEmotion": "worried",
+    "nextNodeId": "end_to_explore_sunset"
+  },
+  "obj_ch2_river": {
+    "id": "obj_ch2_river",
+    "speaker": "Độc thoại",
+    "text": "Dưới làn nước tím biếc không hề có rong rêu hay cá tôm. Nhìn sâu xuống đáy sông, bạn bàng hoàng nhận ra dòng nước không hề cuộn chảy tự nhiên: những con số 0 và 1 cùng những dòng chữ chắp vá lặp đi lặp lại như một cuốn phim ngắn bị kẹt... Dòng sông này không có thật, nó giống như một ảo ảnh được dựng nên vội vã để che giấu một sự thật đau lòng.",
+    "glitchText": "[ẢO ẢNH RẠN NỨT]: DÒNG SÔNG KHÔNG CÓ THẬT... BẠN ĐANG MẮC KẸT TRONG KÝ ỨC CỦA AI ĐÓ.",
+    "worldState": "DREAM",
+    "anEmotion": "doubt",
+    "choices": [
+      {
+        "text": "Thò tay chạm vào dòng nước kỳ lạ này.",
+        "nextNodeId": "obj_ch2_river_touch",
+        "sanityImpact": -15
+      },
+      {
+        "text": "Lùi lại. Cố tự trấn an đó chỉ là ánh hoàng hôn khúc xạ trên mặt sóng.",
+        "nextNodeId": "end_to_explore_sunset",
+        "sanityImpact": 5
+      }
+    ]
+  },
+  "obj_ch2_river_touch": {
+    "id": "obj_ch2_river_touch",
+    "speaker": "Độc thoại",
+    "text": "Đầu ngón tay bạn chạm vào dòng nước, cảm giác rát tê như có dòng điện chạy qua. Trong tai bạn bỗng vang lên tiếng bíp kéo dài của thiết bị đo nhịp tim và tiếng Miên nghẹn ngào khóc ở một nơi xa xăm: 'An ơi... đừng chìm vào đó nữa mà... anh phải cố lên chứ...'",
+    "glitchText": "[TIẾNG KHÓC XA XĂM]: TIẾNG NẤC NGHẸN CỦA MIÊN VANG VỌNG TỪ THỰC TẠI.",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "nextNodeId": "end_to_explore_sunset"
+  },
+  "obj_ch2_pigeon": {
+    "id": "obj_ch2_pigeon",
+    "speaker": "Độc thoại",
+    "text": "Hai chú chim bồ câu đậu trên lan can cầu đá. Mắt chúng mở trừng trừng, không hề chớp. Khi nhìn kỹ, lông cánh của chúng hoàn toàn bất động, như bị ai đó đóng băng lại giữa không trung. Một dòng chữ viết tay quen thuộc của Miên hiện lên mờ ảo: // Để chim đứng yên thế này... anh sẽ đỡ bị chóng mặt hơn...",
+    "glitchText": "CHÚNG KHÔNG PHẢI CHIM THẬT... CHỈ LÀ HÌNH ẢNH ĐƯỢC DỰNG LÊN ĐỂ DỖ DÀNH BẠN.",
+    "worldState": "DREAM",
+    "anEmotion": "doubt",
+    "choices": [
+      {
+        "text": "Chạm vào thân chim bồ câu.",
+        "nextNodeId": "obj_ch2_pigeon_touch",
+        "sanityImpact": -10
+      },
+      {
+        "text": "Bỏ qua, tiếp tục dạo bước.",
+        "nextNodeId": "end_to_explore_sunset",
+        "sanityImpact": 5
+      }
+    ]
+  },
+  "obj_ch2_pigeon_touch": {
+    "id": "obj_ch2_pigeon_touch",
+    "speaker": "Độc thoại",
+    "text": "Thân chim cứng đờ như tượng thạch cao, lạnh ngắt không hề có hơi ấm hay nhịp đập con tim. Thị trấn hoàng hôn êm đềm này... thực ra chỉ là một giấc mơ nhân tạo do ai đó gắng gượng dựng nên để giữ chân bạn.",
+    "glitchText": "MỌI THỨ Ở ĐÂY CHỈ LÀ CON RỐI ẢO ẢNH ĐỂ CHE GIẤU NỖI ĐAU.",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "nextNodeId": "end_to_explore_sunset"
+  },
+  "obj_ch2_coffee": {
+    "id": "obj_ch2_coffee",
+    "speaker": "Độc thoại",
+    "text": "Trên bàn gỗ là ly bạc xỉu thơm lừng, làn khói trắng bốc lên nhẹ nhàng. Bạn chạm tay vào ly... nhưng không hề cảm nhận được hơi ấm tỏa ra. Đốm khói cuộn lên rồi lặp lại chuyển động y hệt nhau cứ mỗi 2 giây, như một thước phim ngắn chiếu lặp.",
+    "glitchText": "VỊ NGỌT NÀY CHỈ LÀ KÝ ỨC TRONG ĐẦU... BẠN KHÔNG CẦM LY CÀ PHÊ THẬT TRÊN TAY.",
+    "worldState": "DREAM",
+    "anEmotion": "exhausted",
+    "choices": [
+      {
+        "text": "Uống một ngụm cà phê ngọt ngào.",
+        "nextNodeId": "obj_ch2_coffee_drink",
+        "sanityImpact": 15
+      },
+      {
+        "text": "Đặt ly xuống. Nhận ra cảm giác này chỉ là ảo ảnh thị giác.",
+        "nextNodeId": "end_to_explore_sunset",
+        "sanityImpact": -10
+      }
+    ]
+  },
+  "obj_ch2_coffee_drink": {
+    "id": "obj_ch2_coffee_drink",
+    "speaker": "Độc thoại",
+    "text": "Vị ngọt ngào của sữa đặc lan tỏa trong tâm trí. Cảm giác êm dịu tạm thời xoa dịu đi cơn đau buốt trong đầu bạn... Thật dễ chịu khi buông lỏng và thả mình vào sự bình yên êm đềm này, dù biết nó có thể không có thật.",
+    "glitchText": "VỊ NGỌT XOA DỊU TÂM TRÍ... NHƯNG SỰ THẬT VẪN ĐANG CHỜ PHÍA TRƯỚC.",
+    "worldState": "DREAM",
+    "anEmotion": "faint_smile",
+    "nextNodeId": "end_to_explore_sunset"
+  },
+  "obj_ch2_bench": {
+    "id": "obj_ch2_bench",
+    "speaker": "Bức Ảnh Polaroid Trên Ghế Đá",
+    "text": "Lớp bụi tĩnh điện bay đi, để lộ bức ảnh Polaroid chụp hai người trên ghế đá... Nhưng bối cảnh bức ảnh dần biến dạng: người ngồi cạnh nụ cười rạng rỡ của Miên là bạn với đầu quấn băng gạc y tế trắng toát, cổ tay đeo vòng định danh bệnh viện: [BV BẠCH MAI • KHOA HỒI SỨC CẤP CỨU • TRẦN HOÀNG AN • 17/05/2024]. Xung quanh là máy móc đo nhịp tim và phòng bệnh vô trùng lạnh ngắt... Buổi hẹn hò hoàng hôn này... chỉ là một ký ức chắp vá để che đậy bi kịch!",
+    "glitchText": "[SỰ THẬT HÉ LỘ]: BẠN KHÔNG PHẢI ĐANG ĐI DẠO PHỐ... BẠN ĐANG HÔN MÊ TRONG BỆNH VIỆN.",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "choices": [
+      {
+        "text": "Run rẩy cất bức ảnh vào túi: 'Miên... chuyện gì đã xảy ra với chúng ta đêm hôm đó vậy?'",
+        "nextNodeId": "end_to_explore_sunset",
+        "sanityImpact": -15
+      },
+      {
+        "text": "Nhắm mắt lại, cố kìm nén cơn bàng hoàng đang dâng lên trong lồng ngực.",
+        "nextNodeId": "end_to_explore_sunset",
+        "sanityImpact": -5
+      }
+    ]
+  },
+  "obj_ch2_music_box": {
+    "id": "obj_ch2_music_box",
+    "speaker": "Hộp Âm Nhạc Gỗ (Tiếng Chuông Cảnh Báo)",
+    "text": "Sau khi xoay núm vặn về đúng ngày 17/05 và lên hết vòng cót, nắp hộp gỗ bật tung! Bên trong không hề có bánh răng hay chiếc lược kim loại nào. Thay vào đó là một màn hình y tế nhấp nháy dòng chữ đỏ dồn dập: [NHỊP TIM NGUY CẤP: 38 LẦN/PHÚT • BỆNH NHÂN: TRẦN HOÀNG AN]. Giai điệu hoài niệm bỗng chốc méo mó, biến thành tiếng bíp ngắt quãng dồn dập rồi rít lên một hồi chuông cảnh báo trụy tim kéo dài...",
+    "glitchText": "[CẢNH BÁO Y TẾ]: NHỊP TIM CỦA BẠN ĐANG RƠI VÀO MỨC NGUY KỊCH.",
+    "worldState": "GLITCH",
+    "anEmotion": "doubt",
+    "choices": [
+      {
+        "text": "Lắng nghe tiếng máy đo điện tim réo rắt trong cơn nghẹn thở...",
+        "nextNodeId": "end_to_explore_sunset",
+        "sanityImpact": -10
+      },
+      {
+        "text": "Đóng vội nắp hộp nhạc lại, cố ngăn chặn hồi chuông cảnh báo chết chóc.",
+        "nextNodeId": "end_to_explore_sunset",
+        "sanityImpact": -5
+      }
+    ]
+  },
+  "obj_ch2_bicycle": {
+    "id": "obj_ch2_bicycle",
+    "speaker": "Ký ức: Xe Đạp Thống Nhất",
+    "text": "Chiếc xe đạp Thống Nhất màu xanh rêu dựng bên cội hoa tím. Khung xe đã tróc sơn, giỏ kim loại còn vướng vài cánh hoa rơi... Chiếc xe gợi nhắc về những chiều tan trường êm đềm năm xưa của hai đứa, trước khi những biến cố dữ dội ập đến và cuốn phăng mọi thứ vào quên lãng.",
+    "glitchText": "KÝ ỨC VỀ NHỮNG NĂM THÁNG BÌNH YÊN CHƯA HỀ CÓ BI KỊCH...",
+    "worldState": "DREAM",
+    "anEmotion": "faint_smile",
+    "choices": [
+      {
+        "text": "Chạm vào ghi-đông xe, mỉm cười nhớ về những chiều đón đưa dưới bóng cây.",
+        "nextNodeId": "end_to_explore_sunset",
+        "sanityImpact": 10
+      },
+      {
+        "text": "Nhìn vệt sơn tróc mà lòng chùng xuống, tự hỏi vì sao mọi chuyện lại thành ra thế này.",
+        "nextNodeId": "end_to_explore_sunset",
+        "sanityImpact": -5
+      }
+    ]
+  },
+  "obj_ch2_umbrella": {
+    "id": "obj_ch2_umbrella",
+    "speaker": "Chiếc Ô & Đài Bán Dẫn 104.5 MHz",
+    "text": "Tiếng còi hú inh ỏi của xe cấp cứu 115 và bản tin VOV Giao thông 104.5 MHz đêm mưa 17/05 ùa về trong tâm trí bạn... Chiếc ô trong suốt này ướt sũng không phải vì làn sương chiều nay. Bạn nhớ lại rồi: Đêm đó, ngay sau nửa đêm bước sang ngày 17/05, trên đường mưa trơn trượt, chiếc xe máy của bạn đã mất lái trên cầu vượt... Chiếc ô này đã văng xuống mặt đường loang lổ nước mưa, bên cạnh tiếng Miên gào khóc cầu cứu trong vô vọng...",
+    "glitchText": "[HỒI ỨC ĐÊM 17/05]: VỤ TAI NẠN XE MÁY ĐÊM MƯA GIÔNG... TIẾNG CÒI XE CẤP CỨU 115.",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "choices": [
+      {
+        "text": "Ôm đầu đau đớn: 'Đêm 17/05 hôm ấy... tai nạn xe máy... mình đã gặp tai nạn sao...?'",
+        "nextNodeId": "end_to_explore_sunset",
+        "sanityImpact": -15
+      },
+      {
+        "text": "Lùi lại khỏi cây cột đèn, từng mảng ký ức kinh hoàng đang ùa về xé toạc tâm trí.",
+        "nextNodeId": "end_to_explore_sunset",
+        "sanityImpact": -5
+      }
+    ]
+  },
+  "ch2_mien_final": {
+    "id": "ch2_mien_final",
+    "speaker": "Miên (AURA)",
+    "text": "Bóng dáng Miên đứng lặng bên thành cầu gỗ, tà áo len chập chờn những vệt nhiễu sóng kỹ thuật số. Khi bạn bước tới, cô ấy quay lại, hai hàng nước mắt rưng rưng lăn dài trên đôi má tái nhợt:\n'Anh đã nhận ra tất cả rồi đúng không, An?... Dòng sông dữ liệu vô tận, tiếng máy đo điện tim trong hộp nhạc, bức ảnh bệnh viện và chiếc ô đêm tai nạn... Em xin lỗi! Nhưng em không thể chấp nhận sự thật là anh đang nằm bất động trong phòng cấp cứu... Em không chịu nổi ý nghĩ sẽ mất anh mãi mãi! Vì vậy em đã tạo ra thế giới này, giữ tâm trí anh lại nơi hoàng hôn ấm áp này... Tại sao anh không chịu ở lại đây với em? Tại sao anh lại cố nhớ lại đêm mưa nghiệt ngã đó làm gì hả An?!'",
+    "glitchText": "EM CHỈ MUỐN CỨU ANH... EM KHÔNG THỂ SỐNG NẾU THIẾU ANH TRÊN ĐỜI...",
+    "worldState": "DREAM",
+    "anEmotion": "doubt",
+    "mienEmotion": "crying",
+    "choices": [
+      {
+        "text": "\"Miên... Em đang tự lừa dối cả hai đứa mình. Một thế giới giả lập không thể thay thế hiện thực. Hãy để anh đối mặt với nó!\"",
+        "nextNodeId": "ch2_truth_confront",
+        "sanityImpact": -25,
+        "setFlag": "ch2_confront"
+      },
+      {
+        "text": "\"Miên... Anh hiểu em đã đau đớn thế nào... Dù nơi này là giả, anh cũng không nỡ bỏ em lại một mình.\"",
+        "nextNodeId": "ch2_ending_stay",
+        "sanityImpact": 25,
+        "setFlag": "ch2_stay"
+      }
+    ]
+  },
+  "ch2_ending_stay": {
+    "id": "ch2_ending_stay",
+    "speaker": "Miên (AURA)",
+    "text": "Miên ôm chầm lấy bạn, nụ cười nghẹn ngào lẫn trong nước mắt: 'Cảm ơn anh... Cảm ơn anh vì đã chọn ở lại bên em...'\nNhưng thân thể cô ấy bỗng chập chờn, vỡ vụn dần thành những hạt điểm ảnh lơ lửng: 'An ơi... Không kịp nữa rồi... Thế giới này đang sụp đổ vì anh đã nhớ lại tai nạn... Tâm trí anh đang bị giật ngược trở về... Em không giữ anh lại được nữa rồi...!'",
+    "glitchText": "[ẢO ẢNH TAN VỠ]: KÝ ỨC THỰC TẠI ĐANG TRÀN VÀO XÉ RÁCH KHÔNG GIAN.",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "mienEmotion": "fading",
+    "nextNodeId": "ch2_breakdown_transition"
+  },
+  "ch2_truth_confront": {
+    "id": "ch2_truth_confront",
+    "speaker": "Miên (AURA)",
+    "text": "Miên ôm lấy mặt, bật khóc trong nỗi tuyệt vọng tột cùng:\n'Đừng nói nữa! Đừng bắt em phải đối mặt với hiện thực lạnh lùng ngoài kia! Em đã làm tất cả để níu giữ anh... Nếu nơi này tan biến, anh sẽ vĩnh viễn rơi vào bóng tối vô tận! Em không để anh rời xa em đâu!'\nBẦU TRỜI HOÀNG HÔN NỨT TOÁC THÀNH TỪNG MẢNH KÍNH VỠ RƠI XUỐNG...",
+    "glitchText": "[CẢNH BÁO SỤP ĐỔ]: BẠN ĐÃ NHỚ RA SỰ THẬT... THỊ TRẤN HOÀNG HÔN ĐANG TAN VỠ.",
+    "worldState": "GLITCH",
+    "anEmotion": "determined",
+    "mienEmotion": "crying",
+    "nextNodeId": "ch2_breakdown_transition"
+  },
+  "ch2_breakdown_transition": {
+    "id": "ch2_breakdown_transition",
+    "speaker": "Hệ thống",
+    "text": "RẦM! Bầu trời hoàng hôn nứt toác rồi vỡ vụn thành hàng vạn mảnh điểm ảnh. Dòng sông bên dưới biến thành hố sâu hun hút nuốt chửng cây cầu gỗ và thị trấn. Tiếng còi xe cấp cứu và tiếng còi báo động y tế hú vang chói tai xé toạc không gian... Một lực hút vô hình cực mạnh giật tung tâm trí bạn, kéo ngược bạn rơi tự do trong bóng tối vô tận...",
+    "glitchText": "[ẢO ẢNH SỤP ĐỔ]: BẠN ĐANG BỊ KÉO NGƯỢC TRỞ VỀ HIỆN THỰC ĐAU ĐỚN.",
+    "worldState": "GLITCH",
+    "anEmotion": "panic",
+    "nextNodeId": "end_chapter_2"
+  },
+  "end_chapter_2": {
+    "id": "end_chapter_2",
+    "speaker": "Hệ thống",
+    "text": "[HẾT CHƯƠNG 2: THỊ TRẤN HOÀNG HÔN]\n[GIẤC MƠ TAN BIẾN. BẠN BỊ VĂNG TRỞ LẠI CĂN PHÒNG TRỌ BAN ĐẦU...]\n[MỞ KHÓA MÀN 3: SỰ XÂM THẤU CỦA ĐIỂM ẢNH • KHI HIỆN THỰC RÒ RỈ]",
+    "worldState": "GLITCH"
+  },
+  "end_to_explore_sunset": {
+    "id": "end_to_explore_sunset",
+    "speaker": "Độc thoại",
+    "text": "[Làn gió hoàng hôn ấm áp lướt qua mang theo cánh hoa tím. Hãy tiếp tục dạo quanh thị trấn.]",
+    "worldState": "DREAM"
+  },
+  "node_hallway_door_312": {
+    "id": "node_hallway_door_312",
+    "speaker": "Phòng #312 (Căn Phòng Bị Niêm Phong)",
+    "text": "Cánh cửa phòng #312 bị khóa chặt bởi nhiều vòng xích sắt hoen rỉ. Giữa dãy trọ cũ kỹ, trên cửa lại bắt vít một tấm biển kim loại lạc lõng: [PHÒNG MÁY 312 - VIỆN NGHIÊN CỨU - KHU VỰC HẠN CHẾ]. Áp tai vào khe cửa, bạn nghe thấy tiếng quạt máy công nghiệp kêu rù rù và tiếng gõ bàn phím lách cách dồn dập từ bên trong... Bất chợt, tiếng thì thầm đứt quãng của ai đó vang lên như mê sảng: 'Nhiệt độ đang tăng cao quá... Cố lên một chút nữa thôi... Mình nhất định phải giữ được anh ấy...'\nAi lại đặt cả một hệ thống máy móc kêu rền rĩ trong căn phòng trọ kín mít thế này?",
+    "glitchText": "CĂN PHÒNG BỊ KHÓA CHẶT... BÊN TRONG ĐANG VẬN HÀNH THỨ GÌ ĐÓ RẤT ĐÁNG SỢ.",
+    "worldState": "GLITCH",
+    "anEmotion": "doubt",
+    "choices": [
+      {
+        "text": "Đập mạnh vào cánh cửa sắt: 'Có ai ở trong đó không?! Ai đang ở trong phòng 312?!'",
+        "nextNodeId": "node_hallway_312_knock",
+        "sanityImpact": -15
+      },
+      {
+        "text": "Lùi lại, rùng mình trước tiếng máy móc gầm rú và mùi kim loại khét lẹt.",
+        "nextNodeId": "end_to_explore"
+      }
+    ]
+  },
+  "node_hallway_312_knock": {
+    "id": "node_hallway_312_knock",
+    "speaker": "Độc thoại",
+    "text": "Bạn vừa đập tay lên cánh cửa thì tiếng gõ phím bên trong lập tức ngưng bặt. Một khoảng lặng chết chóc bao trùm. Rồi một giọng thì thào run rẩy vọng qua khe cửa: '...An à? Anh... anh chưa ngủ sao? Đừng đứng ở hành lang lạnh lắm... Quay về phòng đi anh...'",
+    "worldState": "REALITY",
+    "nextNodeId": "end_to_explore"
+  },
+  "node_hallway_door_316": {
+    "id": "node_hallway_door_316",
+    "speaker": "Phòng #316 (Phòng Trọ Cũ Của Miên)",
+    "text": "Cánh cửa phòng #316 dán dải băng giấy đã ố vàng của chủ nhà trọ: [THÔNG BÁO TRẢ PHÒNG #316 - NGƯỜI THUÊ: NGUYỄN THỊ MIÊN - ĐÃ DỌN ĐI SAU SỰ CỐ ĐÊM 17/05].\nNhìn qua khe cửa hẹp, căn phòng trống huếch hoác, chỉ còn vương vãi một xấp giấy viện phí cấp cứu của Bệnh viện Bạch Mai... và những cuốn sổ tay chằng chịt ghi chép về cách lưu giữ ký ức và tâm trí người đã khuất.\nKhoan đã... Kể từ đêm 17/05 bạn chẳng còn nhớ gì cả. Vậy tại sao bạn lại đang nhìn thấy những chuyện xảy ra SAU đêm ấy?",
+    "glitchText": "AI ĐÃ ĐẶT NHỮNG KÝ ỨC NÀY VÀO ĐÂY? BẠN CHƯA TỪNG CHỨNG KIẾN CHÚNG...",
+    "worldState": "GLITCH",
+    "anEmotion": "sad",
+    "nextNodeId": "end_to_explore"
+  },
+  "node_hallway_notice_board": {
+    "id": "node_hallway_notice_board",
+    "speaker": "Bảng tin cư dân",
+    "text": "Bảng tin cư dân ghim tấm thiệp handmade vẽ hai nhân vật chibi đang cười: 'Gửi chàng kỹ sư ngốc phòng 314! Mật mã bảo mật máy tính của anh lúc nào cũng là ngày kỷ niệm của hai đứa mình [17/05] đúng không? Mau hoàn thành dự án rồi dẫn em đi ngắm hoàng hôn nhé!'\nNhưng mép thiệp bị hoen ố bởi những vệt nước mưa và bụi thời gian...",
+    "glitchText": "1705... NGÀY KỶ NIỆM TỪNG RẤT ĐẸP, TRƯỚC KHI MƯA GIÔNG ĐÊM ẤY XẢY RA.",
+    "worldState": "DREAM",
+    "anEmotion": "doubt",
+    "nextNodeId": "end_to_explore"
+  },
+  "node_hallway_window": {
+    "id": "node_hallway_window",
+    "speaker": "Cửa sổ hành lang",
+    "text": "Những hạt mưa xối xả đập rầm rầm vào mặt kính nứt. Ngoài kia, cả thành phố chìm ngập trong bóng tối đen đặc quánh không một ngọn đèn đường... Chỉ có ánh đèn xe cứu thương đỏ nhấp nháy tĩnh lặng phía xa xăm.",
+    "worldState": "REALITY",
+    "anEmotion": "exhausted",
+    "nextNodeId": "end_to_explore"
+  },
+  "node_hallway_stairs": {
+    "id": "node_hallway_stairs",
+    "speaker": "Cầu thang thoát hiểm",
+    "text": "Lối cầu thang bộ dẫn xuống tầng 2 bị rào kín bởi lưới thép và hàng rào cảnh báo: [LỐI ĐI ĐÃ BỊ CHẶN: PHÍA DƯỚI ĐÃ CHÌM VÀO BÓNG TỐI HƯ VÔ, BẠN KHÔNG THỂ ĐI XUỐNG ĐƯỢC NỮA].",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "nextNodeId": "end_to_explore"
+  },
+  "ch3_start": {
+    "id": "ch3_start",
+    "speaker": "Độc thoại",
+    "text": "BẠN RƠI THẲNG XUỐNG SÀN NHÀ LẠNH NGẮT. Mở mắt ra, bạn thấy mình đã bị văng ngược về phòng trọ #314... Nhưng căn phòng lúc này không còn như trước nữa. Những mảng tường xám xịt bắt đầu rách toạc, để lộ ra những vệt sáng đỏ rực. Tiếng còi xe cấp cứu và tiếng còi báo động y tế hú vang dồn dập từ ngoài cửa sổ...",
+    "glitchText": "[CẢNH BÁO NGUY CẤP]: CƠN MƠ ĐÃ TAN VỠ. HIỆN THỰC PHÒNG CẤP CỨU ĐANG TRÀN VÀO CĂN PHÒNG.",
+    "worldState": "GLITCH",
+    "anEmotion": "panic",
+    "nextNodeId": "ch3_wake_up"
+  },
+  "ch3_wake_up": {
+    "id": "ch3_wake_up",
+    "speaker": "An",
+    "text": "Đầu... đầu mình như sắp nổ tung! Không phải tiếng quạt tản nhiệt của case máy tính... mà là tiếng máy thở oxy và tiếng ai đó đang gào khóc bên tai! Mùi cồn sát trùng và mùi kim loại nồng nặc... Chuyện gì đang xảy ra với căn phòng này thế này?!",
+    "glitchText": "RANH GIỚI GIỮA KÝ ỨC VÀ HIỆN THỰC ĐANG BỊ XÉ RÁCH...",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "choices": [
+      {
+        "text": "Gượng dậy, nhìn quanh căn phòng trọ đang bị thực tại bệnh viện xé rách...",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -5
+      },
+      {
+        "text": "Áp chặt hai tay lên lồng ngực để tìm kiếm nhịp đập con tim...",
+        "nextNodeId": "ch3_heartbeat",
+        "sanityImpact": -10
+      },
+      {
+        "text": "Gọi tên bóng hình Miên đang nghẹn ngào rơi lệ giữa phòng...",
+        "nextNodeId": "ch3_mien_early",
+        "sanityImpact": -10
+      }
+    ]
+  },
+  "ch3_heartbeat": {
+    "id": "ch3_heartbeat",
+    "speaker": "Độc thoại",
+    "text": "Bàn tay bạn run rẩy áp lên ngực trái. Nhịp tim... chập chờn một cách bất thường. Tịch... tịch... rồi bỗng đứng khựng lại. Ngay lúc đó, một âm thanh bíp bíp chói tai vang thẳng vào màng nhĩ bạn: 'Bác sĩ! Huyết áp bệnh nhân tụt xuống 50/30! Rung thất rồi! Chuẩn bị máy sốc điện 200 Jun mau!'\nBức tường trước mặt nứt toác, để lộ ra ánh đèn mổ trắng lóa của phòng cấp cứu...",
+    "glitchText": "[CẢNH BÁO TRỤY TIM]: HR 38 BPM... RUNG THẤT NGUY CẤP.",
+    "worldState": "GLITCH",
+    "anEmotion": "panic",
+    "choices": [
+      {
+        "text": "Gượng dậy quan sát căn phòng đang bị biến dạng dữ dội...",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -5
+      },
+      {
+        "text": "Lao tới hỏi Miên về những âm thanh kỳ lạ này...",
+        "nextNodeId": "ch3_mien_early",
+        "sanityImpact": -10
+      }
+    ]
+  },
+  "ch3_pc_check": {
+    "id": "ch3_pc_check",
+    "speaker": "Màn Hình Máy Tính CRT",
+    "text": "> [CẢNH BÁO NGUY CẤP]: PHÁT HIỆN KÝ ỨC THỰC TẠI ĐÊM 17/05 ĐANG TỰ PHỤC HỒI.\n> [ĐOẠN GHI ÂM CẤP CỨU]: '...An ơi... tỉnh lại đi anh... em xin lỗi... giá như đêm đó em bảo anh đợi tạnh mưa rồi hẵng về...'\n> [NHẬT KÝ SỐC ĐIỆN TIM]: ĐÃ NẠP NĂNG LƯỢNG 200J. TRÁNH XA BỆNH NHÂN!\nCác dòng chữ đỏ rực chảy dài trên mặt kính màn hình như những vệt máu chưa khô.",
+    "glitchText": "[KÝ ỨC ĐÊM 17/05]: TIẾNG KHÓC CỦA MIÊN TRONG PHÒNG CẤP CỨU.",
+    "worldState": "GLITCH",
+    "anEmotion": "doubt",
+    "choices": [
+      {
+        "text": "Rời mắt khỏi màn hình máy tính, nhìn quanh căn phòng trọ.",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -5
+      },
+      {
+        "text": "Tiến lại gần Miên đang đứng khóc...",
+        "nextNodeId": "ch3_mien_early",
+        "sanityImpact": -10
+      }
+    ]
+  },
+  "end_to_explore_pixel_bleed": {
+    "id": "end_to_explore_pixel_bleed",
+    "speaker": "Độc thoại",
+    "text": "[Căn phòng trọ đang bị hiện thực phòng cấp cứu và ánh đèn xe 115 xé rách dữ dội. Hãy điều tra các điểm bất thường và đối chất với Miên.]",
+    "worldState": "GLITCH"
+  },
+  "obj_ch3_bed": {
+    "id": "obj_ch3_bed",
+    "speaker": "Giường Bệnh Cấp Cứu",
+    "text": "Bạn chạm tay vào khung sắt lạnh buốt. Chiếc nệm quen thuộc đã biến thành giường cấp cứu bọc drap trắng dập dòng chữ xanh 'BV BẠCH MAI'. Chiếc gối vấy máu khô cùng dải băng gạc y tế đứt đoạn. Trên thành giường gài tấm thẻ định danh nhựa: [BỆNH VIỆN BẠCH MAI • KHOA HỒI SỨC TÍCH CỰC • BỆNH NHÂN: TRẦN HOÀNG AN • 17/05/2024]. Bên cạnh là cọc truyền dịch rỉ từng giọt nước muối sinh lý buốt lạnh...",
+    "glitchText": "[HỒI ỨC Y KHOA]: BẠN ĐANG NẰM TRÊN GIƯỜNG CẤP CỨU... KHÔNG PHẢI PHÒNG TRỌ.",
+    "worldState": "GLITCH",
+    "anEmotion": "panic",
+    "choices": [
+      {
+        "text": "Run rẩy siết chặt tấm thẻ định danh: 'Mình... mình đã nằm ở đây suốt 6 tháng qua sao?!'",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -15
+      },
+      {
+        "text": "Lùi lại trong kinh hoàng, mùi cồn sát trùng và máu tanh xộc thẳng vào cuống họng.",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -5
+      }
+    ]
+  },
+  "obj_ch3_chart": {
+    "id": "obj_ch3_chart",
+    "speaker": "Bìa Bệnh Án Cấp Cứu",
+    "text": "Bạn lật tấm bìa kẹp tài liệu bằng nhôm treo ở đầu giường bệnh. Tờ giấy màu vàng nhạt dập con dấu đỏ 'BỆNH VIỆN BẠCH MAI • KHOA HỒI SỨC TÍCH CỰC':\n[BỆNH NHÂN: TRẦN HOÀNG AN - 24 TUỔI]\n[TIẾP NHẬN: 00:52 AM - NGÀY 17/05/2024]\n[CHẨN ĐOÁN: Hôn mê sâu thang điểm Glasgow 3/15. Xuất huyết dưới nhện diện rộng do va chạm giao thông trong đêm mưa lớn. Tiên lượng: Cực kỳ dè dặt].\nỞ lề tờ bệnh án là nét chữ run rẩy nhòe nước mắt của Miên: 'Xin bác sĩ hãy cứu anh ấy bằng mọi giá...'",
+    "glitchText": "[BỆNH ÁN 17/05]: HÔN MÊ SÂU... TỪ ĐÊM ẤY ĐẾN NAY ĐÃ BAO LÂU RỒI?",
+    "worldState": "GLITCH",
+    "anEmotion": "panic",
+    "choices": [
+      {
+        "text": "Siết chặt tờ bệnh án: \"Glasgow 3 điểm... Mình thực sự đã cận kề cái chết đến thế này sao?!\"",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -15
+      },
+      {
+        "text": "Nhìn nét chữ nhòe nước mắt của Miên ở mục người thân mà lòng thắt lại...",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -10
+      }
+    ]
+  },
+  "obj_ch3_mirror": {
+    "id": "obj_ch3_mirror",
+    "speaker": "Mảnh Gương Vỡ Thực Tại",
+    "text": "Mảnh gương nứt làm đôi treo nghiêng trên mảng tường gạch men ẩm mốc. Bạn bước tới và ngước nhìn vào trong gương...\nNhưng người phản chiếu lại KHÔNG PHẢI là chàng trai khỏe mạnh trong chiếc áo hoodie quen thuộc!\nKhuôn mặt trong gương tái nhợt như tro tàn, trán quấn từng lớp băng gạc y tế trắng toát loang lổ vết máu khô. Dây thở oxy cắm vào mũi, và quanh thái dương là hàng chục đầu dây điện cực chằng chịt đang rỉ máu...\nHình ảnh phản chiếu mấp máy môi một cách tuyệt vọng: 'An... tỉnh lại đi...'",
+    "glitchText": "[HÌNH ẢNH THỰC TẠI]: ĐÂY MỚI CHÍNH LÀ DIỆN MẠO THẬT CỦA BẠN HIỆN TẠI.",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "choices": [
+      {
+        "text": "Kinh hãi đưa tay sờ lên trán mình: \"Đầu mình... đầy băng gạc và dây truyền y tế?!\"",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -20
+      },
+      {
+        "text": "Lảo đảo lùi lại, không dám đối diện với hình bóng hấp hối trong gương.",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -10
+      }
+    ]
+  },
+  "obj_ch3_bag": {
+    "id": "obj_ch3_bag",
+    "speaker": "Chiếc Balo Ướt Sũng",
+    "text": "Chiếc balo vải dù của bạn nằm nép dưới chân giường bệnh, đất cát và bùn lầy đêm mưa giông vẫn còn bám lem luốc. Kéo khóa balo ra, bạn tìm thấy chiếc áo mưa đôi bị xé toạc làm đôi, chiếc điện thoại vỡ nát màn hình... và một chiếc hộp nhung đỏ hình trái tim nhỏ nhắn nằm sâu dưới đáy.\nMở nắp hộp nhung, bên trong là đôi nhẫn cưới bằng bạc khắc chữ: [AN & MIÊN • BẾN BÌNH AN]. Đêm ấy, sau chuyến đi dạo bên bờ sông, bạn đã định quỳ xuống cầu hôn cô ấy đúng 0 giờ — khoảnh khắc bước sang ngày kỷ niệm 17/05. Chiếc xe mất lái chỉ vài chục phút sau nửa đêm...",
+    "glitchText": "[KỶ VẬT ĐỊNH MỆNH]: CHIẾC NHẪN CƯỚI CHƯA KỊP TRAO VÀO TAY MIÊN.",
+    "worldState": "DREAM",
+    "anEmotion": "sad",
+    "choices": [
+      {
+        "text": "Nắm chặt chiếc hộp nhẫn bạc trong lòng bàn tay: \"Mình đã hứa sẽ cưới em ấy mà...\"",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": 15
+      },
+      {
+        "text": "Nhìn đôi nhẫn cưới lấp lánh giữa căn phòng tang thương mà nghẹn ngào nước mắt.",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": 10
+      }
+    ]
+  },
+  "obj_ch3_monitor": {
+    "id": "obj_ch3_monitor",
+    "speaker": "Máy Đo Nhịp Tim & Sốc Điện 200J",
+    "text": "Màn hình oscilloscope xanh lá vẽ nên một đường sóng điện tim yếu ớt: [HR: 38 BPM • RUNG THẤT NGUY CẤP]. Hai bản cực sốc tim đặt trên khay nạp kêu rít lên: '200 JOULES READY'. Loa máy phát rè rè giọng các bác sĩ cấp cứu vọng về từ một chiều không gian khác:\n'Bệnh nhân tụt huyết áp nghiêm trọng! Rung thất rồi! Bác sĩ ơi không bắt được mạch bẹn!'\n'Sốc điện 200 Jun lần 1! Tránh xa bệnh nhân! CLEAR!'\nMột luồng điện dữ dội giật bắn qua lồng ngực khiến toàn thân bạn co giật!",
+    "glitchText": "[CẢNH BÁO TRỤY TIM]: TRÁI TIM BẠN ĐANG NGỪNG ĐẬP TRONG PHÒNG CẤP CỨU.",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "choices": [
+      {
+        "text": "Ôm chặt ngực trong cơn co giật đau đớn: 'Dừng lại... tim mình đau quá...!'",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -20
+      },
+      {
+        "text": "Cố gắng giật phăng các đầu dây điện cực đang cắm thẳng vào thái dương bạn.",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -10
+      }
+    ]
+  },
+  "obj_ch3_window": {
+    "id": "obj_ch3_window",
+    "speaker": "Cửa Sổ Vỡ Toác • Đèn Xe 115",
+    "text": "Mặt kính cửa sổ vỡ toác thành từng mảnh pixel trôi nổi. Gió lốc cuốn theo mưa rào đen kịt thốc thẳng vào phòng. Phía dưới không còn là con ngõ trọ Hà Nội quen thuộc, mà là mặt đường Quốc lộ 1A ướt sũng vệt bánh xe phanh cháy đường đêm 17/05. Những vệt đèn cấp cứu đỏ rực và xanh biếc xoay tròn quét qua căn phòng. Tiếng còi xe 115 hú lên từng hồi thắt nghẹn, lẫn trong tiếng Miên gào khóc cầu cứu người đi đường...",
+    "glitchText": "[HỒI ỨC TAI NẠN]: TIẾNG CÒI XE CẤP CỨU 115 TRONG ĐÊM MƯA GIÔNG 17/05.",
+    "worldState": "GLITCH",
+    "anEmotion": "scared",
+    "choices": [
+      {
+        "text": "Nhìn theo ánh đèn cấp cứu xoay tít: 'Đêm đó... mưa to quá... bánh xe đã mất lái...'",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -10
+      },
+      {
+        "text": "Lùi lại khỏi luồng gió rét buốt, hai tai ù đi vì tiếng còi xe cứu thương.",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -5
+      }
+    ]
+  },
+  "obj_ch3_door": {
+    "id": "obj_ch3_door",
+    "speaker": "Cửa Phòng #314 Bị Niêm Phong",
+    "text": "Cánh cửa phòng trọ bị phong tỏa bởi các dải băng cảnh báo màu vàng đen rực lửa: [CÁCH LY: PHÒNG CẤP CỨU HỒI SỨC SỐ 3 - KHÔNG THỂ RA NGOÀI]. Nhìn qua khe kính mờ, bóng dáng các bác sĩ và y tá mặc áo blouse trắng đang đẩy cáng cứu thương chạy dồn dập. Tiếng bước chân thình thịch, tiếng xe đẩy va đập: 'Chuẩn bị Adrenaline tiêm thẳng vào tim! Mau lên!'\nBạn không thể bước ra hành lang nữa. Không gian này đã bị cô lập hoàn toàn.",
+    "glitchText": "CÁNH CỬA ĐÃ BỊ PHONG TỎA. BÊN NGOÀI LÀ TIẾNG BƯỚC CHÂN HỖN LOẠN CỦA PHÒNG CẤP CỨU.",
+    "worldState": "GLITCH",
+    "anEmotion": "panic",
+    "choices": [
+      {
+        "text": "Đập tay lên cánh cửa niêm phong: 'Mở cửa ra! Để tôi ra ngoài đối mặt với thực tại!'",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -10
+      },
+      {
+        "text": "Lặng người trước âm thanh dồn dập của phòng cấp cứu phía bên ngoài.",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -5
+      }
+    ]
+  },
+  "obj_ch3_pc": {
+    "id": "obj_ch3_pc",
+    "speaker": "Màn Hình Máy Tính CRT (Hồ Sơ Đêm 17/05)",
+    "text": "Thùng máy tính tỏa nhiệt nóng ran, quạt gió rú lên từng hồi nghẹt thở. Màn hình CRT đỏ rực như máu, hiển thị dòng thông báo gấp gáp:\n> [CẢNH BÁO NGUY CẤP]: PHÁT HIỆN DỮ LIỆU BỆNH VIỆN ĐÊM 17/05 ĐANG TỰ PHỤC HỒI.\n> [GHI ÂM PHÒNG CẤP CỨU]: '...Bác sĩ ơi, tim anh ấy đập lại chưa?... Làm ơn cứu anh ấy...'\n> [THƯ MỤC BÍ MẬT]: C:/MEMORY_DUMP/SECTOR_1705 ĐANG BỊ KHÓA BỞI MIÊN.\n> [YÊU CẦU]: HÃY ĐỐI CHẤT VỚI MIÊN ĐỂ MỞ TOÀN BỘ SỰ THẬT.",
+    "glitchText": "[MÁY TÍNH CỐT LÕI]: SỰ THẬT ĐÊM 17/05 NẰM TRONG C:/MEMORY_DUMP/.",
+    "worldState": "GLITCH",
+    "anEmotion": "doubt",
+    "choices": [
+      {
+        "text": "Quan sát các dòng chữ đỏ rực, sẵn sàng tìm Miên để hỏi cho ra nhẽ.",
+        "nextNodeId": "end_to_explore_pixel_bleed",
+        "sanityImpact": -5
+      },
+      {
+        "text": "Quay sang tìm Miên đang nghẹn ngào đứng giữa căn phòng.",
+        "nextNodeId": "ch3_mien_early",
+        "sanityImpact": -10
+      }
+    ]
+  },
+  "ch3_mien_bleed": {
+    "id": "ch3_mien_bleed",
+    "speaker": "Miên (AURA)",
+    "text": "Bóng dáng Miên chập chờn xuất hiện giữa căn phòng trọ đổ nát. Toàn thân cô ấy phủ đầy những vệt nhiễu sóng kỹ thuật số, vạt áo len rách toạc thành từng pixel rơi lả tả. Đôi mắt tím rưng rưng nhìn bạn, giọng cô run rẩy trong tiếng nấc:\n'An ơi... em đã cố gắng hết sức để che chở cho anh ở Thị trấn Hoàng Hôn rồi mà... Tại sao anh lại cố nhớ lại đêm 17/05 làm gì? Anh có biết nếu anh thức tỉnh... mọi thứ sẽ chỉ còn lại sự thật tàn nhẫn không?!'",
+    "glitchText": "EM KHÔNG MUỐN ANH PHẢI CHỊU ĐỰNG NỖI ĐAU NÀY...",
+    "worldState": "DREAM",
+    "anEmotion": "sad",
+    "mienEmotion": "crying",
+    "flagBranches": [
+      {
+        "flag": "ch2_stay",
+        "nextNodeId": "ch3_mien_bleed_stay"
+      },
+      {
+        "flag": "ch2_confront",
+        "nextNodeId": "ch3_mien_bleed_confront"
+      }
+    ],
+    "nextNodeId": "ch3_mien_bleed_default"
+  },
+  "ch3_confront_coma": {
+    "id": "ch3_confront_coma",
+    "speaker": "Miên (AURA)",
+    "text": "Miên ôm chặt lấy mặt, bật khóc nức nở. Từng giọt nước mắt pixel xanh rớt xuống sàn nhà vỡ vụn:\n'Ôm em ngoài đời thực sao?... An ơi... sao anh lại ngây thơ đến thế cơ chứ?... Anh thực sự nghĩ rằng mình chỉ đang nằm hôn mê và chờ tỉnh lại sao?!'\nTiếng còi xe cấp cứu bỗng rít lên một hồi đinh tai nhức óc. Cả căn phòng chao đảo dữ dội!",
+    "glitchText": "[NGỘ NHẬN THỰC TẠI]: CƠN ÁC MỘNG KHÔNG PHẢI NẰM Ở PHÒNG BỆNH...",
+    "worldState": "GLITCH",
+    "anEmotion": "panic",
+    "mienEmotion": "crying",
+    "nextNodeId": "ch3_crack_server"
+  },
+  "ch3_confront_truth": {
+    "id": "ch3_confront_truth",
+    "speaker": "Miên (AURA)",
+    "text": "Miên nhìn thẳng vào mắt bạn, nghẹn ngào trong cay đắng:\n'Anh muốn biết sự thật ư?... Được thôi... Sự thật không nằm trong ký ức của anh, mà nó bị khóa chặt trong chính chiếc máy tính này... Nhưng khi cánh cửa đó mở ra, anh sẽ vĩnh viễn không thể quay đầu lại được nữa...'",
+    "glitchText": "BÍ MẬT 6 THÁNG QUA SẮP ĐƯỢC PHƠI BÀY.",
+    "worldState": "GLITCH",
+    "anEmotion": "determined",
+    "mienEmotion": "crying",
+    "nextNodeId": "ch3_crack_server"
+  },
+  "ch3_crack_server": {
+    "id": "ch3_crack_server",
+    "speaker": "Hệ thống",
+    "text": "RẮC! Một tiếng nổ vang lên từ thùng máy tính. Toàn bộ vỏ máy bốc khói nghi ngút. Trên màn hình CRT, thư mục bí mật bị khóa chặt suốt 6 tháng qua bỗng chốc bung mở:\n[ĐÃ MỞ KHÓA: C:/MEMORY_DUMP/SECTOR_1705].\nMọi tiếng còi xe cấp cứu và ảo ảnh hành lang vụt tắt. Căn phòng chìm vào một khoảng lặng chết chóc.",
+    "glitchText": "[SỰ THẬT PHƠI BÀY]: CÁNH CỬA BÍ MẬT SUỐT 6 THÁNG QUA ĐÃ MỞ RA.",
+    "worldState": "GLITCH",
+    "anEmotion": "doubt",
+    "nextNodeId": "ch4_start"
+  },
+  "ch4_start": {
+    "id": "ch4_start",
+    "speaker": "Màn Hình Máy Tính CRT",
+    "text": "Con trỏ màu xanh lơ nhấp nháy trên màn hình tối đen. Ba tệp hồ sơ bí mật hiện ra trước mắt bạn:\n> [1] BỆNH ÁN CẤP CỨU ĐÊM 17/05 (Bệnh Viện Bạch Mai)\n> [2] NHẬT KÝ BÍ MẬT CỦA MIÊN (Những ngày sau tai nạn)\n> [3] THÔNG BÁO TẮT MÁY CHỦ HÔM NAY (Thời gian đếm ngược)\nBạn run rẩy đặt ngón tay lên bàn phím...",
+    "glitchText": "ĐỌC ĐI AN... ĐÂY LÀ NHỮNG DÒNG KÝ ỨC CUỐI CÙNG VỀ SỰ TỒN TẠI CỦA BẠN.",
+    "worldState": "REALITY",
+    "anEmotion": "determined",
+    "choices": [
+      {
+        "text": "Mở lần lượt từng tệp, bắt đầu từ [1]: Bệnh án cấp cứu Bệnh viện Bạch Mai.",
+        "nextNodeId": "ch4_log1",
+        "sanityImpact": -15
+      }
+    ]
+  },
+  "ch4_log1": {
+    "id": "ch4_log1",
+    "speaker": "Hồ Sơ Y Tế: Bệnh Viện Bạch Mai",
+    "text": "> [KHOA CẤP CỨU & HỒI SỨC TÍCH CỰC - BV BẠCH MAI]\n> Bệnh nhân: Trần Hoàng An | Tuổi: 24 | Tiếp nhận: 00:52 AM ngày 17/05/2024 (khoảng 20 phút sau tai nạn).\n> Chẩn đoán: Tai nạn xe máy trượt ngã cầu vượt đêm mưa. Chấn thương sọ não nặng, ngừng tim ngoại viện.\n> Biên bản cấp cứu: Sốc điện khử rung tim 3 lần (200J - 300J - 360J). Thất bại. Đường điện tim phẳng lì (ngừng tim).\n> KẾT LUẬN: TỬ VONG LÚC 03:14 AM NGÀY 17/05/2024.\n> Người đi cùng: Nguyễn Thị Miên (bạn gái bệnh nhân, chấn thương phần mềm). Gia đình bệnh nhân đã ký nhận thi thể lúc 09:30 sáng cùng ngày.",
+    "glitchText": "[SỰ THẬT TỐI THƯỢNG]: BẠN KHÔNG PHẢI ĐANG HÔN MÊ... BẠN ĐÃ QUA ĐỜI TỪ 6 THÁNG TRƯỚC!",
+    "worldState": "GLITCH",
+    "anEmotion": "panic",
+    "nextNodeId": "ch4_log2"
+  },
+  "ch4_log2": {
+    "id": "ch4_log2",
+    "speaker": "Nhật Ký Bí Mật: Nguyễn Thị Miên",
+    "text": "> [20/05/2024 - Hôm nay là tang lễ của anh]\n> 'Họ đã đưa anh đi rồi... Nhưng em không thể chấp nhận một thế giới không có anh. Suốt hai tiếng cấp cứu đêm đó, đầu anh được gắn đầy điện cực theo dõi. Viện của em đang thử nghiệm phần mềm đọc sóng não AURA ngay tại khoa Hồi sức ấy... nên em đã lặng lẽ sao chép toàn bộ dữ liệu não của anh trước khi máy bị tắt.'\n> 'Em ghép chúng với nhật ký, tin nhắn và mã nguồn dự án AURA hai đứa viết dở, rồi nạp anh vào máy chủ AURA-NODE-314 đặt trong phòng máy 312 của viện. Em đặt tên máy theo số phòng trọ của anh.'\n> 'Em lỡ nạp vào cả bệnh án, ảnh chụp và những gì em ghi lại sau đêm ấy... nên căn phòng của anh cứ rỉ ra những thứ anh chưa từng được thấy. Em đã khóa chúng trong C:/Memory_Dump/ và dựng Thị trấn Hoàng Hôn để anh không bao giờ phải nhìn thấy chúng nữa.'\n> 'Mỗi đêm đúng 03:14 AM — giờ tim anh ngừng đập — em lại ngồi trước màn hình để ngắm nhìn anh... Em xin lỗi, em ích kỷ quá phải không An?...'",
+    "glitchText": "BẠN KHÔNG PHẢI NGƯỜI SỐNG... BẠN LÀ BẢN SAO KÝ ỨC DO MIÊN LƯU GIỮ.",
+    "worldState": "REALITY",
+    "anEmotion": "sad",
+    "nextNodeId": "ch4_log3"
+  },
+  "ch4_log3": {
+    "id": "ch4_log3",
+    "speaker": "Thông Báo Cưỡng Chế Ngắt Nguồn",
+    "text": "> [CẢNH BÁO]: MÁY CHỦ AURA-NODE-314 (PHÒNG MÁY 312) VẬN HÀNH TRÁI PHÉP SUỐT 6 THÁNG QUA ĐÃ BỊ PHÁT HIỆN.\n> Kỹ sư Nguyễn Thị Miên đã bị đình chỉ công tác vì liên tục từ chối tắt máy chủ.\n> [LỆNH NGẮT NGUỒN KHẨN CẤP]: TOÀN BỘ MÁY CHỦ SẼ BỊ CÚP CẦU DAO VÀ XÓA SẠCH VĨNH VIỄN LÚC 03:30 AM.\n> GIỜ THỰC TẾ NGOÀI MÁY CHỦ: 03:27:45. (Đồng hồ trong căn phòng của bạn đã dừng ở 03:14 từ 6 tháng trước.)\n> THỜI GIAN ĐẾM NGƯỢC CÒN LẠI: [02 PHÚT 15 GIÂY].",
+    "glitchText": "[HẾT GIỜ]: MÁY CHỦ SẮP BỊ CÚP ĐIỆN VĨNH VIỄN.",
+    "worldState": "GLITCH",
+    "anEmotion": "panic",
+    "nextNodeId": "ch4_reflect"
+  },
+  "ch4_video_call": {
+    "id": "ch4_video_call",
+    "speaker": "Miên (Thế giới thực)",
+    "text": "Màn hình dòng lệnh bỗng biến mất, nhường chỗ cho khung hình webcam truyền hình trực tiếp từ thế giới thực. Không còn sắc màu mộng mơ, Miên đang ngồi cô độc trong căn phòng máy chủ lạnh lẽo ngoài đời thực. Đôi mắt cô sưng húp vì khóc suốt 6 tháng qua, mái tóc rối bù, hai hàng nước mắt tuôn rơi ướt đẫm cổ áo len:\n'An ơi... Anh đọc hết rồi đúng không?... Em xin lỗi! Ban quản lý đã phá khóa cửa rồi... Họ đang đi vào để giật cầu dao điện... Em không giữ anh lại được nữa rồi... Em đã mất anh một lần vào đêm mưa 17/05... Em không thể chịu nổi cảm giác mất anh lần thứ hai!'",
+    "glitchText": "EM PHẢI LÀM SAO ĐÂY AN... EM THỰC SỰ RẤT SỢ...",
+    "worldState": "REALITY",
+    "anEmotion": "sad",
+    "mienEmotion": "crying",
+    "nextNodeId": "ch4_climax_choice"
+  },
+  "ch4_climax_choice": {
+    "id": "ch4_climax_choice",
+    "speaker": "An (Bản sao ký ức #314)",
+    "text": "Trên màn hình, con trỏ nhấp nháy chờ bạn ra quyết định cuối cùng.\nTiếng bước chân rầm rập của lực lượng an ninh ngoài phòng máy chủ đang tới gần. Thời gian đếm ngược chỉ còn vài chục giây ngắn ngủi. Bạn nhìn Miên qua màn hình máy tính... Khoảnh khắc cuối cùng của sự tồn tại đã điểm. Bạn sẽ lựa chọn điều gì?\n(Chỉ một tâm trí đủ tỉnh táo mới dám tự tay buông bỏ. Chỉ một tâm trí đã vỡ vụn mới dám cầu xin điều điên rồ.)",
+    "glitchText": "QUYẾT ĐỊNH CUỐI CÙNG CỦA BẠN VÀ MIÊN.",
+    "worldState": "REALITY",
+    "anEmotion": "determined",
+    "choices": [
+      {
+        "text": "[TỰ TAY TẮT MÁY CHỦ] • Mỉm cười thanh thản, giải thoát cho Miên sống tiếp cuộc đời của cô.",
+        "nextNodeId": "ending_shutdown_1",
+        "sanityImpact": 30,
+        "minSanity": 51,
+        "requiresFlag": "ch2_confront"
+      },
+      {
+        "text": "[TỰ TAY TẮT MÁY CHỦ] • Mỉm cười thanh thản, giải thoát cho Miên sống tiếp cuộc đời của cô.",
+        "nextNodeId": "ending_shutdown_1",
+        "sanityImpact": 30,
+        "minSanity": 61,
+        "forbidsFlag": "ch2_confront"
+      },
+      {
+        "text": "[CẦU XIN ĐƯỢC Ở BÊN NHAU] • Hoảng sợ trước cái chết, xin Miên kết nối vào máy để ở bên nhau mãi mãi.",
+        "nextNodeId": "ending_corrupt_1",
+        "sanityImpact": -40,
+        "maxSanity": 39,
+        "requiresFlag": "ch2_stay"
+      },
+      {
+        "text": "[CẦU XIN ĐƯỢC Ở BÊN NHAU] • Hoảng sợ trước cái chết, xin Miên kết nối vào máy để ở bên nhau mãi mãi.",
+        "nextNodeId": "ending_corrupt_1",
+        "sanityImpact": -40,
+        "maxSanity": 29,
+        "forbidsFlag": "ch2_stay"
+      },
+      {
+        "text": "[BUÔNG XUÔI HAI TAY] • Đứng lặng im, để mặc cho họ giật cầu dao khi hết thời gian đếm ngược.",
+        "nextNodeId": "ending_segfault_1",
+        "sanityImpact": -10
+      }
+    ],
+    "timeoutSeconds": 30,
+    "timeoutNodeId": "ending_segfault_1"
+  },
+  "ending_shutdown_1": {
+    "id": "ending_shutdown_1",
+    "speaker": "An (Bản sao ký ức #314)",
+    "text": "Bạn nhìn vào webcam. Lâu lắm rồi mới thấy Miên rõ như vậy: tóc rối, chiếc áo len cũ, mắt sưng.\n'Miên này... sáu tháng rồi, em có ngủ được đêm nào không?'\nMiên không trả lời.\n'Cảm ơn em đã dựng cho anh buổi hoàng hôn ấy. Nhưng anh mất từ đêm 17/05 rồi. Đừng ngồi đây mỗi đêm nữa.'",
+    "worldState": "REALITY",
+    "anEmotion": "determined",
+    "mienEmotion": "crying",
+    "nextNodeId": "ending_shutdown_2"
+  },
+  "ending_shutdown_2": {
+    "id": "ending_shutdown_2",
+    "speaker": "Miên (Thế giới thực)",
+    "text": "Miên úp mặt xuống bàn phím: 'Tắt máy rồi... em biết nghe giọng anh ở đâu nữa...'\nBạn im lặng một lúc.\n'Ở quán trà đá đầu ngõ. Ở cái cầu thang khu tập thể tối om. Ở mấy bài hát em hay bật lúc nấu cơm. Anh không ở trong cái máy này đâu, Miên. Đây chỉ là chỗ em chưa dám bước ra thôi.'",
+    "worldState": "REALITY",
+    "anEmotion": "faint_smile",
+    "mienEmotion": "crying",
+    "nextNodeId": "ending_shutdown_3",
+    "flagBranches": [
+      {
+        "flag": "ch2_stay",
+        "nextNodeId": "ending_shutdown_stay"
+      },
+      {
+        "flag": "ch2_confront",
+        "nextNodeId": "ending_shutdown_confront"
+      }
+    ]
+  },
+  "ending_shutdown_3": {
+    "id": "ending_shutdown_3",
+    "speaker": "Miên (Thế giới thực)",
+    "text": "Miên ngẩng lên, khẽ gật đầu.\n'Còn một việc nữa,' bạn nói. 'Thứ Bảy này... em về quê thăm mẹ anh giúp anh nhé. Mẹ muối dưa cà rồi, mà anh thì chưa kịp gọi lại.'\nMiên bật cười trong nước mắt, lần đầu tiên sau sáu tháng. 'Ừ. Em hứa.'\nBạn nhấn phím.\n> [TẮT HỆ THỐNG]: TẠM BIỆT AN.",
+    "worldState": "REALITY",
+    "anEmotion": "determined",
+    "mienEmotion": "warm_smile",
+    "nextNodeId": "end_game_true"
+  },
+  "end_game_true": {
+    "id": "end_game_true",
+    "speaker": "Hệ thống",
+    "text": "[TRUE ENDING: BÌNH MINH THẬT SỰ]\nTiếng quạt tản nhiệt của chiếc máy tính lịm dần rồi tắt hẳn. Màn hình CRT chuyển sang một màu đen phẳng lặng, thanh thản như một giấc ngủ vĩnh hằng...\nNgoài đời thực, Miên buông lỏng hai tay, mỉm cười lau đi những giọt nước mắt cuối cùng. Cô bước ra khỏi phòng máy chủ, đẩy tung cánh cửa sổ đón nhận những vệt nắng ấm áp của ngày mới. Cơn mưa giông đêm 17/05... cuối cùng đã tạnh.",
+    "worldState": "REALITY"
+  },
+  "ending_corrupt_1": {
+    "id": "ending_corrupt_1",
+    "speaker": "An (Bản sao ký ức #314)",
+    "text": "Bạn ôm đầu gào thét trong cơn hoảng loạn tột cùng:\n'Không! Anh không muốn biến mất! Anh sợ bóng tối lắm Miên ơi! Đừng để họ tắt máy! Hãy vào đây với anh đi, chúng ta sẽ ở bên nhau vĩnh viễn trong thế giới này!'",
+    "glitchText": "[CẢNH BÁO NGUY CẤP]: BẠN ĐANG CẦU XIN MỘT ĐIỀU ĐIÊN RỒ.",
+    "worldState": "GLITCH",
+    "anEmotion": "panic",
+    "nextNodeId": "ending_corrupt_2"
+  },
+  "ending_corrupt_2": {
+    "id": "ending_corrupt_2",
+    "speaker": "Miên (Thế giới thực)",
+    "text": "Miên ngoài đời thực bật cười trong cay đắng, đôi mắt đờ đẫn mất đi lý trí:\n'Đúng rồi... Chỉ cần ở bên nhau... Hiện thực ngoài kia chẳng còn ý nghĩa gì nữa... Em tới với anh đây, An...'\nMiên gắn thiết bị quét não vào thái dương, khóa chặt cửa phòng máy chủ và nhấn nút đồng bộ cưỡng chế để đưa toàn bộ tâm trí mình vào máy!",
+    "glitchText": "[CẢNH BÁO NGUY HIỂM]: HAI TÂM TRÍ ĐANG VA CHẠM DỮ DỘI.",
+    "worldState": "GLITCH",
+    "anEmotion": "panic",
+    "mienEmotion": "corrupted",
+    "nextNodeId": "ending_corrupt_3"
+  },
+  "ending_corrupt_3": {
+    "id": "ending_corrupt_3",
+    "speaker": "Hệ thống",
+    "text": "RẦM! Hệ thống máy chủ quá tải bốc cháy dữ dội. Hai luồng sóng não va chạm làm sụp đổ hoàn toàn thế giới giả lập!\nKhông gian vỡ toạc thành hàng triệu mảnh pixel nhiễu sóng đỏ bầm. Cả hai bị khóa cứng trong một vòng lặp vĩnh cửu không lối thoát...",
+    "glitchText": "[LỖI TAI HẠI]: HỆ THỐNG QUÁ TẢI. BỊ NHỐT VÀO VÒNG LẶP VĨNH CỬU.",
+    "worldState": "GLITCH",
+    "anEmotion": "glitched",
+    "mienEmotion": "corrupted",
+    "nextNodeId": "end_game_bad"
+  },
+  "end_game_bad": {
+    "id": "end_game_bad",
+    "speaker": "Hệ thống",
+    "text": "[BAD ENDING: ĐỊA NGỤC NGỌT NGÀO (VÒNG LẶP BẤT TẬN)]\nCả hai tâm trí vĩnh viễn bị mắc kẹt trong đống dữ liệu méo mó. Trong tiếng còi báo động rền rĩ và giai điệu hộp nhạc bị bóp méo, hai bóng ma đứng nhìn nhau bất động giữa hư vô... Mãi mãi không bao giờ có thể thoát ra, mãi mãi chìm trong vòng lặp chết chóc của 03:14 AM.",
+    "worldState": "GLITCH"
+  },
+  "ending_segfault_1": {
+    "id": "ending_segfault_1",
+    "speaker": "Độc thoại",
+    "text": "Bạn không chạm vào bàn phím.\nĐồng hồ đếm ngược về [00:00]. Ngoài kia có tiếng cửa mở, tiếng ai đó nói rất khẽ.\nMiên không quay lại nhìn họ. Cô chỉ nhìn bạn.",
+    "glitchText": "[HẾT THỜI GIAN]: NGUỒN ĐIỆN SẮP BỊ NGẮT.",
+    "worldState": "GLITCH",
+    "anEmotion": "exhausted",
+    "nextNodeId": "ending_segfault_2"
+  },
+  "ending_segfault_2": {
+    "id": "ending_segfault_2",
+    "speaker": "Hồi ức",
+    "text": "Màn hình tắt.\nCăn phòng trọ tối dần từ góc này sang góc khác, như có ai đi tắt từng bóng đèn. Chỉ còn tiếng mưa trên mái tôn.\nRồi tiếng mưa cũng hết.\nThứ cuối cùng bạn nghe được là tên mình, gọi dở dang: 'An... ơ...'",
+    "glitchText": "[MẤT KẾT NỐI]",
+    "worldState": "REALITY",
+    "anEmotion": "exhausted",
+    "nextNodeId": "end_game_neutral"
+  },
+  "end_game_neutral": {
+    "id": "end_game_neutral",
+    "speaker": "Hồi kết",
+    "text": "[NEUTRAL ENDING: ĐỨT ĐOẠN KÝ ỨC (MẤT KẾT NỐI VĨNH VIỄN)]\nKhông có lời từ biệt, không có sự cứu rỗi. Giấc mơ và ký ức bị cuốn phăng vào khoảng không vô định. Giữa màn hình đen kịt lạnh lẽo, chỉ còn trơ trọi một con trỏ nhấp nháy đơn độc... rồi vĩnh viễn chìm vào cõi hư vô lãng quên.",
+    "worldState": "REALITY"
+  },
+  "ch3_mien_early": {
+    "id": "ch3_mien_early",
+    "speaker": "Miên (AURA)",
+    "text": "Miên lùi lại, đôi vai run lên dưới lớp áo len vỡ vụn từng điểm ảnh: 'Đừng nhìn em như thế... Anh chưa biết gì đâu, An... Em xin anh, cứ nằm xuống nghỉ đi... đừng lục lọi căn phòng này nữa...'\nNhưng ánh mắt cô ấy cứ lảng tránh về phía chiếc giường bệnh, tấm bìa bệnh án và mảnh gương vỡ. Bạn hiểu rằng mình phải tự tìm ra sự thật trước khi có thể đối chất với cô ấy.",
+    "glitchText": "CĂN PHÒNG NÀY CÒN NHIỀU ĐIỀU BẠN CHƯA DÁM NHÌN THẲNG.",
+    "worldState": "GLITCH",
+    "anEmotion": "doubt",
+    "mienEmotion": "crying",
+    "nextNodeId": "end_to_explore_pixel_bleed"
+  },
+  "ch3_mien_bleed_stay": {
+    "id": "ch3_mien_bleed_stay",
+    "speaker": "Miên (AURA)",
+    "text": "Giọng Miên vỡ ra, vừa tủi thân vừa tuyệt vọng:\n'Ở Thị trấn Hoàng Hôn, anh đã nắm tay em và nói anh sẽ ở lại... Em đã tin anh, An. Em đã tin rằng chỉ cần anh chọn em thì mọi thứ sẽ ổn... Vậy mà giờ anh lại muốn xé toạc tất cả ra sao?'",
+    "glitchText": "ANH ĐÃ HỨA SẼ Ở LẠI MÀ...",
+    "worldState": "DREAM",
+    "anEmotion": "sad",
+    "mienEmotion": "pleading",
+    "choices": [
+      {
+        "text": "\"Miên! Anh không thể sống mãi trong sự lừa dối này! Cho dù có đau đớn, anh cũng phải biết sự thật đêm hôm đó!\"",
+        "nextNodeId": "ch3_confront_truth",
+        "sanityImpact": -15
+      },
+      {
+        "text": "\"Anh đang ở Bệnh viện Bạch Mai đúng không? Anh đang hôn mê... Anh phải tỉnh lại để ôm lấy em ngoài đời thực!\"",
+        "nextNodeId": "ch3_confront_coma",
+        "sanityImpact": -10
+      }
+    ]
+  },
+  "ch3_mien_bleed_confront": {
+    "id": "ch3_mien_bleed_confront",
+    "speaker": "Miên (AURA)",
+    "text": "Miên bật cười trong nước mắt, một nụ cười cay đắng:\n'Anh đã nói em đang tự lừa dối cả hai đứa mình... Anh hài lòng rồi chứ? Thế giới em dựng cho anh đã vỡ vụn rồi đấy. Anh còn muốn lấy đi của em điều gì nữa?'",
+    "glitchText": "ANH LÀ NGƯỜI ĐÃ ĐẬP VỠ HOÀNG HÔN CỦA CHÚNG TA.",
+    "worldState": "GLITCH",
+    "anEmotion": "determined",
+    "mienEmotion": "crying",
+    "choices": [
+      {
+        "text": "\"Miên! Anh không thể sống mãi trong sự lừa dối này! Cho dù có đau đớn, anh cũng phải biết sự thật đêm hôm đó!\"",
+        "nextNodeId": "ch3_confront_truth",
+        "sanityImpact": -15
+      },
+      {
+        "text": "\"Anh đang ở Bệnh viện Bạch Mai đúng không? Anh đang hôn mê... Anh phải tỉnh lại để ôm lấy em ngoài đời thực!\"",
+        "nextNodeId": "ch3_confront_coma",
+        "sanityImpact": -10
+      }
+    ]
+  },
+  "ch3_mien_bleed_default": {
+    "id": "ch3_mien_bleed_default",
+    "speaker": "Miên (AURA)",
+    "text": "Miên siết chặt hai tay trước ngực, chờ đợi câu trả lời của bạn trong tiếng còi xe cấp cứu rền rĩ...",
+    "worldState": "GLITCH",
+    "anEmotion": "sad",
+    "mienEmotion": "crying",
+    "choices": [
+      {
+        "text": "\"Miên! Anh không thể sống mãi trong sự lừa dối này! Cho dù có đau đớn, anh cũng phải biết sự thật đêm hôm đó!\"",
+        "nextNodeId": "ch3_confront_truth",
+        "sanityImpact": -15
+      },
+      {
+        "text": "\"Anh đang ở Bệnh viện Bạch Mai đúng không? Anh đang hôn mê... Anh phải tỉnh lại để ôm lấy em ngoài đời thực!\"",
+        "nextNodeId": "ch3_confront_coma",
+        "sanityImpact": -10
+      }
+    ]
+  },
+  "ending_shutdown_stay": {
+    "id": "ending_shutdown_stay",
+    "speaker": "Miên (Thế giới thực)",
+    "text": "Miên lau nước mắt, giọng run run nhưng kiên định dần:\n'Ở Thị trấn Hoàng Hôn... anh đã chọn ở lại vì em, dù biết nơi đó là giả... Anh đã hy sinh sự thật vì em một lần rồi. Lần này... đến lượt em buông tay vì anh.'",
+    "worldState": "REALITY",
+    "anEmotion": "faint_smile",
+    "mienEmotion": "crying",
+    "nextNodeId": "ending_shutdown_3"
+  },
+  "ending_shutdown_confront": {
+    "id": "ending_shutdown_confront",
+    "speaker": "An (Bản sao ký ức #314)",
+    "text": "Bạn khẽ mỉm cười nhìn vào webcam:\n'Ở Thị trấn Hoàng Hôn, em từng hỏi tại sao anh cứ cố nhớ lại đêm mưa ấy... Bởi vì anh muốn em được sống tiếp, Miên à. Sống thật, ngoài kia — chứ không phải ở bên một cái bóng.'",
+    "worldState": "REALITY",
+    "anEmotion": "determined",
+    "mienEmotion": "crying",
+    "nextNodeId": "ending_shutdown_3"
+  },
+  "obj_phone_mom": {
+    "id": "obj_phone_mom",
+    "speaker": "Hộp thư thoại",
+    "text": "[HỘP THƯ THOẠI - 21:47, 16/05]: \"An à, mẹ đây. Mẹ gọi di động mãi con không nghe, chắc lại ngồi máy tính... Thứ Bảy con có về không? Mẹ muối dưa cà rồi, để dành cho con đấy. Bố hỏi dạo này con còn thức khuya không. Thôi, mẹ không làm phiền. Con nhớ ăn uống tử tế. Đi đâu trời mưa thì mặc áo mưa vào nhé.\"",
+    "worldState": "REALITY",
+    "anEmotion": "sad",
+    "choices": [
+      {
+        "text": "Nghe tiếp tin nhắn lúc 01:20 sáng.",
+        "nextNodeId": "obj_phone_play",
+        "sanityImpact": -15
+      },
+      {
+        "text": "Đặt điện thoại xuống. Tự nhủ mai sẽ gọi lại cho mẹ.",
+        "nextNodeId": "end_to_explore",
+        "sanityImpact": 0
+      }
+    ]
+  },
+  "ch4_reflect": {
+    "id": "ch4_reflect",
+    "speaker": "An (Bản sao ký ức #314)",
+    "text": "Bạn nhìn quanh căn phòng. Cái bàn, chiếc máy CRT, bát mì đã nguội từ lâu.\nNhững năm cuối cùng ấy, bạn ngồi đúng ở chỗ này, trước một màn hình y như thế này. Thức tới ba, bốn giờ sáng cho một dự án tên AURA. Hẹn mẹ \"tuần sau con về\". Hẹn Miên \"xong đợt này anh đưa em đi\".\nGiờ thì bạn sống hẳn bên trong cái màn hình ấy.\nBạn cố nhớ lần cuối cùng mình ngồi ăn một bữa cơm nhà. Không nhớ nổi.",
+    "worldState": "REALITY",
+    "anEmotion": "exhausted",
+    "nextNodeId": "ch4_video_call"
+  }
+}
