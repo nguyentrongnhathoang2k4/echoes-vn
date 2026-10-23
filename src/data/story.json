@@ -642,13 +642,13 @@
       {
         "text": "\"Miên... Em đang tự lừa dối cả hai đứa mình. Một thế giới giả lập không thể thay thế hiện thực. Hãy để anh đối mặt với nó!\"",
         "nextNodeId": "ch2_truth_confront",
-        "sanityImpact": -25,
+        "sanityImpact": -5,
         "setFlag": "ch2_confront"
       },
       {
         "text": "\"Miên... Anh hiểu em đã đau đớn thế nào... Dù nơi này là giả, anh cũng không nỡ bỏ em lại một mình.\"",
         "nextNodeId": "ch2_ending_stay",
-        "sanityImpact": 25,
+        "sanityImpact": 10,
         "setFlag": "ch2_stay"
       }
     ]
@@ -709,7 +709,8 @@
       },
       {
         "text": "Lùi lại, rùng mình trước tiếng máy móc gầm rú và mùi kim loại khét lẹt.",
-        "nextNodeId": "end_to_explore"
+        "nextNodeId": "end_to_explore",
+        "sanityImpact": 0
       }
     ]
   },
@@ -779,12 +780,12 @@
       {
         "text": "Áp chặt hai tay lên lồng ngực để tìm kiếm nhịp đập con tim...",
         "nextNodeId": "ch3_heartbeat",
-        "sanityImpact": -10
+        "sanityImpact": -5
       },
       {
         "text": "Gọi tên bóng hình Miên đang nghẹn ngào rơi lệ giữa phòng...",
         "nextNodeId": "ch3_mien_early",
-        "sanityImpact": -10
+        "sanityImpact": -5
       }
     ]
   },
@@ -804,7 +805,7 @@
       {
         "text": "Lao tới hỏi Miên về những âm thanh kỳ lạ này...",
         "nextNodeId": "ch3_mien_early",
-        "sanityImpact": -10
+        "sanityImpact": -5
       }
     ]
   },
@@ -845,7 +846,7 @@
       {
         "text": "Run rẩy siết chặt tấm thẻ định danh: 'Mình... mình đã nằm ở đây suốt 6 tháng qua sao?!'",
         "nextNodeId": "end_to_explore_pixel_bleed",
-        "sanityImpact": -15
+        "sanityImpact": -10
       },
       {
         "text": "Lùi lại trong kinh hoàng, mùi cồn sát trùng và máu tanh xộc thẳng vào cuống họng.",
@@ -865,12 +866,12 @@
       {
         "text": "Siết chặt tờ bệnh án: \"Glasgow 3 điểm... Mình thực sự đã cận kề cái chết đến thế này sao?!\"",
         "nextNodeId": "end_to_explore_pixel_bleed",
-        "sanityImpact": -15
+        "sanityImpact": -10
       },
       {
         "text": "Nhìn nét chữ nhòe nước mắt của Miên ở mục người thân mà lòng thắt lại...",
         "nextNodeId": "end_to_explore_pixel_bleed",
-        "sanityImpact": -10
+        "sanityImpact": -5
       }
     ]
   },
@@ -885,12 +886,12 @@
       {
         "text": "Kinh hãi đưa tay sờ lên trán mình: \"Đầu mình... đầy băng gạc và dây truyền y tế?!\"",
         "nextNodeId": "end_to_explore_pixel_bleed",
-        "sanityImpact": -20
+        "sanityImpact": -10
       },
       {
         "text": "Lảo đảo lùi lại, không dám đối diện với hình bóng hấp hối trong gương.",
         "nextNodeId": "end_to_explore_pixel_bleed",
-        "sanityImpact": -10
+        "sanityImpact": -5
       }
     ]
   },
@@ -925,12 +926,12 @@
       {
         "text": "Ôm chặt ngực trong cơn co giật đau đớn: 'Dừng lại... tim mình đau quá...!'",
         "nextNodeId": "end_to_explore_pixel_bleed",
-        "sanityImpact": -20
+        "sanityImpact": -10
       },
       {
         "text": "Cố gắng giật phăng các đầu dây điện cực đang cắm thẳng vào thái dương bạn.",
         "nextNodeId": "end_to_explore_pixel_bleed",
-        "sanityImpact": -10
+        "sanityImpact": -5
       }
     ]
   },
@@ -945,7 +946,7 @@
       {
         "text": "Nhìn theo ánh đèn cấp cứu xoay tít: 'Đêm đó... mưa to quá... bánh xe đã mất lái...'",
         "nextNodeId": "end_to_explore_pixel_bleed",
-        "sanityImpact": -10
+        "sanityImpact": -5
       },
       {
         "text": "Lùi lại khỏi luồng gió rét buốt, hai tai ù đi vì tiếng còi xe cứu thương.",
@@ -965,7 +966,7 @@
       {
         "text": "Đập tay lên cánh cửa niêm phong: 'Mở cửa ra! Để tôi ra ngoài đối mặt với thực tại!'",
         "nextNodeId": "end_to_explore_pixel_bleed",
-        "sanityImpact": -10
+        "sanityImpact": -5
       },
       {
         "text": "Lặng người trước âm thanh dồn dập của phòng cấp cứu phía bên ngoài.",
@@ -990,7 +991,7 @@
       {
         "text": "Quay sang tìm Miên đang nghẹn ngào đứng giữa căn phòng.",
         "nextNodeId": "ch3_mien_early",
-        "sanityImpact": -10
+        "sanityImpact": -5
       }
     ]
   },
@@ -1054,7 +1055,7 @@
       {
         "text": "Mở lần lượt từng tệp, bắt đầu từ [1]: Bệnh án cấp cứu Bệnh viện Bạch Mai.",
         "nextNodeId": "ch4_log1",
-        "sanityImpact": -15
+        "sanityImpact": -5
       }
     ]
   },
@@ -1107,28 +1108,28 @@
         "text": "[TỰ TAY TẮT MÁY CHỦ] • Mỉm cười thanh thản, giải thoát cho Miên sống tiếp cuộc đời của cô.",
         "nextNodeId": "ending_shutdown_1",
         "sanityImpact": 30,
-        "minSanity": 51,
+        "minSanity": 45,
         "requiresFlag": "ch2_confront"
       },
       {
         "text": "[TỰ TAY TẮT MÁY CHỦ] • Mỉm cười thanh thản, giải thoát cho Miên sống tiếp cuộc đời của cô.",
         "nextNodeId": "ending_shutdown_1",
         "sanityImpact": 30,
-        "minSanity": 61,
+        "minSanity": 55,
         "forbidsFlag": "ch2_confront"
       },
       {
         "text": "[CẦU XIN ĐƯỢC Ở BÊN NHAU] • Hoảng sợ trước cái chết, xin Miên kết nối vào máy để ở bên nhau mãi mãi.",
         "nextNodeId": "ending_corrupt_1",
         "sanityImpact": -40,
-        "maxSanity": 39,
+        "maxSanity": 35,
         "requiresFlag": "ch2_stay"
       },
       {
         "text": "[CẦU XIN ĐƯỢC Ở BÊN NHAU] • Hoảng sợ trước cái chết, xin Miên kết nối vào máy để ở bên nhau mãi mãi.",
         "nextNodeId": "ending_corrupt_1",
         "sanityImpact": -40,
-        "maxSanity": 29,
+        "maxSanity": 25,
         "forbidsFlag": "ch2_stay"
       },
       {
@@ -1264,12 +1265,12 @@
       {
         "text": "\"Miên! Anh không thể sống mãi trong sự lừa dối này! Cho dù có đau đớn, anh cũng phải biết sự thật đêm hôm đó!\"",
         "nextNodeId": "ch3_confront_truth",
-        "sanityImpact": -15
+        "sanityImpact": -10
       },
       {
         "text": "\"Anh đang ở Bệnh viện Bạch Mai đúng không? Anh đang hôn mê... Anh phải tỉnh lại để ôm lấy em ngoài đời thực!\"",
         "nextNodeId": "ch3_confront_coma",
-        "sanityImpact": -10
+        "sanityImpact": -5
       }
     ]
   },
@@ -1285,12 +1286,12 @@
       {
         "text": "\"Miên! Anh không thể sống mãi trong sự lừa dối này! Cho dù có đau đớn, anh cũng phải biết sự thật đêm hôm đó!\"",
         "nextNodeId": "ch3_confront_truth",
-        "sanityImpact": -15
+        "sanityImpact": -10
       },
       {
         "text": "\"Anh đang ở Bệnh viện Bạch Mai đúng không? Anh đang hôn mê... Anh phải tỉnh lại để ôm lấy em ngoài đời thực!\"",
         "nextNodeId": "ch3_confront_coma",
-        "sanityImpact": -10
+        "sanityImpact": -5
       }
     ]
   },
@@ -1305,12 +1306,12 @@
       {
         "text": "\"Miên! Anh không thể sống mãi trong sự lừa dối này! Cho dù có đau đớn, anh cũng phải biết sự thật đêm hôm đó!\"",
         "nextNodeId": "ch3_confront_truth",
-        "sanityImpact": -15
+        "sanityImpact": -10
       },
       {
         "text": "\"Anh đang ở Bệnh viện Bạch Mai đúng không? Anh đang hôn mê... Anh phải tỉnh lại để ôm lấy em ngoài đời thực!\"",
         "nextNodeId": "ch3_confront_coma",
-        "sanityImpact": -10
+        "sanityImpact": -5
       }
     ]
   },

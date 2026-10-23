@@ -1690,7 +1690,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
           volume={volume}
           onComplete={() => {
             setActiveMinigame(null);
-            setSanity?.(prev => Math.max(10, prev - 15));
+            setSanity?.(prev => Math.max(10, prev - 5));
             if (!localInteractedIds.includes('ch2_music_box')) {
               setLocalInteractedIds(prev => [...prev, 'ch2_music_box']);
               onMarkInteracted?.('ch2_music_box');
@@ -1713,7 +1713,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
           volume={volume}
           onComplete={() => {
             setActiveMinigame(null);
-            setSanity?.(prev => Math.max(10, prev - 10));
+            setSanity?.(prev => Math.max(10, prev - 5));
             if (!localInteractedIds.includes('ch2_bench')) {
               setLocalInteractedIds(prev => [...prev, 'ch2_bench']);
               onMarkInteracted?.('ch2_bench');
@@ -1736,7 +1736,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
           volume={volume}
           onComplete={() => {
             setActiveMinigame(null);
-            setSanity?.(prev => Math.max(10, prev - 10));
+            setSanity?.(prev => Math.max(10, prev - 5));
             if (!localInteractedIds.includes('ch2_umbrella')) {
               setLocalInteractedIds(prev => [...prev, 'ch2_umbrella']);
               onMarkInteracted?.('ch2_umbrella');

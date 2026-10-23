@@ -108,8 +108,8 @@
 
 | Lựa chọn ở `ch2_mien_final` | Biến | Màn 3 (`ch3_mien_bleed`) | Màn 4 (`ch4_climax_choice`) | Ending A (câu thoại riêng) |
 | :--- | :--- | :--- | :--- | :--- |
-| *"Em đang tự lừa dối cả hai đứa mình..."* (Đối chất, −25 Sanity) | `ch2_confront` | Miên cay đắng: *"Anh hài lòng rồi chứ? Thế giới em dựng đã vỡ vụn rồi đấy."* | Ending A **dễ hơn**: chỉ cần Sanity ≥ 51 | An: *"Em từng hỏi vì sao anh cố nhớ lại đêm mưa ấy... vì anh muốn em được sống tiếp."* |
-| *"Anh không nỡ bỏ em lại một mình."* (Ở lại, +25 Sanity) | `ch2_stay` | Miên tủi thân: *"Anh đã nắm tay em và nói sẽ ở lại... Em đã tin anh."* | Ending B **dễ rơi vào hơn**: mở khi Sanity ≤ 39 | Miên: *"Anh đã chọn ở lại vì em một lần rồi... lần này đến lượt em buông tay vì anh."* |
+| *"Em đang tự lừa dối cả hai đứa mình..."* (Đối chất, −5 Sanity) | `ch2_confront` | Miên cay đắng: *"Anh hài lòng rồi chứ? Thế giới em dựng đã vỡ vụn rồi đấy."* | Ending A **dễ hơn**: chỉ cần Sanity ≥ 45 | An: *"Em từng hỏi vì sao anh cố nhớ lại đêm mưa ấy... vì anh muốn em được sống tiếp."* |
+| *"Anh không nỡ bỏ em lại một mình."* (Ở lại, +10 Sanity) | `ch2_stay` | Miên tủi thân: *"Anh đã nắm tay em và nói sẽ ở lại... Em đã tin anh."* | Ending B **dễ rơi vào hơn**: mở khi Sanity ≤ 35 | Miên: *"Anh đã chọn ở lại vì em một lần rồi... lần này đến lượt em buông tay vì anh."* |
 
 ---
 
@@ -147,9 +147,20 @@ Dựa trên chỉ số Sanity tích lũy và lựa chọn quyết định ở m�
 
 | Kết cục | Tên Ending | Điều kiện | Ý nghĩa cốt truyện |
 | :--- | :--- | :--- | :--- |
-| **Ending A** | **SHUTDOWN (Bình minh thật sự)** *(True Ending)* | Chọn `[TỰ TAY TẮT MÁY CHỦ]`<br>(Yêu cầu Sanity $\geq 61\%$; **$\geq 51\%$ nếu đã Đối chất ở Màn 2**) | An chấp nhận mình đã mất. Anh hỏi Miên sáu tháng qua có ngủ được đêm nào không, rồi nói: *"Anh không ở trong cái máy này đâu, Miên. Đây chỉ là chỗ em chưa dám bước ra thôi."* Lời nhờ cuối cùng: *"Thứ Bảy này em về quê thăm mẹ anh giúp anh nhé. Mẹ muối dưa cà rồi, mà anh thì chưa kịp gọi lại."* Miên cười trong nước mắt lần đầu sau sáu tháng — *"Ừ. Em hứa."* — và An nhấn phím tắt máy. |
-| **Ending B** | **CORRUPT LOOP (Địa ngục ngọt ngào)** *(Bad/Twisted Ending)* | Chọn `[CẦU XIN ĐƯỢC Ở BÊN NHAU]`<br>(Yêu cầu Sanity $\leq 29\%$; **$\leq 39\%$ nếu đã Ở lại ở Màn 2**) | An từ chối cái chết, bám víu vào ảo mộng. Miên ngoài đời thực cũng rơi vào điên loạn; trước khi server bị tắt, cô gắn điện cực tự sát và tải nốt ý thức của chính mình vào hệ thống. Thế giới sụp đổ thành một đống mã lỗi méo mó. Cả hai nhân vật trở thành những bóng ma glitch kẹt vĩnh viễn trong một vòng lặp vỡ nát. |
-| **Ending C** | **SEGMENTATION FAULT (Lãng quên)** *(Neutral Ending)* | Chọn `[BUÔNG XUÔI HAI TAY]` hoặc để thanh đếm ngược 30 giây về 0 (`timeoutNodeId: ending_segfault_1`).<br>Sanity 30-60%: cả A và B đều khóa → chỉ còn con đường này. | An không chạm vào bàn phím. Đồng hồ về 00:00, ngoài kia có tiếng cửa mở rất khẽ; Miên không quay lại, chỉ nhìn An. Màn hình tắt, căn phòng tối dần từng góc như có ai đi tắt từng bóng đèn, chỉ còn tiếng mưa trên mái tôn — rồi tiếng mưa cũng hết. Thứ cuối cùng An nghe được là tên mình, gọi dở dang. |
+| **Ending A** | **SHUTDOWN (Bình minh thật sự)** *(True Ending)* | Chọn `[TỰ TAY TẮT MÁY CHỦ]`<br>(Yêu cầu Sanity $\geq 55\%$; **$\geq 45\%$ nếu đã Đối chất ở Màn 2**) | An chấp nhận mình đã mất. Anh hỏi Miên sáu tháng qua có ngủ được đêm nào không, rồi nói: *"Anh không ở trong cái máy này đâu, Miên. Đây chỉ là chỗ em chưa dám bước ra thôi."* Lời nhờ cuối cùng: *"Thứ Bảy này em về quê thăm mẹ anh giúp anh nhé. Mẹ muối dưa cà rồi, mà anh thì chưa kịp gọi lại."* Miên cười trong nước mắt lần đầu sau sáu tháng — *"Ừ. Em hứa."* — và An nhấn phím tắt máy. |
+| **Ending B** | **CORRUPT LOOP (Địa ngục ngọt ngào)** *(Bad/Twisted Ending)* | Chọn `[CẦU XIN ĐƯỢC Ở BÊN NHAU]`<br>(Yêu cầu Sanity $\leq 25\%$; **$\leq 35\%$ nếu đã Ở lại ở Màn 2**) | An từ chối cái chết, bám víu vào ảo mộng. Miên ngoài đời thực cũng rơi vào điên loạn; trước khi server bị tắt, cô gắn điện cực tự sát và tải nốt ý thức của chính mình vào hệ thống. Thế giới sụp đổ thành một đống mã lỗi méo mó. Cả hai nhân vật trở thành những bóng ma glitch kẹt vĩnh viễn trong một vòng lặp vỡ nát. |
+| **Ending C** | **SEGMENTATION FAULT (Lãng quên)** *(Neutral Ending)* | Chọn `[BUÔNG XUÔI HAI TAY]` hoặc để thanh đếm ngược 30 giây về 0 (`timeoutNodeId: ending_segfault_1`).<br>Sanity nằm giữa hai ngưỡng (vd. 26-54% nếu không có biến): cả A và B đều khóa → chỉ còn con đường này. | An không chạm vào bàn phím. Đồng hồ về 00:00, ngoài kia có tiếng cửa mở rất khẽ; Miên không quay lại, chỉ nhìn An. Màn hình tắt, căn phòng tối dần từng góc như có ai đi tắt từng bóng đèn, chỉ còn tiếng mưa trên mái tôn — rồi tiếng mưa cũng hết. Thứ cuối cùng An nghe được là tên mình, gọi dở dang. |
+
+
+**Cân bằng Sanity (ước lượng: mỗi vật thể tương tác 1 lần, Màn 3 lấy 5 manh mối):**
+
+| Lối chơi | Đối chất ở Màn 2 | Ở lại ở Màn 2 |
+|---|---|---|
+| Luôn chọn lựa chọn tốt nhất | ~65 → **Ending A** | ~75 → **Ending A** |
+| Chọn ngẫu nhiên | ~27 → Ending C | ~42 → Ending C |
+| Luôn chọn lựa chọn tệ nhất | 0 → Sụp đổ / Ending B | 0 → Sụp đổ / Ending B |
+
+Các thay đổi để đạt bảng trên: lựa chọn cuối Màn 2 từ ±25 xuống −5 / +10; phạt minigame Màn 2 (hộp nhạc / Polaroid / radio) còn −5; các phát hiện ở Màn 3 trừ khoảng một nửa so với trước; đối chất Miên ở Màn 3 còn −10 / −5; mở tệp ở `ch4_start` còn −5. Trước đó, kể cả chơi tối ưu cũng chỉ tới ~60 (Ở lại) và ~10 (Đối chất) → Ending A gần như không thể đạt.
 
 ---
 
@@ -209,7 +220,7 @@ public/assets/
 - [ ] Bổ sung hiệu ứng bộ lọc ánh sáng động (Vignette & Spotlight theo bước chân An).
 - [x] Đấu nối toàn bộ các Node trong kịch bản trên vào file `src/data/story.json` (đã vá dòng thời gian, nguồn rò rỉ dữ liệu, động cơ Miên, tách Album kỷ niệm / `C:/MEMORY_DUMP/`).
 - [x] Khóa lựa chọn kết cục theo Sanity + đếm ngược Ending C (`minSanity` / `maxSanity` / `timeoutSeconds`).
-- [ ] Cân bằng Sanity để Ending A (≥ 61%) đạt được khi chơi thật.
+- [x] Cân bằng Sanity để Ending A đạt được khi chơi thật (xem bảng dưới).
 - [x] Lựa chọn "ở lại / đối chất" ở cuối Màn 2 có hậu quả ở Màn 3, ngưỡng kết cục Màn 4 và câu thoại Ending A (biến `ch2_stay` / `ch2_confront`, lưu trong save, không bị xoá khi sang chương).
 - [ ] Cài đặt listener `visibilitychange` để kích hoạt thông điệp rùng rợn khi đổi tab.
 - [x] Hạ giọng thoại kết cục A & C (bỏ từ cường độ cao, thay bằng chi tiết cụ thể); thêm mạch "mẹ" (Màn 1 → Ending A) và khoảnh khắc nhìn lại `ch4_reflect`.
