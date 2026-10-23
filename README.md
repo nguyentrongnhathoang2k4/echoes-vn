@@ -1,36 +1,103 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Echoes: 03:14 AM
 
-## Getting Started
+*Dư âm lúc 3 giờ 14 phút sáng.*
 
-First, run the development server:
+Game phiêu lưu pixel-art kết hợp visual novel, chạy trên trình duyệt. Bạn vào vai **An**, một kỹ sư phần mềm 24 tuổi sống trong căn phòng trọ #314 ở một khu tập thể cũ tại Hà Nội. Đồng hồ trong phòng đứng yên ở 03:14. Ngoài trời mưa mãi không tạnh. Và **Miên** cứ chập chờn xuất hiện như một làn sóng nhiễu trên màn hình CRT.
+
+Mọi thứ trong căn phòng đều quen thuộc, chỉ có điều gì đó không đúng.
+
+## Lối chơi
+
+- **Khám phá:** đi lại trong từng màn chơi, điều tra đồ vật, nhặt và kết hợp vật phẩm, giải mã khoá.
+- **Visual novel:** lời thoại với nhiều lựa chọn. Một số lựa chọn để lại hậu quả ở các chương sau.
+- **Sanity (Tỉnh táo):** hầu hết lựa chọn đều làm tăng hoặc giảm chỉ số này. Sanity quyết định kết cục nào còn mở ở cuối game. Về 0 thì tâm trí sụp đổ.
+- **Minigame:** hộp nhạc, ảnh Polaroid, radio bắt sóng, máy sốc tim.
+- **3 kết cục.** Hãy thử chơi lại với những lựa chọn khác.
+
+## Điều khiển
+
+| Phím | Tác dụng |
+|---|---|
+| `W` `A` `S` `D` / phím mũi tên | Di chuyển |
+| `E` | Tương tác |
+| `I` | Mở túi đồ |
+| `Space` / `Enter` | Chạy tiếp lời thoại |
+| `1` `2` `3` | Chọn nhanh lựa chọn trong lời thoại |
+| `Esc` | Tạm dừng |
+
+## Chạy trên máy
+
+Cần **Node.js 20.9 trở lên**.
 
 ```bash
+git clone https://github.com/nguyentrongnhathoang2k4/echoes-vn.git
+cd echoes-vn
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Mở http://localhost:3000. Tiến trình chơi được lưu tự động trong trình duyệt (localStorage).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Các lệnh khác:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Lệnh | Tác dụng |
+|---|---|
+| `npm run build` | Build bản production |
+| `npm run start` | Chạy bản đã build |
+| `npm run lint` | Kiểm tra code bằng ESLint |
+| `npx tsc --noEmit` | Kiểm tra kiểu TypeScript |
 
-## Learn More
+### Phím tắt cho nhà phát triển
 
-To learn more about Next.js, take a look at the following resources:
+Dùng để nhảy nhanh giữa các chương khi thử nghiệm:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Phím | Tác dụng |
+|---|---|
+| `K` | Nhảy tới Màn 2. Bấm lần nữa để mở sẵn đủ manh mối |
+| `L` | Nhảy tới Màn 3. Bấm lần nữa để mở sẵn đủ manh mối |
+| `M` | Nhảy tới Màn 4 (hồ sơ cuối và 3 kết cục) |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Công nghệ
 
-## Deploy on Vercel
+- [Next.js](https://nextjs.org) 16 (App Router), React 19, TypeScript, Tailwind CSS 4.
+- Toàn bộ đồ hoạ màn chơi vẽ bằng **Canvas 2D**: pixel-art, ánh sáng động, mưa, chớp, bụi. Không dùng game engine.
+- Âm thanh dùng **Web Audio API**. Nhạc nền và hiệu ứng được tổng hợp trực tiếp trong trình duyệt, hoặc lấy từ file của bạn (xem [public/audio/README.md](public/audio/README.md)).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Cấu trúc thư mục
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+app/page.tsx                 Vòng đời game: chương, Sanity, lưu/tải, chuyển màn
+src/data/story.json          Toàn bộ cốt truyện dạng đồ thị node (thoại, lựa chọn, rẽ nhánh)
+src/types/vn.ts              Kiểu dữ liệu của node và lựa chọn
+src/components/
+  OverworldStage.tsx         Màn 1: Phòng trọ #314
+  HallwayStage.tsx           Hành lang tầng 3
+  SunsetStage.tsx            Màn 2: Thị trấn Hoàng Hôn
+  PixelBleedStage.tsx        Màn 3: Pixel Bleed
+  VNStage.tsx                Khung visual novel (thoại, lựa chọn, đếm ngược)
+  minigames/                 Hộp nhạc, Polaroid, radio, máy sốc tim
+  pixel/pixelKit.ts          Hàm vẽ pixel-art và HUD dùng chung
+  pixel/spriteKit.ts         Render sprite, chu kỳ bước đi, hiệu ứng hologram
+src/services/audioEngine.ts  Bộ máy âm thanh
+public/assets/               Spritesheet và chân dung nhân vật
+```
+
+### Viết thêm cốt truyện
+
+Mỗi node trong [src/data/story.json](src/data/story.json) là một đoạn thoại. Các trường hay dùng:
+
+- `nextNodeId`: node kế tiếp (khi không có lựa chọn).
+- `choices`: danh sách lựa chọn. Mỗi lựa chọn có `text`, `nextNodeId` và `sanityImpact` (bắt buộc).
+  - `minSanity` / `maxSanity`: khoá lựa chọn theo Sanity.
+  - `setFlag`: ghi một biến cốt truyện khi chọn. Biến được lưu xuyên suốt các chương.
+  - `requiresFlag` / `forbidsFlag`: chỉ hiện, hoặc ẩn, lựa chọn khi đã có biến.
+- `flagBranches`: tự rẽ nhánh theo biến cốt truyện.
+- `timeoutSeconds` + `timeoutNodeId`: đếm ngược, hết giờ thì tự chuyển node.
+
+Kiểu dữ liệu đầy đủ nằm trong [src/types/vn.ts](src/types/vn.ts).
+
+## Tài liệu thiết kế
+
+> ⚠️ **Tiết lộ toàn bộ cốt truyện.** Nên chơi hết game trước khi đọc.
+
+[story.md](story.md) ghi lại hồ sơ nhân vật, dòng thời gian chuẩn của câu chuyện, chi tiết từng màn, điều kiện của 3 kết cục và bảng cân bằng Sanity.
