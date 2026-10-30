@@ -1,6 +1,23 @@
 "use client";
 
-export type AudioScene = 'MENU' | 'INTRO' | 'ROOM_314' | 'HALLWAY' | 'SUNSET' | 'PIXEL_BLEED';
+// VOID: Màn 4 — tắt nhạc nền chung, Chapter4Stage tự phát âm thanh riêng
+export type AudioScene = 'MENU' | 'INTRO' | 'ROOM_314' | 'HALLWAY' | 'SUNSET' | 'PIXEL_BLEED' | 'VOID';
+
+/** Ngưỡng Sanity bắt đầu nghe thấy tim mình đập */
+export const HEARTBEAT_SANITY = 35;
+
+/** Nhịp tim theo Sanity: 35% ≈ 75 BPM, nặng nề → dưới 15% dồn dập 115–130 BPM */
+export function heartbeatBpm(sanity: number): number {
+  if (sanity <= 15) return 115 + ((15 - Math.max(0, sanity)) / 15) * 15;
+  return 115 - ((Math.min(HEARTBEAT_SANITY, sanity) - 15) / (HEARTBEAT_SANITY - 15)) * 40;
+}
+
+/** Âm thanh duy nhất vang lên giữa khoảng lặng chân không */
+export type SilenceAccent = 'chime' | 'click' | 'sigh' | 'none';
+
+/** Sự kiện phát ra khi khoảng lặng bắt đầu, để các màn có AudioContext riêng cũng tự tắt tiếng theo */
+export const DEAD_SILENCE_EVENT = 'echoes:dead-silence';
+export interface DeadSilenceDetail { durationMs: number; fadeBackMs: number }
 
 class HybridAudioEngine {
   private ctx: AudioContext | null = null;
@@ -15,7 +32,13 @@ class HybridAudioEngine {
   // Adaptive Sanity Nodes
   private tinnitusOsc: OscillatorNode | null = null;
   private tinnitusGain: GainNode | null = null;
-  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+  // Nghẹt tai theo từng nhịp tim (nằm sau sanityFilter để hai bộ lọc không giành nhau)
+  private beatFilter: BiquadFilterNode | null = null;
+  private heartbeatListeners = new Set<(bpm: number) => void>();
+  // Khoảng lặng chân không: chặn cuối chuỗi, trước loa
+  private silenceGain: GainNode | null = null;
+  private silencedUntil = 0;
 
   // Ambient Nodes
   private rainSource: AudioBufferSourceNode | null = null;
@@ -34,7 +57,13 @@ class HybridAudioEngine {
   private currentScene: AudioScene | null = null;
   private bgmSequencerTimer: NodeJS.Timeout | null = null;
   private bgmStep = 0;
+  // Nhịp ECG loạn đan trong nhạc Màn 3 (chuỗi setTimeout riêng vì nhịp không đều)
+  private ecgTimer: ReturnType<typeof setTimeout> | null = null;
+  private ecgBeat = 0;
+  // File nhạc ngoài (nếu có) đi qua bgmGain như nhạc tổng hợp; token bỏ qua file tải xong muộn sau khi đã đổi màn
   private customAudioElement: HTMLAudioElement | null = null;
+  private customAudioSource: MediaElementAudioSourceNode | null = null;
+  private bgmToken = 0;
 
   // Settings State
   private masterVolume = 0.8;
@@ -96,11 +125,22 @@ class HybridAudioEngine {
     this.ambientGain = ctx.createGain();
     this.ambientGain.gain.setValueAtTime(this.ambientVolume * 0.45, ctx.currentTime);
 
-    // Routing: BGM + Ambient -> Sanity Filter -> Master Gain -> Destination
+    // Nghẹt tai theo nhịp tim (mặc định mở hoàn toàn)
+    this.beatFilter = ctx.createBiquadFilter();
+    this.beatFilter.type = 'lowpass';
+    this.beatFilter.frequency.setValueAtTime(20000, ctx.currentTime);
+
+    // Khoảng lặng chân không
+    this.silenceGain = ctx.createGain();
+    this.silenceGain.gain.setValueAtTime(1, ctx.currentTime);
+
+    // Routing: BGM + Ambient -> Sanity Filter -> Beat Filter -> Master Gain -> Silence -> Destination
     this.bgmGain.connect(this.sanityFilter);
     this.ambientGain.connect(this.sanityFilter);
-    this.sanityFilter.connect(this.masterGain);
-    this.masterGain.connect(ctx.destination);
+    this.sanityFilter.connect(this.beatFilter);
+    this.beatFilter.connect(this.masterGain);
+    this.masterGain.connect(this.silenceGain);
+    this.silenceGain.connect(ctx.destination);
 
     // Tinnitus Generator (connects directly to master to bypass Sanity filter)
     this.tinnitusOsc = ctx.createOscillator();
@@ -119,9 +159,6 @@ class HybridAudioEngine {
     if (this.masterGain && this.ctx) {
       this.masterGain.gain.linearRampToValueAtTime(this.masterVolume, this.ctx.currentTime + 0.08);
     }
-    if (this.customAudioElement) {
-      this.customAudioElement.volume = this.masterVolume * this.bgmVolume;
-    }
   }
 
   // Cập nhật âm lượng Nhạc nền BGM (0 - 100)
@@ -129,9 +166,6 @@ class HybridAudioEngine {
     this.bgmVolume = Math.max(0, Math.min(1, volPercent / 100));
     if (this.bgmGain && this.ctx) {
       this.bgmGain.gain.linearRampToValueAtTime(this.bgmVolume * 1.4, this.ctx.currentTime + 0.08);
-    }
-    if (this.customAudioElement) {
-      this.customAudioElement.volume = this.masterVolume * this.bgmVolume;
     }
   }
 
@@ -146,6 +180,13 @@ class HybridAudioEngine {
   // Cập nhật biến dạng âm thanh theo Sanity (Adaptive Horror DSP)
   public setSanity(sanity: number) {
     this.currentSanity = sanity;
+    // Nhịp tim chạy cả khi chưa có âm thanh (lớp hình co giật vẫn cần nhịp)
+    if (sanity <= HEARTBEAT_SANITY) {
+      if (!this.heartbeatTimer) this.scheduleHeartbeat();
+    } else if (this.heartbeatTimer) {
+      clearTimeout(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
     if (!this.ctx || !this.sanityFilter || !this.tinnitusGain) return;
     const t = this.ctx.currentTime;
 
@@ -162,25 +203,36 @@ class HybridAudioEngine {
       tinVol = 0.005 + ((35 - sanity) / 35) * 0.035;
     }
     this.tinnitusGain.gain.linearRampToValueAtTime(tinVol, t + 0.25);
+  }
 
-    // 3. Heartbeat dồn dập khi Sanity < 25%
-    if (sanity < 25) {
-      if (!this.heartbeatTimer) {
-        this.triggerHeartbeat();
-        const interval = Math.max(550, 600 + (sanity / 25) * 250);
-        this.heartbeatTimer = setInterval(() => this.triggerHeartbeat(), interval);
-      }
-    } else {
-      if (this.heartbeatTimer) {
-        clearInterval(this.heartbeatTimer);
-        this.heartbeatTimer = null;
-      }
-    }
+  /** Đăng ký nhận từng nhịp tim (để lớp vignette co giật đúng nhịp); trả về hàm huỷ */
+  public onHeartbeat(cb: (bpm: number) => void): () => void {
+    this.heartbeatListeners.add(cb);
+    return () => {
+      this.heartbeatListeners.delete(cb);
+    };
+  }
+
+  /** Lên lịch nhịp kế tiếp; nhịp đổi ngay theo Sanity hiện tại */
+  private scheduleHeartbeat() {
+    const bpm = heartbeatBpm(this.currentSanity);
+    this.triggerHeartbeat();
+    this.heartbeatListeners.forEach((cb) => cb(bpm));
+    this.heartbeatTimer = setTimeout(() => {
+      this.heartbeatTimer = null;
+      if (this.currentSanity <= HEARTBEAT_SANITY) this.scheduleHeartbeat();
+    }, 60000 / bpm);
   }
 
   private triggerHeartbeat() {
     if (!this.ctx || !this.masterGain || this.masterVolume <= 0) return;
     const t = this.ctx.currentTime;
+    // Mỗi nhịp: nhạc nền & tiếng môi trường nghẹt lại như bị ù tai, rồi thoáng dần
+    if (this.beatFilter) {
+      this.beatFilter.frequency.cancelScheduledValues(t);
+      this.beatFilter.frequency.setValueAtTime(400, t);
+      this.beatFilter.frequency.exponentialRampToValueAtTime(20000, t + 0.45);
+    }
 
     try {
       // Pulse 1
@@ -209,6 +261,88 @@ class HybridAudioEngine {
       osc2.start(t + 0.16);
       osc2.stop(t + 0.28);
     } catch {}
+  }
+
+  /** Đang trong khoảng lặng chân không (các âm phụ như tiếng gõ chữ nên im) */
+  public isDeadSilent(): boolean {
+    return typeof performance !== 'undefined' && performance.now() < this.silencedUntil;
+  }
+
+  /**
+   * KHOẢNG LẶNG CHÂN KHÔNG: mọi âm thanh tụt về 0 trong 40ms, im tuyệt đối,
+   * chỉ một âm duy nhất cất lên, rồi âm thanh môi trường từ từ quay lại.
+   * Phát sự kiện DEAD_SILENCE_EVENT để các màn có AudioContext riêng cũng tắt theo.
+   */
+  public triggerDeadSilence(durationMs = 2000, fadeBackMs = 1200, accent: SilenceAccent = 'chime') {
+    if (typeof window !== 'undefined') {
+      this.silencedUntil = performance.now() + durationMs;
+      window.dispatchEvent(new CustomEvent<DeadSilenceDetail>(DEAD_SILENCE_EVENT, { detail: { durationMs, fadeBackMs } }));
+    }
+    if (!this.ctx || !this.silenceGain) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const g = this.silenceGain.gain;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(Math.max(0.0001, g.value), t);
+    g.exponentialRampToValueAtTime(0.0001, t + 0.04);
+    g.setValueAtTime(0.0001, t + durationMs / 1000);
+    g.exponentialRampToValueAtTime(1, t + (durationMs + fadeBackMs) / 1000);
+    if (accent !== 'none' && this.masterVolume > 0) this.playSilenceAccent(accent, t + Math.min(0.7, durationMs / 2500));
+  }
+
+  /** Âm duy nhất trong khoảng lặng: đi thẳng ra loa, không qua lớp tắt tiếng */
+  private playSilenceAccent(kind: Exclude<SilenceAccent, 'none'>, at: number) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const out = ctx.createGain();
+    out.gain.value = this.masterVolume;
+    out.connect(ctx.destination);
+    try {
+      if (kind === 'chime') {
+        // Chuông phong linh mảnh: âm cơ bản + bồi âm lệch, ngân dài
+        [[1568, 1, 2.6], [4703, 0.25, 1.4], [8467, 0.08, 0.8]].forEach(([f, gain, dur]) => {
+          const o = ctx.createOscillator();
+          o.type = 'sine';
+          o.frequency.value = f;
+          const e = ctx.createGain();
+          e.gain.setValueAtTime(0, at);
+          e.gain.linearRampToValueAtTime(0.05 * gain, at + 0.006);
+          e.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+          o.connect(e).connect(out);
+          o.start(at);
+          o.stop(at + dur + 0.05);
+        });
+      } else {
+        const len = Math.floor(ctx.sampleRate * (kind === 'sigh' ? 1.6 : 0.05));
+        const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        const f = ctx.createBiquadFilter();
+        const e = ctx.createGain();
+        if (kind === 'click') {
+          // Tiếng "tách" khô, cô độc
+          f.type = 'bandpass';
+          f.frequency.value = 2600;
+          e.gain.setValueAtTime(0.35, at);
+          e.gain.exponentialRampToValueAtTime(0.0001, at + 0.045);
+        } else {
+          // Tiếng thở dài: luồng hơi lọc trầm phồng lên rồi tắt
+          f.type = 'bandpass';
+          f.frequency.setValueAtTime(900, at);
+          f.frequency.exponentialRampToValueAtTime(380, at + 1.5);
+          f.Q.value = 0.8;
+          e.gain.setValueAtTime(0.0001, at);
+          e.gain.exponentialRampToValueAtTime(0.05, at + 0.45);
+          e.gain.exponentialRampToValueAtTime(0.0001, at + 1.55);
+        }
+        src.connect(f).connect(e).connect(out);
+        src.start(at);
+        src.stop(at + len / ctx.sampleRate);
+      }
+    } catch {}
+    setTimeout(() => out.disconnect(), 3500);
   }
 
   // Khởi động tiếng tít Flatline liên tục khi Sanity = 0% (ECG Flatline 880Hz)
@@ -382,7 +516,7 @@ class HybridAudioEngine {
         this.startSunsetBgm();
         break;
       case 'PIXEL_BLEED':
-        this.startPixelBleedBgm();
+        this.startBgmWithFileFallback('/assets/audio/bgm_ch3.mp3', () => this.startPixelBleedBgm());
         break;
     }
   }
@@ -677,7 +811,7 @@ class HybridAudioEngine {
     this.bgmSequencerTimer = setInterval(runStep, 700);
   }
 
-  // 4. CHAPTER 2 THEME: Bản Valse hoàng hôn ấm áp ("Bến Bình An")
+  // 4. CHAPTER 2 THEME: Bản Valse hoàng hôn ấm áp ("Bến An Yên")
   private startSunsetBgm() {
     this.bgmStep = 0;
     // Cmaj7 -> Am7 -> Dm7 -> G7 (Bittersweet Studio Ghibli waltz)
@@ -713,44 +847,179 @@ class HybridAudioEngine {
     this.bgmSequencerTimer = setInterval(runStep, 450); // Điệu 3/4 rộn rã nhẹ nhàng
   }
 
-  // 5. CHAPTER 3 THEME: Giai điệu Màn 2 bị méo mó, vỡ vụn (Glitched Tape Bleed)
+  /** Nốt băng từ nhão: triangle + sawtooth qua lowpass 550Hz, cao độ võng dần như băng bị kéo giãn */
+  private playTapeNote(freq: number, duration: number, gainVal: number, detune: number, delay = 0) {
+    if (!this.ctx || !this.bgmGain || this.masterVolume <= 0) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + delay;
+    try {
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(550, t);
+      lp.Q.setValueAtTime(0.7, t);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.linearRampToValueAtTime(gainVal, t + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+      const sawGain = ctx.createGain();
+      sawGain.gain.setValueAtTime(0.35, t);
+
+      const tri = ctx.createOscillator();
+      const saw = ctx.createOscillator();
+      tri.type = 'triangle';
+      saw.type = 'sawtooth';
+      for (const o of [tri, saw]) {
+        o.frequency.setValueAtTime(freq, t);
+        o.frequency.exponentialRampToValueAtTime(freq * 0.985, t + duration);
+        o.detune.setValueAtTime(detune, t);
+      }
+      tri.connect(lp);
+      saw.connect(sawGain).connect(lp);
+      lp.connect(gain).connect(this.bgmGain);
+      tri.start(t);
+      saw.start(t);
+      tri.stop(t + duration + 0.05);
+      saw.stop(t + duration + 0.05);
+      tri.onended = () => {
+        try { tri.disconnect(); saw.disconnect(); sawGain.disconnect(); lp.disconnect(); gain.disconnect(); } catch {}
+      };
+    } catch {}
+  }
+
+  /** Tiếng bíp điện tâm đồ: sine 880Hz đanh, 45ms */
+  private playEcgPulse(gainVal: number) {
+    if (!this.ctx || !this.bgmGain || this.masterVolume <= 0) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    try {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(880, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(gainVal, t + 0.003);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
+      o.connect(g).connect(this.bgmGain);
+      o.start(t);
+      o.stop(t + 0.05);
+      o.onended = () => {
+        try { o.disconnect(); g.disconnect(); } catch {}
+      };
+    } catch {}
+  }
+
+  // 5. CHAPTER 3 THEME: "Điện tâm đồ đứt đoạn" — điệu Valse Màn 2 trên cuộn băng nhão, xen nhịp tim loạn
   private startPixelBleedBgm() {
     this.bgmStep = 0;
-    const glitchNotes = [261.63, 277.18, 311.13, 369.99, 415.30];
+    this.ecgBeat = 0;
+    // Cmaj7 -> Am7 -> Dm7: vòng Valse bến sông bị cụt mất G7, không bao giờ về được chủ âm
+    const brokenWaltz = [
+      { bass: 130.81, arps: [261.63, 329.63, 392.00, 493.88] }, // Cmaj7
+      { bass: 110.00, arps: [220.00, 261.63, 329.63, 392.00] }, // Am7
+      { bass: 146.83, arps: [293.66, 349.23, 440.00, 523.25] }, // Dm7
+    ];
 
     const runStep = () => {
-      const n = glitchNotes[this.bgmStep % glitchNotes.length];
-      const randomDetune = (Math.random() - 0.5) * 80;
-      this.playSynthNote(n, 1.8, 0.06, 'sawtooth', randomDetune);
+      const chord = brokenWaltz[Math.floor(this.bgmStep / 6) % brokenWaltz.length];
+      const beat = this.bgmStep % 6;
+      // Wow & flutter: lệch cao độ trôi chậm theo nhịp, kẹp trong [-50, +40] cents
+      const detune = Math.max(-50, Math.min(40, Math.sin(this.bgmStep * 0.7) * 45 + (Math.random() - 0.5) * 10));
+      // Thỉnh thoảng băng bị kẹt: nốt trễ 100ms
+      const lag = Math.random() < 0.14 ? 0.1 : 0;
 
-      // Occasional flatline pulse
-      if (this.bgmStep % 8 === 0) {
-        this.playSynthNote(880, 0.8, 0.03, 'sine');
+      if (beat === 0) {
+        this.playTapeNote(chord.bass, 3.0, 0.13, detune * 0.6, lag);
+      } else if (beat >= 1 && beat <= 4) {
+        // Băng rơi mất nốt: đôi khi một nốt rải biến mất hẳn
+        if (Math.random() > 0.12) this.playTapeNote(chord.arps[beat - 1], 1.9, 0.085, detune, lag);
       }
 
       this.bgmStep++;
     };
 
+    // Nhịp tim loạn: bình thường -> rung thất dồn dập -> chậm lịm 42 BPM -> gần như ngừng, rồi lặp lại
+    const ecgStep = () => {
+      const p = this.ecgBeat % 34;
+      let gainVal = 0.022;
+      let next: number;
+      if (p < 10) {
+        next = (60 / 66) * (1 + (Math.random() - 0.5) * 0.16);
+      } else if (p < 22) {
+        next = 0.22 + Math.random() * 0.25;
+        gainVal = 0.016 + Math.random() * 0.01;
+      } else {
+        next = 60 / 42;
+        gainVal = 0.022 * (1 - ((p - 22) / 12) * 0.7);
+        if (p === 33) next += 2.5;
+      }
+      this.playEcgPulse(gainVal);
+      this.ecgBeat++;
+      this.ecgTimer = setTimeout(ecgStep, next * 1000);
+    };
+
     runStep();
-    this.bgmSequencerTimer = setInterval(runStep, 500);
+    this.bgmSequencerTimer = setInterval(runStep, 520); // Valse nhão, chậm hơn Màn 2
+    this.ecgTimer = setTimeout(ecgStep, 900);
   }
 
-  private stopCurrentBgm() {
+  /** Ưu tiên file nhạc ngoài nếu có; trong lúc tải (hoặc nếu không có file) phát nhạc tổng hợp */
+  private startBgmWithFileFallback(url: string, startSynth: () => void) {
+    startSynth();
+    if (!this.ctx || !this.bgmGain) return;
+    const token = this.bgmToken;
+    const el = new Audio();
+    el.loop = true;
+    el.preload = 'auto';
+    el.addEventListener(
+      'canplaythrough',
+      () => {
+        if (token !== this.bgmToken || !this.ctx || !this.bgmGain) return;
+        try {
+          const src = this.ctx.createMediaElementSource(el);
+          src.connect(this.bgmGain);
+          this.clearSynthTimers();
+          this.customAudioElement = el;
+          this.customAudioSource = src;
+          void el.play().catch(() => {});
+        } catch {}
+      },
+      { once: true },
+    );
+    // Không có file: giữ nguyên nhạc tổng hợp
+    el.addEventListener('error', () => el.removeAttribute('src'), { once: true });
+    el.src = url;
+  }
+
+  private clearSynthTimers() {
     if (this.bgmSequencerTimer) {
       clearInterval(this.bgmSequencerTimer);
       this.bgmSequencerTimer = null;
     }
+    if (this.ecgTimer) {
+      clearTimeout(this.ecgTimer);
+      this.ecgTimer = null;
+    }
+  }
+
+  private stopCurrentBgm() {
+    this.bgmToken++;
+    this.clearSynthTimers();
     if (this.customAudioElement) {
       this.customAudioElement.pause();
+      this.customAudioElement.removeAttribute('src');
       this.customAudioElement = null;
     }
+    try { this.customAudioSource?.disconnect(); } catch {}
+    this.customAudioSource = null;
   }
 
   public dispose() {
     this.stopCurrentAmbient();
     this.stopCurrentBgm();
     this.stopFlatline();
-    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    if (this.heartbeatTimer) clearTimeout(this.heartbeatTimer);
+    this.heartbeatTimer = null;
+    this.heartbeatListeners.clear();
     try {
       this.ctx?.close();
     } catch {}

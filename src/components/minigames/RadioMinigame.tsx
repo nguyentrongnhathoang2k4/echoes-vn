@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { tx } from '../../locales/tx';
 
 interface RadioMinigameProps {
   onComplete: () => void;
@@ -128,7 +129,7 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
       setIsLocked(false);
       stopSirenSound();
     }
-    // 3. KÊNH KHẨN CẤP VOV & CẤP CỨU 115: 104.5 MHz (104.2 - 104.8)
+    // 3. KÊNH KHẨN CẤP ĐÀI GIAO THÔNG & CẤP CỨU 115: 104.5 MHz (104.2 - 104.8)
     else if (Math.abs(frequency - 104.5) <= 0.3) {
       setActiveStation('EMERGENCY');
       const strength = Math.max(70, Math.round(100 - Math.abs(frequency - 104.5) * 80));
@@ -167,7 +168,7 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
               }`}
             />
             <h2 className="text-sm sm:text-base font-bold text-cyan-300 uppercase tracking-wider">
-              Đài Transistor Đêm Mưa • VOV-1705
+              {tx('Đài Transistor Đêm Mưa • FM-1705')}
             </h2>
           </div>
           <button
@@ -177,16 +178,16 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
             }}
             className="text-xs text-zinc-400 hover:text-white px-2 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded transition-colors"
           >
-            [ESC] Bỏ qua
+            {tx('[ESC] Bỏ qua')}
           </button>
         </div>
 
         {!isRevealed ? (
           <div>
-            <p className="text-xs text-zinc-300 mb-3 leading-relaxed">
-              Chiếc đài bán dẫn gác cạnh chiếc ô ướt sũng dưới chân cột đèn. Nước mưa đọng trên mặt kính thang đo tần số.
+            <p className="text-xs text-zinc-300 mb-3 leading-relaxed text-justify">
+              {tx('Chiếc đài bán dẫn gác cạnh chiếc ô ướt sũng dưới chân cột đèn. Nước mưa đọng trên mặt kính thang đo tần số.')}
               <span className="text-cyan-300 font-semibold block mt-0.5">
-                👉 Xoay núm dò sóng từ 88 đến 108 MHz để bắt sóng bản tin thời tiết đêm 17/05.
+                {tx('👉 Xoay núm dò sóng từ 88 đến 108 MHz để bắt sóng bản tin thời tiết đêm 17/05.')}
               </span>
             </p>
 
@@ -236,7 +237,7 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
                       }`}
                     />
                     <span className="text-zinc-400">
-                      {isLocked ? 'KÊNH KHẨN CẤP [LOCKED]' : `Tín hiệu: ${signalStrength}%`}
+                      {isLocked ? tx('KÊNH KHẨN CẤP [LOCKED]') : tx('Tín hiệu: {0}%', signalStrength)}
                     </span>
                   </div>
 
@@ -278,28 +279,28 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
                 }`}
               >
                 {activeStation === 'NONE' && (
-                  <p>... Rè rè rè ... Tiếng mưa rào xào xạc trong gió ...</p>
+                  <p>{tx('... Rè rè rè ... Tiếng mưa rào xào xạc trong gió ...')}</p>
                 )}
                 {activeStation === 'CAFE' && (
                   <p>
-                    🎵 [FM 92.5 - Quán Cà Phê Sinh Viên]: Bản nhạc Jazz nhẹ nhàng vang lên mờ ảo giữa tiếng cười nói của các bạn trẻ...
+                    {tx('🎵 [FM 92.5 - Quán Cà Phê Sinh Viên]: Bản nhạc Jazz nhẹ nhàng vang lên mờ ảo giữa tiếng cười nói của các bạn trẻ...')}
                   </p>
                 )}
                 {activeStation === 'WHISPER' && (
                   <p className="italic text-pink-300">
-                    &ldquo;An ơi... trời bắt đầu mưa to rồi... Anh có lạnh không? Em ôm anh nhé...&rdquo;
+                    {tx('“An ơi... trời bắt đầu mưa to rồi... Anh có lạnh không? Em ôm anh nhé...”')}
                   </p>
                 )}
                 {activeStation === 'EMERGENCY' && (
                   <div className="text-left font-mono">
                     <div className="font-bold text-red-400 flex items-center gap-1.5 mb-1">
-                      <span>🚨</span> [VOV GIAO THÔNG 00:41 - RẠNG SÁNG 17/05]
+                      <span>🚨</span> {tx('[ĐÀI GIAO THÔNG 00:41 - RẠNG SÁNG 17/05]')}
                     </div>
                     <p className="text-[11px] leading-snug">
-                      &ldquo;Khẩn cấp: Tai nạn trên cầu vượt trong cơn mưa giông lớn... Xe máy chở 2 người trượt bánh va chạm dải phân cách...&rdquo;
+                      {tx('“Khẩn cấp: Tai nạn trên cầu vượt trong cơn mưa giông lớn... Xe máy chở 2 người trượt bánh va chạm dải phân cách...”')}
                     </p>
                     <p className="text-[11px] text-red-300 font-bold mt-1">
-                      &ldquo;[115]: Bệnh nhân nam chấn thương sọ não, mạch tụt sâu! Chuyển thẳng cấp cứu Bạch Mai!...&rdquo;
+                      {tx('“[115]: Bệnh nhân nam chấn thương sọ não, mạch tụt sâu! Chuyển thẳng cấp cứu Trung Hoà!...”')}
                     </p>
                   </div>
                 )}
@@ -312,16 +313,16 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
                 onClick={handleConfirmSignal}
                 className="w-full py-2.5 bg-red-700 hover:bg-red-600 active:scale-98 text-white font-bold text-xs sm:text-sm tracking-wide rounded shadow-[0_0_20px_rgba(239,68,68,0.7)] transition-all cursor-pointer animate-pulse"
               >
-                [GIỮ SÓNG 104.5 MHz]
+                {tx('[GIỮ SÓNG 104.5 MHz]')}
               </button>
             ) : (
               <div className="flex justify-between items-center text-xs text-zinc-400">
-                <span>* Kéo kim tần số tới 104.5 MHz</span>
+                <span>{tx('* Kéo kim tần số tới 104.5 MHz')}</span>
                 <button
                   onClick={() => setFrequency(104.5)}
                   className="text-[11px] text-cyan-400 hover:text-cyan-300 underline"
                 >
-                  [Bắt sóng 104.5]
+                  {tx('[Bắt sóng 104.5]')}
                 </button>
               </div>
             )}
@@ -331,16 +332,13 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
           <div className="animate-fade-in flex flex-col items-center text-center">
             <div className="w-full bg-red-950/40 border-2 border-red-500/80 rounded-lg p-4 mb-4 shadow-[0_0_30px_rgba(239,68,68,0.4)] text-left">
               <div className="flex items-center gap-2 text-red-400 text-xs font-bold uppercase mb-2">
-                <span>⚠️</span> KÝ ỨC ĐÊM MƯA 17/05 BỊ GIẢI MÃ
+                <span>⚠️</span> {tx('KÝ ỨC ĐÊM MƯA 17/05 BỊ GIẢI MÃ')}
               </div>
-              <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed italic mb-3">
-                Tiếng còi xe cấp cứu và tiếng bộ đàm 115 dội thẳng vào màng nhĩ... Chiếc ô trong suốt này ướt sũng
-                không phải vì cơn mưa chiều nay. Nó đã rơi xuống mặt đường lạnh ngắt vào đêm 17/05,
-                bên cạnh chiếc xe máy biến dạng sau cú va chạm định mệnh.
+              <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed italic mb-3 text-justify">
+                {tx('Tiếng còi xe cấp cứu và tiếng bộ đàm 115 dội thẳng vào màng nhĩ... Chiếc ô trong suốt này ướt sũng không phải vì cơn mưa chiều nay. Nó đã rơi xuống mặt đường lạnh ngắt vào đêm 17/05, bên cạnh chiếc xe máy biến dạng sau cú va chạm định mệnh.')}
               </p>
               <div className="bg-black/80 border border-red-900 rounded p-2.5 text-[11px] text-red-300 font-mono">
-                [TRÍ NHỚ PHỤC HỒI]: Bạn không phải đang đi dạo cùng Miên ở một bến sông bình yên.
-                Bạn đang trong cơn hôn mê sâu sau tai nạn giao thông nghiêm trọng trên cầu vượt đêm 17/05.
+                {tx('[TRÍ NHỚ PHỤC HỒI]: Bạn không phải đang đi dạo cùng Miên ở một bến sông bình yên. Bạn đang trong cơn hôn mê sâu sau tai nạn giao thông nghiêm trọng trên cầu vượt đêm 17/05.')}
               </div>
             </div>
 
@@ -351,7 +349,7 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
               }}
               className="w-full py-2.5 bg-red-700 hover:bg-red-600 active:scale-98 text-white font-bold text-sm tracking-wide rounded shadow-[0_0_20px_rgba(239,68,68,0.6)] transition-all cursor-pointer"
             >
-              [TẮT ĐÀI]
+              {tx('[TẮT ĐÀI]')}
             </button>
           </div>
         )}

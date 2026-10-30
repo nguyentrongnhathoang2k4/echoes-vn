@@ -105,7 +105,7 @@ export const CHAPTER_1_ITEMS: Record<string, InventoryItem> = {
   miens_pendant: {
     id: 'miens_pendant',
     name: 'Mặt Dây Chuyền Bạc Của Miên',
-    description: 'Mặt dây chuyền bạc hình giọt lệ nhặt dưới khe cửa phòng #316 niêm phong — căn phòng trọ của Miên ở sát vách phòng bạn. Mặt sau khắc chìm dòng chữ: "A & M - Kỷ Niệm 17/05. Dù ở thực tại nào, ta vẫn sẽ tìm thấy nhau". Con số 1705 chính là mã PIN mật khẩu máy tính của An!',
+    description: 'Mặt dây chuyền bạc hình giọt lệ nhặt dưới khe cửa phòng #316 đã trả — căn phòng trọ cũ của Miên ở sát vách phòng bạn. Mặt sau khắc chìm dòng chữ: "A & M - Kỷ Niệm 17/05. Dù ở thực tại nào, ta vẫn sẽ tìm thấy nhau". Con số 1705 chính là mã PIN mật khẩu máy tính của An!',
     category: 'memory',
     icon: '✨',
     isConsumable: true,

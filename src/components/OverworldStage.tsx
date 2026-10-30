@@ -1,13 +1,20 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { InventoryModal } from './InventoryModal';
+import { DesktopScreen } from './DesktopScreen';
 import { InventoryItem, CHAPTER_1_ITEMS } from '../types/inventory';
 import {
   RoomRect, DORM_PAL, hash, px, block, dropShadow, outlinedText,
   drawWoodFloor, drawDormWalls, drawCalendar, drawPoster,
   buildPostLayer, drawTargetMarker, drawVitals, drawHudSubtitle,
+  createFollowLight, updateFollowLight, drawFollowVignette,
 } from './pixel/pixelKit';
 import { drawSpriteFrame, getSpriteFrame, stepWalk, stopWalk, bodyBob, mienFloat, drawSwayingFigure, drawHoloShadow, drawHoloDust } from './pixel/spriteKit';
+import { useFrameScale } from './pixel/useFrameScale';
+import { useMouseParallax } from './pixel/useMouseParallax';
+import { useLanguage } from '../context/LanguageContext';
+import { EmoteDirector, createEmoteDirector, emoteNow, updateEmotes, drawEmotes } from './pixel/emote';
+import { tx } from '../locales/tx';
 
 // --- Kích thước và Tỉ lệ ---
 const CANVAS_WIDTH = 640;
@@ -48,6 +55,10 @@ interface OverworldStageProps {
   insertedDisk?: boolean;
   onInsertDisk?: () => void;
   volume?: number;
+  /** Khung canvas nghiêng nhẹ theo con trỏ chuột (cài đặt) */
+  parallax?: boolean;
+  /** Ghi một biến cốt truyện (vd. mở thư mục Đồ_án_AURA trên desktop) */
+  onSetFlag?: (flag: string) => void;
 }
 
 // =====================================================================
@@ -80,6 +91,8 @@ const BOX = { x: 425, y: 305, w: 46, h: 38 };
 const DOOR = { x: 35, y: 310, w: 35, h: 75 };
 const FLOOR_FAN = { x: 541, y: 404 };
 const MIEN = { x: 375, y: 120, w: 42, h: 63 };
+// Viền tối bám theo An (xanh đêm lạnh)
+const ROOM_VIGNETTE = { tint: [3, 5, 12], strength: 0.82, inner: 120, outer: 330 } as const;
 const MIEN_FLOOR_Y = 180; // Mặt sàn dưới chân Miên (bàn chân ở ~92% chiều cao sprite)
 
 // Vật cản không cho đi xuyên qua (Solid Bounding Boxes) — giữ nguyên toàn bộ + thêm quạt cóc
@@ -175,6 +188,7 @@ interface RoomSim {
   secondFlashAt: number;
   thunderAt: number;
   lastKnockKey: number;
+  shake: number;
 }
 
 interface RoomSprites {
@@ -297,7 +311,7 @@ const computePrompt = (
       };
     default: {
       const isDone = ia.includes(target.id) && !target.canRepeat;
-      return { text: isDone ? `${target.name} - Nhấn [E] để kiểm tra lại` : target.actionText, isDone };
+      return { text: isDone ? tx('{0} - Nhấn [E] để kiểm tra lại', tx(target.name)) : target.actionText, isDone };
     }
   }
 };
@@ -388,7 +402,7 @@ function drawRockPoster(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.fill();
   ctx.font = 'bold 6px monospace';
   ctx.fillStyle = '#e5e5e5';
-  ctx.fillText('SÓNG ÂM', x + 4, y + 34);
+  ctx.fillText(tx('SÓNG ÂM'), x + 4, y + 34);
   ctx.fillStyle = '#ef4444';
   ctx.fillText('LIVE 2004', x + 3, y + 42);
   // Mép giấy quăn + đinh ghim
@@ -493,9 +507,29 @@ function drawCurtainWindow(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
   const flash = fr.lightning;
   // Khung gỗ + bậu cửa
   block(ctx, x - 4, y - 4, w + 8, h + 8, '#3b2616', '#5b3a22', '#24150b');
-  // Bầu trời đêm (bừng sáng khi sét đánh)
-  const sky = flash > 0.05 ? `rgb(${60 + flash * 150},${70 + flash * 160},${110 + flash * 140})` : '#0a0d1a';
+  // Bầu trời đêm (bừng sáng chớp xanh trắng khi sét đánh)
+  const sky = flash > 0.05
+    ? `rgb(${Math.min(255, 70 + flash * 185)},${Math.min(255, 80 + flash * 175)},${Math.min(255, 120 + flash * 135)})`
+    : '#0a0d1a';
   px(ctx, x, y, w, h, sky);
+  // Tia chớp rạch ngang bầu trời ngoài cửa sổ khi sét đánh
+  if (flash > 0.5) {
+    ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, flash * 1.3)})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.42, y + 2);
+    ctx.lineTo(x + w * 0.54, y + h * 0.32);
+    ctx.lineTo(x + w * 0.46, y + h * 0.52);
+    ctx.lineTo(x + w * 0.62, y + h * 0.82);
+    ctx.stroke();
+    // Ánh hồ quang tím phụ
+    ctx.strokeStyle = `rgba(190, 210, 255, ${flash * 0.8})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.54, y + h * 0.32);
+    ctx.lineTo(x + w * 0.7, y + h * 0.5);
+    ctx.stroke();
+  }
   // Mái nhà đối diện in bóng
   px(ctx, x, y + h - 14, w, 14, flash > 0.05 ? '#1e2233' : '#05060c');
   px(ctx, x + 8, y + h - 20, 18, 6, flash > 0.05 ? '#1e2233' : '#05060c');
@@ -588,7 +622,7 @@ function drawDoor(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
     ctx.stroke();
     ctx.font = 'bold 9px monospace';
     ctx.textAlign = 'center';
-    outlinedText(ctx, '[!] CỘC CỘC!', 52, 302, Math.sin(fr.t * 24) > 0 ? '#ef4444' : '#ffffff');
+    outlinedText(ctx, tx('[!] CỘC CỘC!'), 52, 302, Math.sin(fr.t * 24) > 0 ? '#ef4444' : '#ffffff');
     ctx.textAlign = 'left';
   }
 }
@@ -1032,9 +1066,9 @@ function drawCardboardBox(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
   block(ctx, x + 6, y + 16, 20, 13, '#f8fafc', '#ffffff', '#cbd5e1');
   ctx.font = 'bold 4px monospace';
   ctx.fillStyle = '#dc2626';
-  ctx.fillText('DỄ VỠ', x + 8, y + 21);
+  ctx.fillText(tx('DỄ VỠ'), x + 8, y + 21);
   ctx.fillStyle = '#1e293b';
-  ctx.fillText('MIÊN', x + 9, y + 27);
+  ctx.fillText(tx('MIÊN'), x + 9, y + 27);
   if (!fr.flags.boxOpened) {
     // Băng keo chữ H
     px(ctx, x, y + 12, w, 5, '#92400e');
@@ -1278,12 +1312,128 @@ function drawDust(ctx: CanvasRenderingContext2D, sim: RoomSim, fr: RoomFrame) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const d of sim.dust) {
-    const dist = Math.hypot(d.x - LAMP_LIGHT.x, d.y - (LAMP_LIGHT.y + 20));
-    const a = Math.max(0, 1 - dist / 140) * 0.75 * fr.lamp * (0.6 + Math.sin(fr.t * 2 + d.phase) * 0.4);
+    const twinkle = 0.6 + Math.sin(fr.t * 2 + d.phase) * 0.4;
+    // Quầng vàng của đèn bàn sợi đốt
+    const distLamp = Math.hypot(d.x - LAMP_LIGHT.x, d.y - (LAMP_LIGHT.y + 20));
+    const aLamp = Math.max(0, 1 - distLamp / 140) * 0.75 * fr.lamp * twinkle;
+    // Quầng xanh lơ của màn hình CRT (chỉ khi có điện): hạt bụi loé lên như lân tinh
+    const distCrt = Math.hypot(d.x - CRT_LIGHT.x, d.y - (CRT_LIGHT.y + 8));
+    const aCrt = fr.flags.powerOn ? Math.max(0, 1 - distCrt / 80) * 0.85 * twinkle : 0;
+    const a = Math.max(aLamp, aCrt);
     if (a < 0.03) continue;
-    ctx.fillStyle = `rgba(255,215,150,${a})`;
-    ctx.fillRect(Math.round(d.x), Math.round(d.y), 1, 1);
+    ctx.fillStyle = aCrt > aLamp ? `rgba(140,255,225,${a})` : `rgba(255,215,150,${a})`;
+    // Hạt sáng nhất (gần tâm nguồn sáng) to hơn một chút
+    const size = a > 0.55 && Math.sin(fr.t * 3 + d.phase * 2) > 0.6 ? 2 : 1;
+    ctx.fillRect(Math.round(d.x), Math.round(d.y), size, size);
   }
+  ctx.restore();
+}
+
+// =====================================================================
+// PHÒNG 314 CHO CUTSCENE ENDING C — "TẮT TỪNG BÓNG ĐÈN"
+// Cùng căn phòng Màn 1 (vẽ bằng chính các hàm ở trên), không có Miên;
+// An đứng lặng trước máy tính. Mỗi nguồn sáng tắt riêng theo tham số.
+// =====================================================================
+
+export const ROOM_314 = { width: CANVAS_WIDTH, height: CANVAS_HEIGHT, crt: CRT_LIGHT } as const;
+
+export interface Room314Lights {
+  /** 0..1 đèn bàn sợi đốt */
+  lamp: number;
+  /** Màn hình CRT còn sáng */
+  crt: boolean;
+  /** 0..1 ánh hành lang lọt khe cửa */
+  hall: number;
+  /** 0..1 ánh trời ngoài cửa sổ */
+  window: number;
+  /** 0..1 quầng sáng quanh An */
+  around: number;
+  /** Thời điểm mưa ngừng rơi (hạt mưa đông cứng trên kính); undefined = vẫn mưa */
+  rainStopAt?: number;
+}
+
+let endingStaticLayer: HTMLCanvasElement | null = null;
+
+/** Tuỳ chọn thêm cho cutscene: tư thế An, và vẽ thêm đồ vật trước khi phủ ánh sáng */
+export interface Room314Extra {
+  pose?: { x?: number; y?: number; dir?: Direction; frame?: number };
+  beforeLight?: (ctx: CanvasRenderingContext2D) => void;
+}
+
+export function drawRoom314Ending(
+  ctx: CanvasRenderingContext2D,
+  light: HTMLCanvasElement,
+  t: number,
+  L: Room314Lights,
+  an: HTMLImageElement | null,
+  extra: Room314Extra = {},
+) {
+  if (!endingStaticLayer) endingStaticLayer = buildRoomStaticLayer();
+  const snap: RoomSnapshot = {
+    sanity: 60,
+    interacted: ['hallway_power_on', 'phone', 'pills', 'cardboard_box', 'coffee_used'],
+    inventory: [],
+    insertedDisk: true,
+    terminalUnlocked: true,
+    modalOpen: false,
+  };
+  const flags = { ...deriveFlags(snap), powerOn: L.crt };
+  const pose = extra.pose ?? {};
+  const player: PlayerState = {
+    x: pose.x ?? 300, y: pose.y ?? 170, speed: 0, dir: pose.dir ?? 'up', isMoving: false, frame: pose.frame ?? 1, animTimer: 0,
+  };
+  const fr: RoomFrame = {
+    t, phase: 1, sanity: 60, knocking: false, flicker: false, lightning: 0, lamp: L.lamp,
+    flags, player, nearest: null, cluesFound: 0, snap,
+  };
+  ctx.drawImage(endingStaticLayer, 0, 0);
+  // Mưa ngừng: các vệt mưa trên kính đứng yên
+  drawCurtainWindow(ctx, L.rainStopAt !== undefined && t > L.rainStopAt ? { ...fr, t: L.rainStopAt } : fr);
+  drawDoor(ctx, fr);
+  drawRoomObjects(ctx, fr, { an, mien: null });
+  extra.beforeLight?.(ctx);
+
+  // Ánh sáng: bóng tối nền khoét lỗ theo từng nguồn còn sáng
+  const l = light.getContext('2d');
+  if (!l) return;
+  l.globalCompositeOperation = 'source-over';
+  l.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  l.fillStyle = 'rgba(4, 4, 10, 0.97)';
+  l.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  l.globalCompositeOperation = 'destination-out';
+  const punch = (x: number, y: number, r: number, s: number) => {
+    if (s <= 0.01) return;
+    const g = l.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(0,0,0,${Math.min(1, s)})`);
+    g.addColorStop(0.55, `rgba(0,0,0,${Math.min(1, s) * 0.6})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    l.fillStyle = g;
+    l.fillRect(x - r, y - r, r * 2, r * 2);
+  };
+  punch(LAMP_LIGHT.x - 10, LAMP_LIGHT.y + 25, 175, 0.95 * L.lamp);
+  if (L.crt) punch(CRT_LIGHT.x, CRT_LIGHT.y + 10, 95, 0.6);
+  punch(player.x, player.y - 10, 30 + 60 * L.around, 0.72 * L.around);
+  punch(DOOR.x + DOOR.w + 6, DOOR.y + DOOR.h / 2, 48, 0.4 * L.hall);
+  punch(215, 70, 55, 0.25 * L.window);
+  ctx.drawImage(light, 0, 0);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const glow = (x: number, y: number, r: number, rgb: string, a: number) => {
+    if (a <= 0.01) return;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(${rgb},${a})`);
+    g.addColorStop(1, `rgba(${rgb},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  };
+  glow(LAMP_LIGHT.x - 8, LAMP_LIGHT.y + 22, 160, '255,170,80', 0.26 * L.lamp);
+  glow(326, 106, 18, '255,230,170', 0.5 * L.lamp);
+  if (L.crt) {
+    glow(CRT_LIGHT.x, CRT_LIGHT.y + 14, 70, '60,255,140', 0.17);
+    glow(player.x, player.y - 22, 16, '60,255,140', 0.18);
+  }
+  glow(DOOR.x + DOOR.w + 4, DOOR.y + DOOR.h / 2, 38, '255,210,130', 0.18 * L.hall);
   ctx.restore();
 }
 
@@ -1304,7 +1454,7 @@ function drawRoomHUD(ctx: CanvasRenderingContext2D, fr: RoomFrame, interactables
       drawTargetMarker(ctx, n, ready ? '#ec4899' : '#a855f7', fr.t);
       ctx.font = 'bold 9px monospace';
       ctx.textAlign = 'center';
-      outlinedText(ctx, ready ? '[E] ✦ RỜI ĐI' : '[E] MIÊN', n.x + n.w / 2, n.y - 16, ready ? '#f9a8d4' : '#d8b4fe');
+      outlinedText(ctx, ready ? tx('[E] ✦ RỜI ĐI') : tx('[E] MIÊN'), n.x + n.w / 2, n.y - 16, ready ? '#f9a8d4' : '#d8b4fe');
       ctx.textAlign = 'left';
     } else {
       const done = isTargetDoneFor(n.id, fr.snap);
@@ -1315,7 +1465,7 @@ function drawRoomHUD(ctx: CanvasRenderingContext2D, fr: RoomFrame, interactables
   // Đồng hồ 03:14 AM + trái tim + thanh SANITY (dùng chung pixelKit)
   drawVitals(ctx, fr.t, fr.sanity);
   // Nhãn Phase
-  const phaseLabel = fr.phase === 3 ? 'PHASE 3: MA TRẬN SỤP ĐỔ' : fr.phase === 2 ? 'PHASE 2: RẠN NỨT' : 'PHASE 1: BÌNH YÊN';
+  const phaseLabel = fr.phase === 3 ? tx('PHASE 3: MA TRẬN SỤP ĐỔ') : fr.phase === 2 ? tx('PHASE 2: RẠN NỨT') : tx('PHASE 1: BÌNH YÊN');
   drawHudSubtitle(ctx, phaseLabel, fr.phase === 3 ? '#f87171' : fr.phase === 2 ? '#fbbf24' : '#6ee7b7');
 }
 
@@ -1337,6 +1487,7 @@ function createRoomSim(): RoomSim {
     secondFlashAt: -1,
     thunderAt: -1,
     lastKnockKey: -1,
+    shake: 0,
   };
 }
 
@@ -1349,16 +1500,21 @@ function updateRoomSim(sim: RoomSim, k: number, t: number): boolean {
     if (d.x < 200) d.x = 440;
     if (d.x > 445) d.x = 205;
   }
-  // Sét: chớp chính → chớp phụ ngắn → tiếng sấm trễ ~0.7s
-  sim.lightning = Math.max(0, sim.lightning - 0.05 * k);
+  // Giảm dần rung lắc màn hình
+  sim.shake = Math.max(0, (sim.shake || 0) - 0.22 * k);
+
+  // Sét: chớp chính → tiếng sấm nổ ngay khoảnh khắc chớp lóe ở cửa sổ!
+  sim.lightning = Math.max(0, sim.lightning - 0.045 * k);
   if (t >= sim.nextLightning) {
     sim.lightning = 1;
-    sim.secondFlashAt = t + 0.18;
-    sim.thunderAt = t + 0.7;
-    sim.nextLightning = t + 7 + Math.random() * 10;
+    sim.secondFlashAt = t + 0.16;
+    sim.thunderAt = t + 0.06; // Nổ sấm gần như tức thì (~60ms) khi chớp vừa nháy ở cửa sổ!
+    sim.shake = 3.5;          // Rung chấn màn hình theo tia chớp
+    sim.nextLightning = t + 7 + Math.random() * 9;
   }
   if (sim.secondFlashAt > 0 && t >= sim.secondFlashAt) {
-    sim.lightning = Math.max(sim.lightning, 0.7);
+    sim.lightning = Math.max(sim.lightning, 0.75);
+    sim.shake = Math.max(sim.shake, 2.0);
     sim.secondFlashAt = -1;
   }
   if (sim.thunderAt > 0 && t >= sim.thunderAt) {
@@ -1385,7 +1541,10 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
   insertedDisk = false,
   onInsertDisk,
   volume = 80,
+  parallax = true,
+  onSetFlag,
 }) => {
+  const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const anSpriteRef = useRef<HTMLImageElement | null>(null);
   const mienSpriteRef = useRef<HTMLImageElement | null>(null);
@@ -1411,6 +1570,8 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
   // State cho Terminal Mini-game giải mã mật khẩu máy tính
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [terminalPin, setTerminalPin] = useState('');
+  // Bật máy → màn hình desktop trước; bấm tệp ALBUM_KỶ_NIỆM_1705 mới vào khung nhập PIN
+  const [terminalView, setTerminalView] = useState<'desktop' | 'pin'>('desktop');
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [terminalSuccess, setTerminalSuccess] = useState(false);
   const [isTerminalUnlocked, setIsTerminalUnlocked] = useState(false);
@@ -1583,32 +1744,87 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     } catch {}
   }, [getAudioContext, volume]);
 
-  // Tiếng sấm rền xa sau mỗi tia chớp (nhiễu trắng lọc thông thấp)
+  // Tiếng sấm rền chân thực ngay khi chớp nháy ở cửa sổ (đầy đủ âm đanh, rung chấn và rền rĩ)
   const playThunder = useCallback(() => {
     if (volume <= 0) return;
     const ctx = getAudioContext();
     if (!ctx) return;
     try {
       const t = ctx.currentTime;
-      const dur = 2.2;
-      const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-      const src = ctx.createBufferSource();
-      src.buffer = buffer;
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.setValueAtTime(160, t);
-      lp.frequency.exponentialRampToValueAtTime(60, t + dur);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime((volume / 100) * 0.22, t + 0.12);
-      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-      src.connect(lp);
-      lp.connect(g);
-      g.connect(ctx.destination);
-      src.start(t);
-      src.stop(t + dur);
+      const masterVol = volume / 100;
+
+      // 1. Tiếng nổ sét đanh xé toạc (Initial Strike Crack)
+      const crackDur = 0.22;
+      const crackBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * crackDur), ctx.sampleRate);
+      const crackData = crackBuf.getChannelData(0);
+      for (let i = 0; i < crackData.length; i++) {
+        crackData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.04));
+      }
+      const crackSrc = ctx.createBufferSource();
+      crackSrc.buffer = crackBuf;
+      const crackFilter = ctx.createBiquadFilter();
+      crackFilter.type = 'bandpass';
+      crackFilter.frequency.setValueAtTime(1100, t);
+      crackFilter.Q.setValueAtTime(2.2, t);
+      const crackGain = ctx.createGain();
+      crackGain.gain.setValueAtTime(masterVol * 0.45, t);
+      crackGain.gain.exponentialRampToValueAtTime(0.001, t + crackDur);
+      crackSrc.connect(crackFilter);
+      crackFilter.connect(crackGain);
+      crackGain.connect(ctx.destination);
+      crackSrc.start(t);
+      crackSrc.stop(t + crackDur);
+
+      // 2. Xung kích trầm rung ngực (Low-end Thump)
+      const thumpOsc = ctx.createOscillator();
+      const thumpGain = ctx.createGain();
+      thumpOsc.type = 'sine';
+      thumpOsc.frequency.setValueAtTime(220, t);
+      thumpOsc.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+      thumpGain.gain.setValueAtTime(masterVol * 0.38, t);
+      thumpGain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      thumpOsc.connect(thumpGain);
+      thumpGain.connect(ctx.destination);
+      thumpOsc.start(t);
+      thumpOsc.stop(t + 0.2);
+
+      // 3. Tiếng sấm gầm rền rĩ kéo dài (Rolling Rumble)
+      const rumbleDur = 3.2;
+      const rumbleBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * rumbleDur), ctx.sampleRate);
+      const rumbleData = rumbleBuf.getChannelData(0);
+      for (let i = 0; i < rumbleData.length; i++) {
+        rumbleData[i] = Math.random() * 2 - 1;
+      }
+      const rumbleSrc = ctx.createBufferSource();
+      rumbleSrc.buffer = rumbleBuf;
+      const rumbleFilter = ctx.createBiquadFilter();
+      rumbleFilter.type = 'lowpass';
+      rumbleFilter.frequency.setValueAtTime(450, t);
+      rumbleFilter.frequency.exponentialRampToValueAtTime(80, t + rumbleDur);
+      const rumbleGain = ctx.createGain();
+      rumbleGain.gain.setValueAtTime(0.001, t);
+      rumbleGain.gain.linearRampToValueAtTime(masterVol * 0.36, t + 0.08);
+      rumbleGain.gain.exponentialRampToValueAtTime(masterVol * 0.18, t + 0.9);
+      rumbleGain.gain.exponentialRampToValueAtTime(0.001, t + rumbleDur);
+      rumbleSrc.connect(rumbleFilter);
+      rumbleFilter.connect(rumbleGain);
+      rumbleGain.connect(ctx.destination);
+      rumbleSrc.start(t);
+      rumbleSrc.stop(t + rumbleDur);
+
+      // 4. Sóng rung Sub-bass dập dềnh
+      const subOsc = ctx.createOscillator();
+      const subGain = ctx.createGain();
+      subOsc.type = 'triangle';
+      subOsc.frequency.setValueAtTime(65, t);
+      subOsc.frequency.linearRampToValueAtTime(38, t + 2.5);
+      subGain.gain.setValueAtTime(0.001, t);
+      subGain.gain.linearRampToValueAtTime(masterVol * 0.25, t + 0.1);
+      subGain.gain.exponentialRampToValueAtTime(0.001, t + 2.5);
+      subOsc.connect(subGain);
+      subGain.connect(ctx.destination);
+      subOsc.start(t);
+      subOsc.stop(t + 2.5);
     } catch {}
   }, [getAudioContext, volume]);
 
@@ -1641,24 +1857,30 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     setLocalInsertedDisk(insertedDisk);
   }
 
+  // Bong bóng cảm xúc trên đầu An & Miên (vòng lặp vẽ cập nhật, sự kiện bên dưới kích hoạt)
+  const emotesRef = useRef<EmoteDirector | null>(null);
+  const emotes = useCallback(() => (emotesRef.current ??= createEmoteDirector()), []);
+
   // Hiển thị hộp thoại độc thoại cụt lủn lướt qua góc màn hình
   const showMonologueWhisper = useCallback((msg: string) => {
+    emoteNow(emotes(), 'an', 'dots');
     if (whisperTimerRef.current) clearTimeout(whisperTimerRef.current);
     setMonologueWhisper(msg);
     whisperTimerRef.current = setTimeout(() => {
       setMonologueWhisper(null);
-    }, 3800);
-  }, []);
+    }, Math.max(4000, msg.length * 60)); // Câu dài hiện lâu hơn để kịp đọc
+  }, [emotes]);
 
   // Hiển thị banner nhặt đồ
   const showPickupAlert = useCallback((name: string, icon: string, msg: string) => {
     playItemPickupSound();
+    emoteNow(emotes(), 'an', 'exclaim');
     if (pickupAlertTimerRef.current) clearTimeout(pickupAlertTimerRef.current);
     setPickupAlert({ name, icon, msg });
     pickupAlertTimerRef.current = setTimeout(() => {
       setPickupAlert(null);
-    }, 4500);
-  }, [playItemPickupSound]);
+    }, Math.max(4500, msg.length * 55));
+  }, [playItemPickupSound, emotes]);
 
   // Xử lý ghép vật phẩm từ InventoryModal
   const handleCombineItems = useCallback(
@@ -1678,7 +1900,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     (item: InventoryItem) => {
       if (item.id === 'coffee') {
         if (localInteractedIds.includes('coffee_used')) {
-          showMonologueWhisper('Bạn đã uống cạn cốc cà phê này rồi.');
+          showMonologueWhisper('Hết sạch rồi. Liếm đáy cốc thì hơi mất giá quá.');
           return;
         }
         if (setSanity) {
@@ -1783,7 +2005,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       h: 55,
       triggerNodeId: 'obj_bookshelf',
       canRepeat: true,
-      checkedMonologue: 'Chỉ còn những cuốn sách lập trình phủ bụi dày đặc...',
+      checkedMonologue: 'Vẫn là "C++ trong 21 ngày". Ngày thứ 22 chắc là ngày mai.',
     },
     {
       id: 'under_bed',
@@ -1795,7 +2017,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       h: 25,
       triggerNodeId: 'obj_under_bed',
       canRepeat: true,
-      checkedMonologue: 'Dưới gầm giường chỉ còn lại những vệt bụi loang lổ...',
+      checkedMonologue: 'Chỉ còn hai chiếc tất lẻ. Chắc chúng sẽ chẳng bao giờ tìm lại được nhau.',
     },
     {
       id: 'pills',
@@ -1916,6 +2138,13 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     const onKeyDown = (e: KeyboardEvent) => {
       // Khi đang mở modal Terminal thì phím ưu tiên cho Terminal
       if (isTerminalOpen) {
+        if (terminalView === 'desktop') {
+          if (e.key === 'Escape') {
+            setIsTerminalOpen(false);
+            setTerminalError(null);
+          }
+          return;
+        }
         if (e.key >= '0' && e.key <= '9') {
           playKeyClick();
           setTerminalPin((prev) => (prev.length < 4 ? prev + e.key : prev));
@@ -1925,7 +2154,9 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         } else if (e.key === 'Enter') {
           handleVerifyPin();
         } else if (e.key === 'Escape') {
-          setIsTerminalOpen(false);
+          // Thoát khung PIN → quay về desktop
+          setTerminalView('desktop');
+          setTerminalPin('');
           setTerminalError(null);
         }
         return;
@@ -1974,7 +2205,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
             if (!isPowerRestored) {
               playBuzzer();
               showMonologueWhisper(
-                '[LỖI ĐIỆN ÁP ⚡]: Đèn phòng trọ nhấp nháy chập chờn! Nguồn điện lưới đang bị ngắt, case máy tính không đủ công suất đọc ổ đĩa. Hãy bước ra Hành lang tầng 3 (cửa bên trái) để đóng Cầu Dao Tổng!'
+                '[LỖI ĐIỆN ÁP ⚡]: Màn CRT thanh lý chợ đồ cũ 300 nghìn, ông bán bảo "bền như tình đầu". Giờ nó chập chờn đúng như tình đầu thật. Điện yếu quá, máy không đọc nổi ổ đĩa. Hãy ra Hành lang tầng 3 (cửa bên trái) đóng Cầu Dao Tổng!'
               );
               return;
             }
@@ -1992,10 +2223,11 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
                 showPickupAlert(
                   'Đĩa Mềm Kỷ Niệm Hoàn Chỉnh',
                   '💽',
-                  'Đã đưa Đĩa Mềm Kỷ Niệm vào máy tính! Màn hình đang hiển thị khung nhập mật mã...'
+                  'Đã đưa Đĩa Mềm Kỷ Niệm vào máy tính! Màn hình bật sáng...'
                 );
                 setTimeout(() => {
                   keysHeld.current.clear();
+                  setTerminalView('desktop');
                   setIsTerminalOpen(true);
                   setTerminalPin('');
                   setTerminalError(null);
@@ -2023,8 +2255,9 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
               }
             }
 
-            // Đã cắm đĩa mềm -> Mở Terminal nhập mã PIN 1705
+            // Đã cắm đĩa mềm -> Bật màn hình desktop (từ đó mở tệp khoá để nhập PIN 1705)
             keysHeld.current.clear();
+            setTerminalView('desktop');
             setIsTerminalOpen(true);
             setTerminalPin('');
             setTerminalError(null);
@@ -2046,7 +2279,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
             showPickupAlert(
               'Cốc Cà Phê Đen Đặc',
               '☕',
-              'Cốc cà phê đen còn bốc khói nhẹ. Hãy mở Túi Đồ [I] và bấm [SỬ DỤNG] để uống hồi +15 Sanity!'
+              'Cốc thứ ba trong đêm. Tim đập theo nhịp deadline rồi, thêm cốc nữa chắc đập theo nhịp EDM. Mở Túi Đồ [I] và bấm [SỬ DỤNG] để uống (+15 Sanity).'
             );
             return;
           }
@@ -2060,7 +2293,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
               showPickupAlert(
                 'Dao Rọc Giấy Sắc Bén',
                 '🔪',
-                'Bên cạnh bát mì tôm Hảo Hảo ăn dở, bạn nhặt được một con Dao Rọc Giấy còn rất bén! Dùng để rạch đồ đóng gói.'
+                'Bát Hảo Hảo thứ tư trong tuần. Ăn kèm niềm tin thì chắc cũng đủ chất. Bên cạnh là con Dao Rọc Giấy còn rất bén, dùng để rạch đồ đóng gói.'
               );
               return;
             }
@@ -2134,14 +2367,14 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
               showPickupAlert(
                 'Kẹp Ghim Kim Loại',
                 '📎',
-                'Lục giữa các trang sổ tay cũ, bạn tìm thấy một chiếc Kẹp Ghim Kim Loại dẻo dai!'
+                '"Lập trình C++ trong 21 ngày". Mua ba năm, đọc được 21 trang. Kẹp giữa trang 21 là một chiếc Kẹp Ghim Kim Loại dẻo dai.'
               );
               if (!localInteractedIds.includes('bookshelf')) {
                 setLocalInteractedIds(prev => [...prev, 'bookshelf']);
                 onMarkInteracted?.('bookshelf');
               }
             } else {
-              showMonologueWhisper('Chỉ còn những cuốn sách lập trình phủ đầy bụi...');
+              showMonologueWhisper('Vẫn là "C++ trong 21 ngày". Ngày thứ 22 chắc là ngày mai.');
             }
             return;
           }
@@ -2150,12 +2383,12 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
           if (target.id === 'under_bed') {
             const hasDiskPart1 = localInventoryIds.includes('disk_part_1') || localInventoryIds.includes('aura_disk') || localInsertedDisk;
             if (hasDiskPart1) {
-              showMonologueWhisper('Dưới gầm giường chỉ còn lại những vệt bụi loang lổ...');
+              showMonologueWhisper('Chỉ còn hai chiếc tất lẻ. Chắc chúng sẽ chẳng bao giờ tìm lại được nhau.');
               return;
             }
 
             if (!localInventoryIds.includes('lighter')) {
-              showMonologueWhisper('Gầm giường tối đen như mực... Bạn cần một ngọn lửa hoặc ánh sáng để soi vào bên trong!');
+              showMonologueWhisper('Gầm giường tối như tương lai sau khi ra trường. Cần một ngọn lửa hoặc ánh sáng để soi vào bên trong!');
               return;
             }
 
@@ -2165,7 +2398,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
             showPickupAlert(
               'Mảnh Đĩa Mềm A (Header)',
               '💾',
-              'Nhờ ngọn lửa bập bùng soi rọi, bạn gắp được Mảnh Đĩa Mềm A [💾] từ góc khuất gầm giường!'
+              'Ngọn lửa soi ra hai chiếc tất lẻ, một gói bim bim từ năm ngoái, và Mảnh Đĩa Mềm A [💾] nằm ở góc khuất gầm giường!'
             );
             if (!localInteractedIds.includes('under_bed')) {
               setLocalInteractedIds(prev => [...prev, 'under_bed']);
@@ -2183,7 +2416,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
             }
 
             if (!localInventoryIds.includes('paperclip')) {
-              showMonologueWhisper('Hộc bàn bị kẹt chốt cơ! Bạn cần một vật kim loại nhỏ và nhọn để cạy chốt khóa.');
+              showMonologueWhisper('Hộc bàn kẹt chốt. Chắc nó cũng không muốn làm việc lúc 3 giờ sáng. Cần một vật kim loại nhỏ và nhọn để cạy chốt.');
               return;
             }
 
@@ -2193,7 +2426,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
             showPickupAlert(
               'Mảnh Đĩa Mềm B (Data)',
               '💾',
-              'Bạn khéo léo dùng Kẹp Ghim bẻ chốt! Ngăn kéo bật mở, bên trong là Mảnh Đĩa Mềm B [💾]!'
+              'Kỹ năng cạy khoá học được từ hồi năm nhất mất chìa khoá phòng, cuối cùng cũng có ích! Ngăn kéo bật mở, bên trong là Mảnh Đĩa Mềm B [💾]!'
             );
             if (!localInteractedIds.includes('pc_drawer')) {
               setLocalInteractedIds(prev => [...prev, 'pc_drawer']);
@@ -2250,6 +2483,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     };
   }, [
     isTerminalOpen,
+    terminalView,
     isTerminalUnlocked,
     terminalPin,
     handleVerifyPin,
@@ -2304,11 +2538,14 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     if (!canvas || !ctx) return;
 
     const staticLayer = buildRoomStaticLayer();
-    const postLayer = buildPostLayer(CANVAS_WIDTH, CANVAS_HEIGHT, 0.82, 140);
+    const postLayer = buildPostLayer(CANVAS_WIDTH, CANVAS_HEIGHT, 0);
+    const followLight = createFollowLight(); // Vignette động bám theo An
     const lightLayer = document.createElement('canvas');
     lightLayer.width = CANVAS_WIDTH;
     lightLayer.height = CANVAS_HEIGHT;
     const sim = createRoomSim();
+    const em = emotes();
+    let startledByKnock = false;
 
     let animId = 0;
     let last = performance.now();
@@ -2357,7 +2594,10 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
           if (canMoveX) p.x = nextX;
           if (canMoveY) p.y = nextY;
           // Chu kỳ bước 0-1-2-1 (đổi chân mỗi 8 tick), tiếng bước khi chân chạm sàn
-          if (stepWalk(p, k)) soundRef.current.playStepSound();
+          if (stepWalk(p, k)) {
+            soundRef.current.playStepSound();
+            followLight.pulse = 1;
+          }
         } else {
           stopWalk(p); // Đứng yên ở frame giữa
         }
@@ -2376,6 +2616,11 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         if (knockKey !== sim.lastKnockKey) {
           sim.lastKnockKey = knockKey;
           soundRef.current.playKnockSound();
+          // Lần đầu nghe tiếng gõ cửa: An giật mình
+          if (!startledByKnock) {
+            startledByKnock = true;
+            emoteNow(em, 'an', 'exclaim');
+          }
         }
       }
 
@@ -2399,6 +2644,18 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         promptKeyRef.current = promptKey;
         setActivePrompt(prompt);
       }
+
+      // Bong bóng cảm xúc: Miên vui khi An lại gần lúc căn phòng còn yên, về sau chỉ còn im lặng
+      updateEmotes(em, {
+        t,
+        nearId: nearTarget ? nearTarget.id : null,
+        nearDone: !!prompt?.isDone,
+        sanity: snap.sanity,
+        moving: p.isMoving,
+        distToMien: Math.hypot(p.x - (MIEN.x + MIEN.w / 2), p.y - MIEN_FLOOR_Y),
+        mienGreet: phase === 1 ? 'heart' : 'dots',
+        mienIdle: phase === 1 ? 'note' : 'dots',
+      });
 
       // 4. Vẽ
       const flags = deriveFlags(snap);
@@ -2427,6 +2684,13 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       };
 
       ctx.imageSmoothingEnabled = false;
+      const shakeAmt = sim.shake || 0;
+      if (shakeAmt > 0.05) {
+        ctx.save();
+        const sx = (Math.random() - 0.5) * shakeAmt;
+        const sy = (Math.random() - 0.5) * shakeAmt;
+        ctx.translate(sx, sy);
+      }
       ctx.drawImage(staticLayer, 0, 0);
       drawCurtainWindow(ctx, fr);
       drawWallMatrix(ctx, fr);
@@ -2440,7 +2704,18 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         const sh = 3 + Math.floor(Math.random() * 10);
         ctx.drawImage(canvas, 0, sy, CANVAS_WIDTH, sh, (Math.random() - 0.5) * 18, sy, CANVAS_WIDTH, sh);
       }
+      updateFollowLight(followLight, p.x, p.y - 20, k);
+      drawFollowVignette(ctx, CANVAS_WIDTH, CANVAS_HEIGHT, followLight, fr.sanity, t, ROOM_VIGNETTE);
       ctx.drawImage(postLayer, 0, 0);
+      if (shakeAmt > 0.05) {
+        ctx.restore();
+      }
+      drawEmotes(
+        ctx,
+        em,
+        { cx: p.x, headY: p.y - AN_DRAW_H + 20 },
+        { cx: MIEN.x + MIEN.w / 2, headY: MIEN.y + mienFloat(t) + 2 },
+      );
       drawRoomHUD(ctx, fr, interactables.current);
 
       animId = requestAnimationFrame(gameLoop);
@@ -2448,67 +2723,50 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
 
     animId = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(animId);
-  }, []);
+  }, [emotes]);
 
   // Đếm manh mối cốt truyện đã khám phá (cho HUD đáy)
   const cluesCount = localInteractedIds.filter(id => STORY_CLUE_IDS.includes(id)).length;
 
+  // Lớp giao diện HTML phóng to cùng tỉ lệ với khung canvas
+  const { ref: frameRef, scale: uiScale } = useFrameScale(CANVAS_WIDTH);
+  useMouseParallax(canvasRef, parallax);
+
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center bg-black overflow-hidden select-none">
       {/* Khung Canvas hiển thị phòng trọ */}
-      <div className="relative border-4 border-zinc-800 shadow-[0_0_50px_rgba(0,0,0,0.9)] rounded-sm overflow-hidden">
+      <div className="relative border-4 border-zinc-800 shadow-[0_0_50px_rgba(0,0,0,0.9)] rounded-sm overflow-hidden" ref={frameRef} style={{ width: `min(96vw, calc((100vh - 60px) * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, marginTop: 44 }}>
         <canvas
           ref={canvasRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
-          className="pixelated block cursor-pointer max-w-full max-h-[86vh] object-contain"
+          className="pixelated block cursor-pointer w-full h-full"
           style={{ imageRendering: 'pixelated' }}
         />
+        <div className="absolute top-0 left-0" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${uiScale})`, transformOrigin: 'top left' }}>
 
-        {/* Nút truy cập Túi Đồ [I] */}
-        <button
-          onClick={() => setIsInventoryOpen(true)}
-          className="absolute top-3 right-3 z-30 flex items-center gap-1.5 px-3 py-1.5 bg-black/85 hover:bg-zinc-900 border border-cyan-500/80 hover:border-cyan-300 text-cyan-300 rounded shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all font-mono text-xs cursor-pointer group"
-          title="Nhấn phím [I] để mở túi đồ"
-        >
-          <span className="text-sm group-hover:scale-110 transition-transform">🎒</span>
-          <span className="font-bold tracking-wider">[I] TÚI ĐỒ</span>
-          <span className="bg-cyan-950 px-1.5 py-0.5 rounded border border-cyan-800 text-[10px] text-cyan-400 font-bold">
-            {localInventoryIds.length}
-          </span>
-          {/* Chấm vàng nhấp nháy báo hiệu có thể ghép 2 mảnh đĩa */}
-          {localInventoryIds.includes('disk_part_1') && localInventoryIds.includes('disk_part_2') && (
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping ml-0.5" title="Có thể ghép 2 mảnh đĩa mềm!" />
-          )}
-        </button>
 
         {/* Banner thông báo nhặt được vật phẩm mới */}
         {pickupAlert && (
-          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 max-w-sm sm:max-w-md w-[92%] px-2 animate-bounce">
-            <div className="bg-black/95 border-2 border-yellow-400 p-3 rounded shadow-[0_0_25px_rgba(234,179,8,0.5)] flex items-center gap-3 backdrop-blur-md">
-              <div className="text-3xl shrink-0 p-1.5 bg-yellow-950/80 border border-yellow-500 rounded">
-                {pickupAlert.icon}
+          <div className="absolute top-3 right-3 z-40 w-72 max-w-[60%]" style={{ animation: 'pickup-in 0.25s ease-out' }}>
+            <style>{'@keyframes pickup-in { from { opacity: 0; transform: translateX(16px) } to { opacity: 1; transform: none } }'}</style>
+            <div className="bg-black/90 border border-yellow-500/80 px-2.5 py-2 rounded-md shadow-[0_0_10px_rgba(234,179,8,0.3)] flex items-start gap-2 backdrop-blur-md font-mono">
+              <div className="text-lg leading-none shrink-0 mt-0.5">{pickupAlert.icon}</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold text-yellow-300 truncate">{tx(pickupAlert.name)}</span>
+                  <button
+                    onClick={() => {
+                      setPickupAlert(null);
+                      setIsInventoryOpen(true);
+                    }}
+                    className="text-[9px] px-1 py-0.5 border border-yellow-600/70 text-yellow-400 hover:bg-yellow-500 hover:text-black rounded cursor-pointer shrink-0"
+                  >
+                    I
+                  </button>
+                </div>
+                <div className="text-[10px] text-zinc-300 mt-0.5 leading-snug">{tx(pickupAlert.msg)}</div>
               </div>
-              <div className="flex-1 overflow-hidden font-mono">
-                <div className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase">
-                  ✨ VẬT PHẨM MỚI ĐÃ THU THẬP
-                </div>
-                <div className="text-xs sm:text-sm font-bold text-white truncate">
-                  {pickupAlert.name}
-                </div>
-                <div className="text-[10px] sm:text-[11px] text-zinc-300 mt-0.5 leading-snug">
-                  {pickupAlert.msg}
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setPickupAlert(null);
-                  setIsInventoryOpen(true);
-                }}
-                className="px-2.5 py-1 text-[10px] bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded cursor-pointer shrink-0 font-mono shadow-sm"
-              >
-                XEM [I]
-              </button>
             </div>
           </div>
         )}
@@ -2516,22 +2774,22 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         {/* Thanh gợi ý tương tác [E] dạng viên thuốc nổi đỉnh màn hình (chuẩn Màn 3) */}
         {activePrompt && (
           <div
-            className={`absolute top-16 left-1/2 -translate-x-1/2 z-20 max-w-[92%] px-3.5 py-1.5 font-mono text-xs rounded-full flex items-center gap-2 backdrop-blur-sm ${
+            className={`absolute bottom-12 left-3 z-20 max-w-[55%] px-2 py-1 font-mono text-[11px] rounded-md flex items-center gap-1.5 backdrop-blur-sm ${
               activePrompt.isDone
                 ? 'bg-black/85 border border-zinc-700/80 text-zinc-400'
-                : 'bg-black/90 border border-orange-500 text-orange-100 shadow-[0_0_20px_rgba(249,115,22,0.6)] animate-bounce'
+                : 'bg-black/90 border border-orange-500 text-orange-100 shadow-[0_0_8px_rgba(249,115,22,0.35)]'
             }`}
           >
             <span
-              className={`shrink-0 px-1.5 py-0.5 font-bold rounded text-[10px] ${
+              className={`shrink-0 px-1 py-0.5 font-bold rounded text-[10px] leading-none ${
                 activePrompt.isDone
                   ? 'bg-zinc-800 text-zinc-400 border border-zinc-700'
                   : 'bg-orange-500 text-black shadow-[0_0_8px_rgba(249,115,22,0.9)]'
               }`}
             >
-              {activePrompt.isDone ? 'ĐÃ KIỂM TRA' : 'E'}
+              {activePrompt.isDone ? '✓' : 'E'}
             </span>
-            <span className="truncate">{activePrompt.text}</span>
+            <span className="truncate">{tx(activePrompt.text).replace(/^\[E\]\s*/, '').replace(/\s*-?\s*(?:Nhấn|Press) \[E\]\s*(?:để\s*|to\s*)?/i, ' · ')}</span>
           </div>
         )}
 
@@ -2540,14 +2798,14 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
           <div
             onClick={() => setMonologueWhisper(null)}
             className="absolute bottom-12 right-3 max-w-xs sm:max-w-sm bg-black/95 border-l-4 border-cyan-400 border-t border-r border-b border-zinc-800 p-3 rounded-r shadow-2xl animate-fade-in z-20 backdrop-blur-md cursor-pointer hover:border-cyan-300 transition-colors"
-            title="Click để đóng nhanh"
+            title={tx('Click để đóng nhanh')}
           >
             <div className="flex items-center gap-1.5 text-[10px] uppercase font-mono text-cyan-400 tracking-wider mb-1">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping inline-block" />
-              Độc thoại nội tâm
+              {tx('Độc thoại nội tâm')}
             </div>
-            <p className="text-xs sm:text-sm font-sans text-zinc-300 italic leading-snug">
-              &ldquo;{monologueWhisper}&rdquo;
+            <p className="text-xs sm:text-sm font-sans text-zinc-300 italic leading-snug text-justify">
+              &ldquo;{tx(monologueWhisper)}&rdquo;
             </p>
           </div>
         )}
@@ -2555,7 +2813,32 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         {/* =========================================================
             MODAL TERMINAL MINI-GAME: GIẢI MÃ TỆP TIN PROJECT_AURA
            ========================================================= */}
-        {isTerminalOpen && (
+        {isTerminalOpen && terminalView === 'desktop' && (
+          <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 animate-fade-in">
+            {/* Viền màn hình CRT be cũ */}
+            <div className="w-full h-full max-w-[600px] max-h-[440px] p-2 bg-[#d6ccb4] border-2 border-[#9e9277] rounded-md shadow-[0_0_40px_rgba(16,185,129,0.25)]">
+              <div className="w-full h-full border-2 border-black rounded-sm overflow-hidden">
+                <DesktopScreen
+                  onClickSound={playKeyClick}
+                  onOpenIcon={(id) => {
+                    // Đọc tài liệu thiết kế AURA → điều kiện mở Ending S "Người lạ" ở Màn 4
+                    if (id === 'aura') onSetFlag?.('flag_read_aura_project');
+                  }}
+                  onOpenPin={() => {
+                    setTerminalView('pin');
+                    setTerminalPin('');
+                    setTerminalError(null);
+                  }}
+                  onClose={() => {
+                    setIsTerminalOpen(false);
+                    setTerminalError(null);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+        {isTerminalOpen && terminalView === 'pin' && (
           <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-fade-in">
             <div className="w-full max-w-sm sm:max-w-md max-h-[96vh] overflow-y-auto bg-zinc-950 border-2 border-emerald-500/80 rounded shadow-[0_0_40px_rgba(16,185,129,0.35)] p-3 sm:p-4 flex flex-col gap-2 font-mono text-emerald-400 relative">
               {/* Scanline CRT overlay */}
@@ -2565,33 +2848,34 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
               <div className="flex justify-between items-center border-b border-emerald-900/80 pb-2 shrink-0">
                 <div className="flex items-center gap-2 text-xs font-bold tracking-wider">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping inline-block" />
-                  <span className="truncate">MÁY TÍNH CÁ NHÂN (PHÒNG 314)</span>
+                  <span className="truncate">{tx('MÁY TÍNH CÁ NHÂN (PHÒNG 314)')}</span>
                 </div>
                 <button
                   onClick={() => {
-                    setIsTerminalOpen(false);
+                    setTerminalView('desktop');
+                    setTerminalPin('');
                     setTerminalError(null);
                   }}
-                  className="shrink-0 text-xs text-red-300 hover:text-white px-2.5 py-1 rounded border border-red-700/80 bg-red-950/60 hover:bg-red-900 transition-colors cursor-pointer font-bold flex items-center gap-1 shadow-sm"
-                  title="Nhấn phím ESC để đóng"
+                  className="shrink-0 text-xs text-emerald-200 hover:text-white px-2.5 py-1 rounded border border-emerald-700/80 bg-emerald-950/60 hover:bg-emerald-900 transition-colors cursor-pointer font-bold flex items-center gap-1 shadow-sm"
+                  title={tx('Nhấn phím ESC để quay về desktop')}
                 >
-                  <span>✕</span>
-                  <span>[ESC] ĐÓNG</span>
+                  <span>←</span>
+                  <span>[ESC] DESKTOP</span>
                 </button>
               </div>
 
               {/* Thông tin tệp tin */}
               <div className="text-[11px] leading-relaxed text-emerald-300/90 bg-emerald-950/40 p-2 sm:p-2.5 rounded border border-emerald-900/60 shrink-0">
-                <div className="text-emerald-400 font-bold mb-0.5">&gt; TỆP TIN: ALBUM_KỶ_NIỆM_1705</div>
-                <div className="text-zinc-400">&gt; TRẠNG THÁI: <span className="text-amber-400 font-bold">ĐÃ KHÓA BẰNG MẬT MÃ CÁ NHÂN</span></div>
+                <div className="text-emerald-400 font-bold mb-0.5">{tx('> TỆP TIN: ALBUM_KỶ_NIỆM_1705')}</div>
+                <div className="text-zinc-400">{tx('> TRẠNG THÁI:')} <span className="text-amber-400 font-bold">{tx('ĐÃ KHÓA BẰNG MẬT MÃ CÁ NHÂN')}</span></div>
                 <div className="text-zinc-300 italic mt-1 border-t border-emerald-900/40 pt-1 text-[10px] sm:text-[11px]">
-                  &gt; [GHI CHÚ]: &ldquo;Mã PIN là ngày kỷ niệm của hai đứa mình... Nếu anh lại quên, hãy tìm mặt dây chuyền em đánh rơi, hoặc tấm thiệp em ghim ngoài bảng tin hành lang.&rdquo;
+                  {tx('> [GHI CHÚ]: “Mã PIN là ngày kỷ niệm của hai đứa mình... Nếu anh lại quên, hãy tìm mặt dây chuyền em đánh rơi, hoặc tấm thiệp em ghim ngoài bảng tin hành lang.”')}
                 </div>
               </div>
 
               {/* Khung hiển thị 4 số PIN */}
               <div className="flex flex-col items-center gap-1 my-0.5 shrink-0">
-                <div className="text-[10px] text-zinc-400 tracking-wider">NHẬP MÃ PIN 4 CHỮ SỐ ĐỂ MỞ KHÓA:</div>
+                <div className="text-[10px] text-zinc-400 tracking-wider">{tx('NHẬP MÃ PIN 4 CHỮ SỐ ĐỂ MỞ KHÓA:')}</div>
                 <div className="flex gap-2 sm:gap-2.5">
                   {[0, 1, 2, 3].map((index) => {
                     const digit = terminalPin[index];
@@ -2614,12 +2898,12 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
               {/* Thông báo lỗi hoặc thành công */}
               {terminalError && (
                 <div className="text-[11px] sm:text-xs text-center text-red-300 bg-red-950/70 p-1.5 sm:p-2 rounded border border-red-800 animate-pulse shrink-0">
-                  {terminalError}
+                  {tx(terminalError)}
                 </div>
               )}
               {terminalSuccess && (
                 <div className="text-[11px] sm:text-xs text-center text-emerald-300 bg-emerald-950/80 p-1.5 sm:p-2 rounded border border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)] font-bold shrink-0">
-                  ✓ MỞ KHÓA THÀNH CÔNG! ĐANG MỞ KÝ ỨC...
+                  {tx('✓ MỞ KHÓA THÀNH CÔNG! ĐANG MỞ KÝ ỨC...')}
                 </div>
               )}
 
@@ -2644,7 +2928,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
                   }}
                   className="py-1.5 sm:py-2 bg-amber-950/50 hover:bg-amber-900/60 active:bg-amber-900 border border-amber-800 text-amber-300 font-bold rounded text-xs transition-all cursor-pointer"
                 >
-                  XÓA
+                  {tx('XÓA')}
                 </button>
                 <button
                   onClick={() => {
@@ -2664,13 +2948,13 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
                       : 'bg-zinc-800 text-zinc-500 border-zinc-700 cursor-not-allowed opacity-60'
                   }`}
                 >
-                  GIẢI MÃ
+                  {tx('GIẢI MÃ')}
                 </button>
               </div>
 
               {/* Nút thoát phụ bổ sung phía dưới */}
               <div className="flex items-center justify-between pt-1 border-t border-zinc-800/80 text-[10px] text-zinc-400 shrink-0">
-                <span>Phím số 0-9 & Enter</span>
+                <span>{tx('Phím số 0-9 & Enter')}</span>
                 <button
                   onClick={() => {
                     setIsTerminalOpen(false);
@@ -2678,7 +2962,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
                   }}
                   className="text-zinc-400 hover:text-white underline hover:no-underline cursor-pointer"
                 >
-                  [ Đóng cửa sổ này ]
+                  {tx('[ Đóng cửa sổ này ]')}
                 </button>
               </div>
             </div>
@@ -2690,20 +2974,21 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
           {/* Một hàng gọn: phím điều khiển (trái) • tiến trình ký ức (phải) */}
           <div className="flex justify-between items-center gap-3 px-3 py-1 rounded-sm border border-red-900/80 text-[11px] font-mono text-zinc-400 whitespace-nowrap">
             <div className="flex items-center gap-3">
-              <span><span className="text-orange-400 font-bold">WASD</span> Di chuyển</span>
+              <span><span className="text-orange-400 font-bold">WASD</span> {t.hud.move}</span>
               <button
                 onClick={() => setIsInventoryOpen(true)}
                 className="hover:text-zinc-200 cursor-pointer"
-                title="Nhấn phím [I] để mở túi đồ"
+                title={t.hud.inventoryTitle}
               >
-                <span className="text-cyan-300 font-bold">I</span> Túi đồ
+                <span className="text-cyan-300 font-bold">I</span> {t.hud.inventory}
               </button>
-              <span><span className="text-orange-400 font-bold">E</span> Tương tác</span>
+              <span><span className="text-orange-400 font-bold">E</span> {t.hud.interact}</span>
             </div>
             <div className={isTerminalUnlocked ? 'text-pink-400 font-bold' : 'text-zinc-300'}>
-              Ký ức <span className="font-bold text-orange-300">{Math.min(cluesCount, HUD_CLUE_TARGET)}/{HUD_CLUE_TARGET}</span>
+              {tx('Ký ức')} <span className="font-bold text-orange-300">{Math.min(cluesCount, HUD_CLUE_TARGET)}/{HUD_CLUE_TARGET}</span>
             </div>
           </div>
+        </div>
         </div>
       </div>
 

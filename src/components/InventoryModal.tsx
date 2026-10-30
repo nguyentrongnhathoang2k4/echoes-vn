@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { InventoryItem, CHAPTER_1_ITEMS } from '../types/inventory';
+import { tx } from '../locales/tx';
 
 interface InventoryModalProps {
   isOpen: boolean;
@@ -164,7 +165,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
     if (!resultDef) return;
 
     playCraftSuccessSound();
-    const msg = currentItem.combineSuccessMsg || `Đã kết hợp thành công: ${resultDef.name}!`;
+    const msg = currentItem.combineSuccessMsg ? tx(currentItem.combineSuccessMsg) : tx('Đã kết hợp thành công: {0}!', tx(resultDef.name));
     setCombineNotification(msg);
     setTimeout(() => setCombineNotification(null), 4000);
 
@@ -200,7 +201,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
             <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping inline-block" />
             <h2 className="text-sm sm:text-base font-bold text-cyan-300 tracking-widest flex items-center gap-2">
               <span>🎒</span>
-              <span>HÀNH TRANG KÝ ỨC // INVENTORY</span>
+              <span>{tx('HÀNH TRANG KÝ ỨC // INVENTORY')}</span>
             </h2>
             <span className="text-[11px] bg-cyan-950/80 border border-cyan-800 text-cyan-400 px-2 py-0.5 rounded font-bold">
               {items.length}/{TOTAL_SLOTS}
@@ -212,7 +213,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
             className="flex items-center gap-1.5 px-3 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 hover:border-cyan-400 text-zinc-400 hover:text-white text-xs rounded transition-colors cursor-pointer"
           >
             <span>[I / ESC]</span>
-            <span className="font-bold">ĐÓNG</span>
+            <span className="font-bold">{tx('ĐÓNG')}</span>
           </button>
         </div>
 
@@ -228,7 +229,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
           {/* CỘT TRÁI (7 Cột): Lưới các ô đồ */}
           <div className="sm:col-span-7 flex flex-col gap-2">
             <div className="text-[10px] text-zinc-400 tracking-wider uppercase font-bold">
-              CÁC VẬT PHẨM ĐANG MANG THEO:
+              {tx('CÁC VẬT PHẨM ĐANG MANG THEO:')}
             </div>
             <div className="grid grid-cols-4 gap-2 bg-black/60 p-3 rounded border border-zinc-800">
               {Array.from({ length: TOTAL_SLOTS }).map((_, index) => {
@@ -258,15 +259,15 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                           {item.icon}
                         </span>
                         <span className="text-[9px] text-center text-zinc-300 truncate w-full mt-1 leading-tight px-0.5">
-                          {item.name.split(' ')[0]}
+                          {tx(item.name).split(' ')[0]}
                         </span>
                         {/* Chấm tròn biểu thị item có thể ghép */}
                         {item.canCombineWith && (
-                          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400" title="Có thể ghép" />
+                          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400" title={tx('Có thể ghép')} />
                         )}
                         {/* Chấm xanh biểu thị item có thể dùng (chỉ hiện khi chưa từng dùng) */}
                         {item.isConsumable && !usedConsumableIds.includes(`${item.id}_used`) && (
-                          <span className="absolute top-1 left-1 w-1.5 h-1.5 rounded-full bg-emerald-400" title="Có thể sử dụng (+Sanity)" />
+                          <span className="absolute top-1 left-1 w-1.5 h-1.5 rounded-full bg-emerald-400" title={tx('Có thể sử dụng (+Sanity)')} />
                         )}
                       </>
                     ) : (
@@ -277,8 +278,8 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
               })}
             </div>
             <div className="text-[10px] text-zinc-500 italic mt-auto space-y-0.5">
-              <div>• Chấm vàng: Vật phẩm có thể ghép nối.</div>
-              <div>• Chấm xanh lá: Vật phẩm có thể sử dụng trực tiếp để hồi Sanity.</div>
+              <div>{tx('• Chấm vàng: Vật phẩm có thể ghép nối.')}</div>
+              <div>{tx('• Chấm xanh lá: Vật phẩm có thể sử dụng trực tiếp để hồi Sanity.')}</div>
             </div>
           </div>
 
@@ -293,23 +294,23 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                   </div>
                   <div className="overflow-hidden">
                     <h3 className="text-xs sm:text-sm font-bold text-cyan-300 truncate">
-                      {currentItem.name}
+                      {tx(currentItem.name)}
                     </h3>
                     <span className="text-[10px] text-zinc-400 uppercase tracking-widest px-1.5 py-0.2 bg-black/60 rounded border border-zinc-700">
                       {currentItem.category === 'memory'
-                        ? 'DỮ LIỆU KÝ ỨC'
+                        ? tx('DỮ LIỆU KÝ ỨC')
                         : currentItem.category === 'medical'
-                        ? 'HỒI PHỤC TÂM TRÍ'
+                        ? tx('HỒI PHỤC TÂM TRÍ')
                         : currentItem.category === 'tool'
-                        ? 'DỤNG CỤ THỰC TẾ'
-                        : 'VẬT PHẨM'}
+                        ? tx('DỤNG CỤ THỰC TẾ')
+                        : tx('VẬT PHẨM')}
                     </span>
                   </div>
                 </div>
 
                 {/* Mô tả chi tiết */}
-                <div className="flex-1 bg-black/50 p-2.5 rounded border border-zinc-800/80 text-[11px] sm:text-xs leading-relaxed text-zinc-300 overflow-y-auto">
-                  {currentItem.description}
+                <div className="flex-1 bg-black/50 p-2.5 rounded border border-zinc-800/80 text-[11px] sm:text-xs leading-relaxed text-zinc-300 overflow-y-auto text-justify">
+                  {tx(currentItem.description)}
                 </div>
 
                 {/* Nút Sử Dụng (Consumable) */}
@@ -319,10 +320,10 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                       <div className="py-2 px-3 bg-zinc-950 border border-zinc-800 rounded text-center">
                         <div className="text-zinc-400 font-bold text-xs flex items-center justify-center gap-1.5 font-mono">
                           <span>✓</span>
-                          <span>ĐÃ SỬ DỤNG (CHỈ HỒI TỈNH TÁO 1 LẦN DUY NHẤT)</span>
+                          <span>{tx('ĐÃ SỬ DỤNG (CHỈ HỒI TỈNH TÁO 1 LẦN DUY NHẤT)')}</span>
                         </div>
                         <p className="text-[10px] text-zinc-500 mt-0.5 italic leading-tight">
-                          Vật phẩm này đã phát huy tác dụng giúp bạn lấy lại tỉnh táo.
+                          {tx('Vật phẩm này đã phát huy tác dụng giúp bạn lấy lại tỉnh táo.')}
                         </p>
                       </div>
                     ) : (
@@ -331,7 +332,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                         className="w-full py-2 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-black font-bold text-xs rounded border border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all flex items-center justify-center gap-1.5 cursor-pointer animate-pulse"
                       >
                         <span>⚡</span>
-                        <span>[{currentItem.consumeActionName || 'SỬ DỤNG VẬT PHẨM'}]</span>
+                        <span>[{tx(currentItem.consumeActionName || 'SỬ DỤNG VẬT PHẨM')}]</span>
                       </button>
                     )}
                   </div>
@@ -347,16 +348,16 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                           className="w-full py-2 px-3 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-black font-bold text-xs rounded border border-yellow-400 shadow-[0_0_15px_rgba(245,158,11,0.5)] transition-all flex items-center justify-center gap-2 cursor-pointer animate-pulse"
                         >
                           <span>✨</span>
-                          <span>[GHÉP DÙNG BĂNG DÍNH DÁN LẠI]</span>
+                          <span>{tx('[GHÉP DÙNG BĂNG DÍNH DÁN LẠI]')}</span>
                         </button>
                       ) : (
                         <div className="text-[10px] text-amber-300 bg-amber-950/60 border border-amber-800 p-2 rounded text-center leading-tight">
-                          {currentItem.requiredToolMsg || `⚠️ Cần có ${requiredToolDef?.name || 'Băng Dính'} để dán khít 2 mảnh!`}
+                          {currentItem.requiredToolMsg ? tx(currentItem.requiredToolMsg) : tx('⚠️ Cần có {0} để dán khít 2 mảnh!', tx(requiredToolDef?.name || 'Băng Dính'))}
                         </div>
                       )
                     ) : (
                       <div className="text-[10px] text-amber-400/80 bg-amber-950/30 border border-amber-900/60 p-2 rounded text-center">
-                        ⚠️ Cần tìm thêm nửa mảnh còn lại để ghép hoàn chỉnh!
+                        {tx('⚠️ Cần tìm thêm nửa mảnh còn lại để ghép hoàn chỉnh!')}
                       </div>
                     )}
                   </div>
@@ -365,9 +366,9 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-center text-zinc-500 gap-2 p-4">
                 <span className="text-3xl opacity-30">🎒</span>
-                <span className="text-xs">Chưa chọn vật phẩm nào.</span>
+                <span className="text-xs">{tx('Chưa chọn vật phẩm nào.')}</span>
                 <span className="text-[10px] opacity-60">
-                  Hãy khám phá căn phòng để thu thập thêm công cụ và mảnh ký ức!
+                  {tx('Hãy khám phá căn phòng để thu thập thêm công cụ và mảnh ký ức!')}
                 </span>
               </div>
             )}
@@ -376,7 +377,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
 
         {/* 3. Footer Hướng dẫn phím */}
         <div className="flex justify-between items-center pt-2 border-t border-zinc-800 text-[10px] text-zinc-500 shrink-0">
-          <div>Nhấn [I] hoặc [ESC] để đóng túi đồ</div>
+          <div>{tx('Nhấn [I] hoặc [ESC] để đóng túi đồ')}</div>
           <div>ECHOES // INVENTORY PROTOCOL</div>
         </div>
       </div>

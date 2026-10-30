@@ -7,6 +7,7 @@ export type AnEmotion =
   | 'scared' 
   | 'panic' 
   | 'faint_smile' 
+  | 'smile'
   | 'doubt' 
   | 'glitched'
   | 'determined';
@@ -37,6 +38,8 @@ export interface Choice {
   requiresFlag?: string;
   /** Ẩn lựa chọn khi đã có biến này */
   forbidsFlag?: string;
+  /** Lựa chọn bí mật: ẩn hẳn (thay vì hiện ổ khoá) khi Sanity nằm ngoài ngưỡng */
+  hiddenWhenLocked?: boolean;
 }
 
 /** Rẽ nhánh tự động theo biến cốt truyện (dùng cho node không có lựa chọn) */

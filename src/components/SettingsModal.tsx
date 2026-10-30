@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect } from 'react';
+import { useLanguage, LANGUAGES } from '../context/LanguageContext';
 
 export interface GameSettings {
   masterVolume: number;   // 0 - 100 (Tổng)
@@ -7,6 +8,7 @@ export interface GameSettings {
   ambientVolume: number;  // 0 - 100 (Môi trường & SFX)
   textSpeed: number;      // 15 - 80 ms
   crtEnabled: boolean;    // true | false
+  parallaxEnabled: boolean; // Khung hình nghiêng nhẹ theo con trỏ chuột
 }
 
 interface SettingsModalProps {
@@ -22,6 +24,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateSettings,
   onClose,
 }) => {
+  const { t, lang, setLang } = useLanguage();
   // Lắng nghe phím ESC để đóng modal
   useEffect(() => {
     if (!isOpen) return;
@@ -54,21 +57,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 bg-cyan-400 animate-pulse rounded-full" />
             <h2 className="text-sm sm:text-base font-bold tracking-wider text-cyan-300 uppercase">
-              // CÀI ĐẶT TRÒ CHƠI [SETTINGS]
+              {t.settings.title}
             </h2>
           </div>
           <span className="text-[10px] text-zinc-500 tracking-widest uppercase">
-            SETTINGS
+            {t.settings.tag}
           </span>
         </div>
 
         {/* Danh sách thiết lập */}
         <div className="space-y-5 text-xs sm:text-sm max-h-[68vh] overflow-y-auto pr-1">
+          {/* 0. Ngôn ngữ / Language */}
+          <div className="p-3 bg-zinc-900/60 border border-zinc-800 rounded">
+            <div className="text-zinc-200 font-semibold">{t.settings.language}</div>
+            <p className="text-[11px] text-zinc-500 mt-0.5">{t.settings.languageHint}</p>
+            <div className="mt-2 flex gap-2">
+              {LANGUAGES.map((l) => (
+                <button
+                  key={l.code}
+                  type="button"
+                  onClick={() => setLang(l.code)}
+                  aria-pressed={lang === l.code}
+                  className={`flex-1 px-3 py-1.5 text-xs font-bold rounded transition-all duration-200 border ${
+                    lang === l.code
+                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                      : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:text-zinc-300'
+                  }`}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* 1. Master Volume */}
           <div className="space-y-1.5 p-2.5 bg-zinc-900/40 rounded border border-zinc-800/60">
             <div className="flex justify-between items-center">
               <label htmlFor="volume-slider" className="text-zinc-200 font-semibold flex items-center gap-2">
-                <span>🔊 ÂM LƯỢNG TỔNG (MASTER)</span>
+                <span>{t.settings.master}</span>
               </label>
               <span className="text-cyan-400 font-bold">{settings.masterVolume}%</span>
             </div>
@@ -87,7 +113,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span className="text-zinc-600 text-xs">100%</span>
             </div>
             <p className="text-[10px] text-zinc-500 italic">
-              * Âm lượng tổng thể cho toàn bộ trò chơi
+              {t.settings.masterHint}
             </p>
           </div>
 
@@ -95,7 +121,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="space-y-1.5 p-2.5 bg-zinc-900/40 rounded border border-zinc-800/60">
             <div className="flex justify-between items-center">
               <label htmlFor="bgm-slider" className="text-pink-300 font-semibold flex items-center gap-2">
-                <span>🎵 NHẠC NỀN (BGM)</span>
+                <span>{t.settings.bgm}</span>
               </label>
               <span className="text-pink-400 font-bold">{settings.bgmVolume ?? 85}%</span>
             </div>
@@ -114,7 +140,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span className="text-zinc-600 text-xs">100%</span>
             </div>
             <p className="text-[10px] text-zinc-500 italic">
-              * Điều chỉnh độ lớn các bản nhạc Piano hoài niệm, Valse hoàng hôn & Ambient Drones
+              {t.settings.bgmHint}
             </p>
           </div>
 
@@ -122,7 +148,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="space-y-1.5 p-2.5 bg-zinc-900/40 rounded border border-zinc-800/60">
             <div className="flex justify-between items-center">
               <label htmlFor="ambient-slider" className="text-teal-300 font-semibold flex items-center gap-2">
-                <span>🌧️ MÔI TRƯỜNG & HIỆU ỨNG (AMBIENT / SFX)</span>
+                <span>{t.settings.ambient}</span>
               </label>
               <span className="text-teal-400 font-bold">{settings.ambientVolume ?? 40}%</span>
             </div>
@@ -141,7 +167,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span className="text-zinc-600 text-xs">100%</span>
             </div>
             <p className="text-[10px] text-zinc-500 italic">
-              * Điều chỉnh tiếng mưa rơi, quạt máy tính, tiếng nước sông và hiệu ứng phím
+              {t.settings.ambientHint}
             </p>
           </div>
 
@@ -149,12 +175,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <label htmlFor="speed-slider" className="text-zinc-300 font-semibold flex items-center gap-2">
-                <span>⌨️ TỐC ĐỘ GÕ CHỮ (TYPEWRITER)</span>
+                <span>{t.settings.textSpeed}</span>
               </label>
               <span className="text-cyan-400 font-bold">{settings.textSpeed} ms</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-zinc-600 text-xs">Nhanh (15ms)</span>
+              <span className="text-zinc-600 text-xs">{t.settings.textSpeedFast}</span>
               <input
                 id="speed-slider"
                 type="range"
@@ -165,10 +191,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onChange={(e) => onUpdateSettings({ textSpeed: Number(e.target.value) })}
                 className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
               />
-              <span className="text-zinc-600 text-xs">Chậm (80ms)</span>
+              <span className="text-zinc-600 text-xs">{t.settings.textSpeedSlow}</span>
             </div>
             <p className="text-[11px] text-zinc-500 italic">
-              * Tốc độ hiển thị từng ký tự trong hộp thoại Visual Novel
+              {t.settings.textSpeedHint}
             </p>
           </div>
 
@@ -176,10 +202,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="flex items-center justify-between p-3 bg-zinc-900/60 border border-zinc-800 rounded">
             <div>
               <div className="text-zinc-200 font-semibold flex items-center gap-2">
-                <span>📺 BỘ LỌC MÀN HÌNH CRT</span>
+                <span>{t.settings.crt}</span>
               </div>
               <p className="text-[11px] text-zinc-500 mt-0.5">
-                Đường quét ngang (Scanlines) & rung giật ánh sáng CRT 1998
+                {t.settings.crtHint}
               </p>
             </div>
             <button
@@ -191,7 +217,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:text-zinc-300'
               }`}
             >
-              {settings.crtEnabled ? '[BẬT]' : '[TẮT]'}
+              {settings.crtEnabled ? t.common.on : t.common.off}
+            </button>
+          </div>
+
+          {/* 4. Mouse Parallax Toggle */}
+          <div className="flex items-center justify-between p-3 bg-zinc-900/60 border border-zinc-800 rounded">
+            <div>
+              <div className="text-zinc-200 font-semibold flex items-center gap-2">
+                <span>{t.settings.parallax}</span>
+              </div>
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                {t.settings.parallaxHint}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onUpdateSettings({ parallaxEnabled: !settings.parallaxEnabled })}
+              className={`px-4 py-1.5 text-xs font-bold rounded transition-all duration-200 border ${
+                settings.parallaxEnabled
+                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                  : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:text-zinc-300'
+              }`}
+            >
+              {settings.parallaxEnabled ? t.common.on : t.common.off}
             </button>
           </div>
         </div>
@@ -199,13 +248,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Footer Buttons */}
         <div className="mt-8 pt-4 border-t border-zinc-800 flex justify-between items-center">
           <span className="text-[10px] text-zinc-600">
-            [ESC] ĐÓNG NHANH
+            {t.settings.escHint}
           </span>
           <button
             onClick={onClose}
             className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-black font-bold tracking-wider text-xs rounded transition-all shadow-[0_0_15px_rgba(6,182,212,0.5)] active:scale-95"
           >
-            LƯU & ĐÓNG
+            {t.settings.saveClose}
           </button>
         </div>
       </div>

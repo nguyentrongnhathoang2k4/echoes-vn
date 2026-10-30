@@ -4,6 +4,8 @@
 // được vẽ từ cùng một nguồn để người chơi nhận ra ngay đó là MỘT căn phòng.
 // =====================================================================
 
+import { tx } from '../../locales/tx';
+
 export interface RoomRect {
   left: number;
   top: number;
@@ -128,20 +130,20 @@ export function drawDormWalls(ctx: CanvasRenderingContext2D, room: RoomRect, wid
   px(ctx, 0, 0, width, 4, '#050307');
 }
 
-/** Lịch treo tường tháng 05/2024, ngày 17 khoanh đỏ (28x32) */
+/** Lịch treo tường tháng 5, ngày 17 khoanh đỏ (28x32) */
 export function drawCalendar(ctx: CanvasRenderingContext2D, x: number, y: number) {
   block(ctx, x, y, 28, 32, '#e8e0cc', '#fff8e6', '#b8ae96');
   px(ctx, x, y, 28, 7, '#b91c1c');
   ctx.font = '6px monospace';
   ctx.fillStyle = '#fff';
-  ctx.fillText('05/24', x + 3, y + 6);
+  ctx.fillText('THG 5', x + 3, y + 6);
   for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) px(ctx, x + 3 + c * 5, y + 11 + r * 5, 3, 3, '#8a8170');
   ctx.strokeStyle = '#dc2626';
   ctx.lineWidth = 1;
   ctx.strokeRect(x + 11.5, y + 20.5, 6, 6);
 }
 
-/** Poster "HÀ NỘI MÙA HẠ" phai màu, rách góc, dán băng keo (38x50) */
+/** Poster "PHỐ CŨ MÙA HẠ" phai màu, rách góc, dán băng keo (38x50) */
 export function drawPoster(ctx: CanvasRenderingContext2D, x: number, y: number, wallColor: string = DORM_PAL.wallDorm) {
   block(ctx, x, y, 38, 50, '#2c3e63', '#3d5385', '#1e2b45');
   px(ctx, x + 3, y + 4, 32, 24, '#c96b3c');                    // Mặt trời hoàng hôn
@@ -150,8 +152,8 @@ export function drawPoster(ctx: CanvasRenderingContext2D, x: number, y: number, 
   px(ctx, x + 3, y + 28, 32, 2, '#111');
   ctx.font = 'bold 6px monospace';
   ctx.fillStyle = '#e8dcc0';
-  ctx.fillText('HÀ NỘI', x + 6, y + 37);
-  ctx.fillText('MÙA HẠ', x + 6, y + 45);
+  ctx.fillText(tx('PHỐ CŨ'), x + 6, y + 37);
+  ctx.fillText(tx('MÙA HẠ'), x + 6, y + 45);
   ctx.fillStyle = wallColor;                                    // Góc rách
   ctx.beginPath();
   ctx.moveTo(x + 38, y + 50); ctx.lineTo(x + 26, y + 50); ctx.lineTo(x + 38, y + 38); ctx.closePath();
@@ -169,12 +171,82 @@ export function buildPostLayer(width: number, height: number, vignette = 0.6, in
   if (!ctx) return c;
   ctx.fillStyle = 'rgba(0,0,0,0.16)';
   for (let y = 0; y < height; y += 3) ctx.fillRect(0, y, width, 1);
-  const vg = ctx.createRadialGradient(width / 2, height / 2, innerRadius, width / 2, height / 2, 420);
-  vg.addColorStop(0, 'rgba(0,0,0,0)');
-  vg.addColorStop(1, `rgba(0,0,0,${vignette})`);
-  ctx.fillStyle = vg;
-  ctx.fillRect(0, 0, width, height);
+  // vignette = 0: bỏ viền tối tĩnh (stage dùng drawFollowVignette bám theo An)
+  if (vignette > 0) {
+    const vg = ctx.createRadialGradient(width / 2, height / 2, innerRadius, width / 2, height / 2, 420);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, `rgba(0,0,0,${vignette})`);
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, width, height);
+  }
   return c;
+}
+
+// =====================================================================
+// VIGNETTE ĐỘNG BÁM THEO BƯỚC CHÂN AN
+// Tâm vùng sáng trôi trễ phía sau An; mỗi bước chân chạm sàn vùng sáng co nhẹ
+// rồi nở ra; Sanity càng thấp vùng sáng càng hẹp, viền càng đặc và rung.
+// =====================================================================
+
+export interface FollowLight {
+  x: number;
+  y: number;
+  /** 1 ngay lúc chân chạm sàn, tắt dần về 0 */
+  pulse: number;
+  ready: boolean;
+}
+
+export const createFollowLight = (): FollowLight => ({ x: 0, y: 0, pulse: 0, ready: false });
+
+/** Kéo tâm vùng sáng về phía (tx, ty) với độ trễ; k = hệ số chuẩn hoá 60 FPS */
+export function updateFollowLight(fl: FollowLight, tx: number, ty: number, k: number) {
+  if (!fl.ready) {
+    fl.x = tx;
+    fl.y = ty;
+    fl.ready = true;
+  }
+  const a = 1 - Math.pow(1 - 0.09, k);
+  fl.x += (tx - fl.x) * a;
+  fl.y += (ty - fl.y) * a;
+  fl.pulse *= Math.pow(0.86, k);
+}
+
+export interface VignetteStyle {
+  /** Màu viền tối (r, g, b) */
+  tint: readonly [number, number, number];
+  /** Độ đặc ở mép khi Sanity 100 (0..1) */
+  strength: number;
+  /** Bán kính vùng sáng trọn vẹn khi Sanity 100 */
+  inner: number;
+  /** Bán kính bắt đầu tối hẳn khi Sanity 100 */
+  outer: number;
+}
+
+export function drawFollowVignette(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  fl: FollowLight,
+  sanity: number,
+  t: number,
+  style: VignetteStyle,
+) {
+  const insanity = Math.max(0, Math.min(1, 1 - sanity / 100));
+  // Thở chậm khi đứng yên + co lại theo nhịp bước
+  const inner = Math.max(12, style.inner * (1 - 0.4 * insanity) - fl.pulse * 7 + Math.sin(t * 1.3) * 2);
+  const outer = Math.max(inner + 50, style.outer * (1 - 0.25 * insanity) - fl.pulse * 4);
+  // Sanity dưới 40%: tâm vùng sáng run rẩy
+  const shake = insanity > 0.6 ? (insanity - 0.6) * 10 : 0;
+  const cx = fl.x + (Math.random() - 0.5) * shake;
+  const cy = fl.y + (Math.random() - 0.5) * shake;
+  const edge = Math.min(0.96, style.strength + 0.25 * insanity);
+  const [r, g, b] = style.tint;
+  const grad = ctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+  grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
+  grad.addColorStop(0.5, `rgba(${r},${g},${b},${edge * 0.45})`);
+  grad.addColorStop(1, `rgba(${r},${g},${b},${edge})`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, width, height);
 }
 
 /** Khung ngắm 4 góc + mũi tên pixel nhấp nhô phía trên vật thể đang nhắm tới */
