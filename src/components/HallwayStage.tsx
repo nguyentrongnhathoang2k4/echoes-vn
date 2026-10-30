@@ -5,8 +5,14 @@ import { InventoryItem, CHAPTER_1_ITEMS } from '../types/inventory';
 import {
   DORM_PAL, hash, px, block, dropShadow,
   buildPostLayer, drawTargetMarker, drawVitals, drawHudSubtitle,
+  createFollowLight, updateFollowLight, drawFollowVignette,
 } from './pixel/pixelKit';
-import { drawSpriteFrame, stepWalk, stopWalk, bodyBob } from './pixel/spriteKit';
+import { drawSpriteFrame, getSpriteFrame, stepWalk, stopWalk, bodyBob } from './pixel/spriteKit';
+import { useFrameScale } from './pixel/useFrameScale';
+import { useMouseParallax } from './pixel/useMouseParallax';
+import { useLanguage } from '../context/LanguageContext';
+import { EmoteDirector, createEmoteDirector, emoteNow, updateEmotes, drawEmotes } from './pixel/emote';
+import { tx } from '../locales/tx';
 
 // --- Kích thước và Tỉ lệ ---
 const CANVAS_WIDTH = 640;
@@ -46,11 +52,13 @@ interface HallwayStageProps {
   inventoryIds?: string[];
   onUpdateInventory?: (newInventoryIds: string[]) => void;
   volume?: number;
+  /** Khung canvas nghiêng nhẹ theo con trỏ chuột (cài đặt) */
+  parallax?: boolean;
 }
 
 // =====================================================================
 // BỐ CỤC HÀNH LANG TẦNG 3 (khớp chính xác interactables & colliders)
-// Khu tập thể cũ Hà Nội: gạch bông, tường vôi vàng ố / chân tường xanh rêu,
+// Khu tập thể cũ: gạch bông, tường vôi vàng ố / chân tường xanh rêu,
 // ống nước rỉ sét chạy dọc trần, đèn tuýp huỳnh quang chập chờn.
 // =====================================================================
 
@@ -59,6 +67,9 @@ const WALL_H = 145;                              // Chiều cao mảng tường 
 const FLOOR = { left: 60, top: 145, right: 580, bottom: 420 } as const;
 const INTERACT_RADIUS = 75;
 const HITBOX_HALF_W = 14;
+// Viền tối bám theo An: mất điện thì vùng nhìn thấy hẹp, có điện thì nới rộng
+const HALL_VIGNETTE_DARK = { tint: [2, 3, 8], strength: 0.92, inner: 95, outer: 280 } as const;
+const HALL_VIGNETTE_LIT = { tint: [2, 3, 8], strength: 0.6, inner: 165, outer: 390 } as const;
 const AN_DRAW_W = 42;
 const AN_DRAW_H = 63;
 
@@ -71,8 +82,28 @@ const EXTINGUISHER = { x: 382, y: 116 };
 const CHAIR = { x: 475, y: 140 };
 const STAIRS = { x: 12, y: 176, w: 44, h: 116 };
 const HALL_WINDOW = { x: 590, y: 160, w: 40, h: 120 };
-const TUBES = [170, 430];                         // Toạ độ x hai bóng đèn tuýp (dài 60px)
+// 4 cụm đèn tuýp (dài 60px), đóng cầu dao thì bật lần lượt: cầu thang → #314 → #312 → cửa sổ
+const TUBES = [64, 150, 262, 506];
 const TUBE_Y = 10;
+const TUBE_PURPLE = 2;                             // Bóng trước cửa #312: có điện vẫn chớp tím
+const TUBE_KICK_DELAY = 0.25;                      // Giây từ lúc CẠCH cầu dao tới bóng đầu tiên bắt sáng
+const TUBE_KICK_GAP = 0.18;                        // Mỗi bóng sau bắt sáng trễ hơn bóng trước
+
+// Gương cầu lồi bắt góc cầu thang & đồng hồ tròn kẹt giờ giữa cửa #314 và #312
+const HALL_MIRROR = { x: 44, y: 156, r: 11 };
+const HALL_CLOCK = { x: 210, y: 60, r: 9 };
+const CLOCK_STUCK_SEC = 47;
+
+// Bóng ma quay lưng đứng trước cửa #312 lúc mất điện; An lại gần thì tan biến (một lần mỗi ván)
+const GHOST_FEET = { x: 266, y: 172 };
+const GHOST_VANISH_DIST = 110;
+const GHOST_FLAG = 'shadow_vanished';
+const GHOST_FADE_SEC = 0.45;
+
+// Tiếng bước chân ướt từ cầu thang tiến lại sau lưng khi An đứng ở hộp cầu dao trong bóng tối
+const STALKER_IDLE_SEC = 1.0;
+const STALKER_STEPS = 6;
+const STALKER_FLAG = 'hall_stalker_heard';
 
 // Vật cản hành lang (giữ nguyên bản gốc)
 const COLLIDERS: ReadonlyArray<{ x: number; y: number; w: number; h: number }> = [
@@ -123,6 +154,11 @@ interface Particle { x: number; y: number; vx: number; vy: number; life: number;
 interface Ripple { x: number; y: number; r: number; max: number }
 interface Dust { x: number; y: number; vx: number; vy: number; phase: number }
 interface TubeState { level: number; burst: number; dark: number }
+interface Footprint { x: number; y: number; left: boolean; born: number }
+type GhostState = 'pending' | 'standing' | 'glitch' | 'fading' | 'gone';
+interface Ghost { state: GhostState; at: number; glitchFrames: number; tinted: HTMLCanvasElement | null }
+type StalkerState = 'idle' | 'walking' | 'behind' | 'done';
+interface Stalker { state: StalkerState; still: number; step: number; nextAt: number; dir: Direction; doneAt: number; prints: Footprint[] }
 
 interface HallSim {
   tubes: TubeState[];
@@ -134,6 +170,13 @@ interface HallSim {
   secondFlashAt: number;
   thunderAt: number;
   nextTyping: number;
+  shake: number;
+  prevPower: boolean | null;
+  tubeOnAt: number[];      // Giờ bắt sáng của từng bóng sau khi đóng cầu dao (-1: đã sáng / không có)
+  clockBack: boolean;      // Kim giây đang giật lùi một nấc
+  nextClockTick: number;
+  ghost: Ghost;
+  stalker: Stalker;
 }
 
 interface HallFrame {
@@ -144,12 +187,13 @@ interface HallFrame {
   hasFuseItem: boolean;    // Có Băng dính / Kẹp ghim để nối cầu chì
   lightning: number;
   tubes: number[];         // Độ sáng từng bóng tuýp 0..1
+  clockSec: number;        // Vị trí kim giây đồng hồ kẹt giờ
   player: PlayerState;
   nearest: InteractableObject | null;
   snap: HallSnapshot;
 }
 
-interface HallSprites { an: HTMLImageElement | null }
+interface HallSprites { an: HTMLImageElement | null; mien: HTMLImageElement | null }
 
 /** Kiểm tra trạng thái đã hoàn thành (logic giữ nguyên bản gốc) */
 const isTargetDoneFor = (targetId: string, s: HallSnapshot): boolean => {
@@ -176,7 +220,7 @@ const computePrompt = (target: InteractableObject, s: HallSnapshot): { text: str
     const hasPendant = inv.includes('miens_pendant') || inv.includes('medical_report') || s.interacted.includes('door_316_picked');
     return {
       text: hasPendant
-        ? 'Cửa Phòng #316 [NIÊM PHONG CẢNH SÁT 17/05] - Nhấn [E] xem'
+        ? 'Cửa Phòng #316 [ĐÃ TRẢ PHÒNG] - Nhấn [E] xem'
         : 'Cửa Phòng #316 (Phòng Miên) [LẤP LÁNH KHE CỬA ✨] - Nhấn [E] nhặt Mặt Dây Chuyền',
       isDone: hasPendant,
     };
@@ -446,7 +490,7 @@ function drawDoor312(ctx: CanvasRenderingContext2D, fr: HallFrame) {
   px(ctx, d.x + 2, d.y + d.h - 1, d.w - 4, 2, typing ? 'rgba(74,222,128,0.75)' : 'rgba(20,83,45,0.6)');
 }
 
-/** Cửa #316 phòng cũ của Miên: băng niêm phong cảnh sát chữ X, mặt dây chuyền lấp lánh dưới khe */
+/** Cửa #316 phòng cũ của Miên: hai dải giấy trả phòng ố vàng của chủ trọ dán chéo, mặt dây chuyền lấp lánh dưới khe */
 function drawDoor316(ctx: CanvasRenderingContext2D, fr: HallFrame) {
   const d = DOOR_316;
   drawDoorFrame(ctx, d, '316', '#991b1b');
@@ -454,24 +498,27 @@ function drawDoor316(ctx: CanvasRenderingContext2D, fr: HallFrame) {
   block(ctx, d.x + 6, d.y + 24, d.w - 12, 20, '#3e2a1f', '#2c1d14', '#5e4232');
   block(ctx, d.x + 6, d.y + 50, d.w - 12, 22, '#3e2a1f', '#2c1d14', '#5e4232');
   px(ctx, d.x + d.w - 9, d.y + 48, 3, 3, '#a8a29e');
-  // Băng niêm phong vàng đen chữ X
-  const tape = (x1: number, y1: number, x2: number, y2: number) => {
+  // Hai dải giấy ố vàng dán chéo qua khe cửa (chủ trọ khoá phòng sau khi Miên dọn đi)
+  const strip = (x1: number, y1: number, x2: number, y2: number) => {
     const len = Math.hypot(x2 - x1, y2 - y1);
     ctx.save();
     ctx.translate(x1, y1);
     ctx.rotate(Math.atan2(y2 - y1, x2 - x1));
-    px(ctx, 0, -4, len, 8, DORM_PAL.outline);
-    px(ctx, 0, -3, len, 6, '#facc15');
-    for (let i = 0; i < len; i += 8) px(ctx, i, -3, 4, 6, '#111');
+    px(ctx, 0, -3, len, 6, DORM_PAL.outline);
+    px(ctx, 0, -2, len, 4, '#d6c9a0');
+    for (let i = 3; i < len - 3; i += 5) px(ctx, i, -1, 3, 1, 'rgba(90,70,40,0.5)'); // Chữ viết tay mờ
+    px(ctx, 0, -2, 3, 4, 'rgba(120,90,40,0.45)');                      // Mép hồ dán ố
+    px(ctx, len - 3, -2, 3, 4, 'rgba(120,90,40,0.45)');
     ctx.restore();
   };
-  tape(d.x - 5, d.y + 22, d.x + d.w + 5, d.y + 74);
-  tape(d.x - 5, d.y + 74, d.x + d.w + 5, d.y + 22);
-  // Nhãn "CẢNH SÁT - KHÔNG VƯỢT QUA"
-  block(ctx, d.x + 9, d.y + 43, 30, 9, '#f5f5f4', '#ffffff', '#a8a29e');
+  strip(d.x + 2, d.y + 26, d.x + d.w - 2, d.y + 70);
+  strip(d.x + 2, d.y + 70, d.x + d.w - 2, d.y + 26);
+  // Tờ thông báo trả phòng đóng dấu đỏ
+  block(ctx, d.x + 11, d.y + 42, 26, 11, '#e7dfc4', '#f5efdc', '#a8a08a');
   ctx.font = 'bold 4px monospace';
-  ctx.fillStyle = '#1d4ed8';
-  ctx.fillText('CẢNH SÁT', d.x + 11, d.y + 49);
+  ctx.fillStyle = '#b91c1c';
+  ctx.fillText(tx('ĐÃ TRẢ'), d.x + 15, d.y + 48);
+  px(ctx, d.x + 14, d.y + 50, 20, 1, 'rgba(185,28,28,0.6)');
   // Đốm sáng lấp lánh dưới khe cửa: Mặt Dây Chuyền Bạc của Miên
   if (fr.pendantHere) {
     const tw = (Math.sin(fr.t * 4.2) + 1) / 2;
@@ -517,7 +564,7 @@ function drawFuseBox(ctx: CanvasRenderingContext2D, fr: HallFrame, sparks: Parti
   px(ctx, x + 24, y + 31, 4, 4, led);
   ctx.font = '4px monospace';
   ctx.fillStyle = '#e5e7eb';
-  ctx.fillText('CẦU DAO', x + 18, y + 42);
+  ctx.fillText(tx('CẦU DAO'), x + 18, y + 42);
   // Viền vàng nhấp nháy khi đã có Băng dính / Kẹp ghim để nối cầu chì
   if (!fr.powerOn && fr.hasFuseItem && Math.sin(fr.t * 6) > 0) {
     ctx.strokeStyle = '#facc15';
@@ -562,7 +609,7 @@ function drawNoticeBoard(ctx: CanvasRenderingContext2D, fr: HallFrame) {
   px(ctx, x + 30, y + 10, 4, 4, '#7f1d1d');
   ctx.font = 'bold 3px monospace';
   ctx.fillStyle = '#fff';
-  ctx.fillText('MẤT TÍCH', x + 24, y + 21);
+  ctx.fillText(tx('MẤT TÍCH'), x + 24, y + 21);
   ctx.fillText('17/05', x + 27, y + 25);
   // Thư kỷ niệm hồng của Miên (dán chéo) + trái tim
   ctx.save();
@@ -636,7 +683,18 @@ function drawHallWindow(ctx: CanvasRenderingContext2D, fr: HallFrame) {
   const { x, y, w, h } = HALL_WINDOW;
   block(ctx, x - 4, y - 4, w + 8, h + 8, '#3a3f45', '#5b636b', '#1f2327');
   const L = fr.lightning;
-  px(ctx, x, y, w, h, L > 0.05 ? `rgb(${50 + L * 140},${60 + L * 160},${100 + L * 150})` : '#060912');
+  px(ctx, x, y, w, h, L > 0.05 ? `rgb(${Math.min(255, 60 + L * 180)},${Math.min(255, 70 + L * 175)},${Math.min(255, 110 + L * 145)})` : '#060912');
+  // Tia chớp rạch ngang bầu trời đêm ngoài cửa sổ hành lang
+  if (L > 0.5) {
+    ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, L * 1.3)})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x + w * 0.45, y + 4);
+    ctx.lineTo(x + w * 0.58, y + h * 0.3);
+    ctx.lineTo(x + w * 0.42, y + h * 0.5);
+    ctx.lineTo(x + w * 0.65, y + h * 0.8);
+    ctx.stroke();
+  }
   // Bóng toà nhà đối diện
   px(ctx, x, y + 70, w, h - 70, L > 0.05 ? '#1e2233' : '#03050a');
   px(ctx, x + 6, y + 58, 14, 12, L > 0.05 ? '#1e2233' : '#03050a');
@@ -673,8 +731,11 @@ function drawTubes(ctx: CanvasRenderingContext2D, fr: HallFrame) {
     const lv = fr.tubes[i];
     block(ctx, tx - 2, TUBE_Y - 2, 64, 8, '#4b5563', '#6b7280', '#1f2937');
     let tube: string;
-    if (fr.powerOn) tube = lv > 0.6 ? '#fffbe8' : '#c9c3a8';
-    else tube = lv > 0.5 ? (Math.random() < 0.5 ? '#c4b5fd' : '#a5f3fc') : '#2a2f36';
+    if (fr.powerOn) {
+      if (lv < 0.05) tube = '#2a2f36';                                   // Chưa tới lượt bắt sáng
+      else if (i === TUBE_PURPLE && lv < 0.9) tube = '#c4b5fd';          // Bóng #312 chớp tím
+      else tube = lv > 0.6 ? '#fffbe8' : '#c9c3a8';
+    } else tube = lv > 0.5 ? (Math.random() < 0.5 ? '#c4b5fd' : '#a5f3fc') : '#2a2f36';
     px(ctx, tx, TUBE_Y, 60, 3, tube);
     if (lv > 0.6) px(ctx, tx, TUBE_Y, 60, 1, '#ffffff');
     px(ctx, tx, TUBE_Y, 4, 3, '#1c1f24');
@@ -779,7 +840,9 @@ function drawHallLighting(ctx: CanvasRenderingContext2D, light: HTMLCanvasElemen
 
   l.globalCompositeOperation = 'source-over';
   l.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  l.fillStyle = fr.powerOn ? 'rgba(8,10,16,0.5)' : 'rgba(3,5,10,0.94)';
+  // Bóng tối tan dần theo số bóng đã bắt sáng (không bừng sáng cả hành lang cùng lúc)
+  const lit = fr.powerOn ? litAmount(fr.tubes) : 0;
+  l.fillStyle = `rgba(${3 + lit * 5},${5 + lit * 5},${10 + lit * 6},${0.94 - lit * 0.44})`;
   l.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   l.globalCompositeOperation = 'destination-out';
   const punch = (x: number, y: number, r: number, s: number) => {
@@ -792,7 +855,7 @@ function drawHallLighting(ctx: CanvasRenderingContext2D, light: HTMLCanvasElemen
     l.fillRect(x - r, y - r, r * 2, r * 2);
   };
   if (fr.powerOn) {
-    TUBES.forEach((tx, i) => punch(tx + 30, 190, 280, 0.95 * fr.tubes[i]));
+    TUBES.forEach((tx, i) => punch(tx + 30, 190, 220, 0.9 * fr.tubes[i]));
   } else {
     TUBES.forEach((tx, i) => punch(tx + 30, 60, 160, 0.55 * fr.tubes[i]));  // Chớp nháy rè rè
   }
@@ -829,6 +892,7 @@ function drawHallLighting(ctx: CanvasRenderingContext2D, light: HTMLCanvasElemen
       ctx.closePath();
       ctx.fill();
       glow(tx + 30, 300, 110, '255,236,190', 0.08 * lv);          // Vệt sáng bóng loáng trên gạch
+      if (i === TUBE_PURPLE && lv < 0.9) glow(tx + 30, 40, 90, '167,139,250', 0.22);
     } else if (!fr.powerOn && lv > 0.5) {
       glow(tx + 30, 30, 120, Math.random() < 0.5 ? '167,139,250' : '103,232,249', 0.28);
     }
@@ -883,7 +947,10 @@ function drawDust(ctx: CanvasRenderingContext2D, dust: Dust[], fr: HallFrame) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const d of dust) {
-    const tubeIdx = d.x < 320 ? 0 : 1;
+    let tubeIdx = 0;
+    for (let i = 1; i < TUBES.length; i++) {
+      if (Math.abs(d.x - TUBES[i] - 30) < Math.abs(d.x - TUBES[tubeIdx] - 30)) tubeIdx = i;
+    }
     const tcx = TUBES[tubeIdx] + 30;
     const spread = 30 + (d.y - TUBE_Y) * 0.32;
     const inCone = Math.max(0, 1 - Math.abs(d.x - tcx) / spread);
@@ -895,6 +962,197 @@ function drawDust(ctx: CanvasRenderingContext2D, dust: Dust[], fr: HallFrame) {
   ctx.restore();
 }
 
+/** Phần sáng trung bình của dàn đèn tuýp (0..1) */
+function litAmount(tubes: number[]): number {
+  return tubes.reduce((a, b) => a + b, 0) / tubes.length;
+}
+
+/** Viền tối bám theo An: mở rộng dần theo số bóng tuýp đã sáng */
+function hallVignette(fr: HallFrame) {
+  const k = fr.powerOn ? litAmount(fr.tubes) : 0;
+  const D = HALL_VIGNETTE_DARK;
+  const L = HALL_VIGNETTE_LIT;
+  return {
+    tint: D.tint,
+    strength: D.strength + (L.strength - D.strength) * k,
+    inner: D.inner + (L.inner - D.inner) * k,
+    outer: D.outer + (L.outer - D.outer) * k,
+  };
+}
+
+/** Vẽ một kim đồng hồ bằng các điểm pixel nguyên (không khử răng cưa) */
+function clockHand(ctx: CanvasRenderingContext2D, cx: number, cy: number, len: number, turn: number, color: string) {
+  const a = turn * Math.PI * 2 - Math.PI / 2;
+  for (let i = 0; i <= len; i++) {
+    px(ctx, Math.round(cx + Math.cos(a) * i), Math.round(cy + Math.sin(a) * i), 1, 1, color);
+  }
+}
+
+/** Đồng hồ tròn treo tường: kẹt 03:14, mặt kính nứt, kim giây giật lùi một nấc */
+function drawHallClock(ctx: CanvasRenderingContext2D, fr: HallFrame) {
+  const { x, y, r } = HALL_CLOCK;
+  px(ctx, x, y - r - 4, 1, 4, '#1c1f24');                             // Đinh treo
+  ctx.fillStyle = '#2b2b2b';
+  ctx.beginPath(); ctx.arc(x, y, r + 2, 0, Math.PI * 2); ctx.fill();   // Vành nhựa đen
+  ctx.fillStyle = '#d9cfa8';
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();       // Mặt số ố vàng
+  ctx.fillStyle = 'rgba(120,90,40,0.35)';
+  ctx.beginPath(); ctx.arc(x + 3, y + 3, r - 3, 0, Math.PI * 2); ctx.fill();
+  for (let h = 0; h < 12; h++) {
+    const a = (h / 12) * Math.PI * 2;
+    const len = h % 3 === 0 ? 2 : 1;
+    px(ctx, Math.round(x + Math.cos(a) * (r - 1 - len)), Math.round(y + Math.sin(a) * (r - 1 - len)), 1, len === 2 ? 2 : 1, '#3f3a2c');
+  }
+  clockHand(ctx, x, y, 4, (3 + 14 / 60) / 12, '#1c1917');             // Kim giờ: 3
+  clockHand(ctx, x, y, 7, 14 / 60, '#1c1917');                         // Kim phút: 14
+  clockHand(ctx, x, y, 7, fr.clockSec / 60, '#b91c1c');                // Kim giây
+  px(ctx, x, y, 1, 1, '#b91c1c');
+  // Vết nứt chéo trên mặt kính + vệt phản quang
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x - r + 2, y - 4); ctx.lineTo(x - 1, y + 1); ctx.lineTo(x + 4, y + r - 2);
+  ctx.stroke();
+  px(ctx, x - 5, y - 6, 3, 1, 'rgba(255,255,255,0.35)');
+}
+
+/** Gương cầu lồi bắt góc cầu thang: kính ố vàng, bóng An nhoè méo, vệt băng gạc rỉ máu trên trán */
+function drawHallMirror(ctx: CanvasRenderingContext2D, fr: HallFrame, sprites: HallSprites) {
+  const { x, y, r } = HALL_MIRROR;
+  px(ctx, 56, y - 1, FLOOR.left - 56, 3, '#3f444a');                  // Tay đỡ bắt vào góc tường
+  px(ctx, x + r - 1, y - 1, 56 - x - r + 1, 2, '#5b636b');
+  ctx.fillStyle = '#e2e8f0';
+  ctx.beginPath(); ctx.arc(x, y, r + 2, 0, Math.PI * 2); ctx.fill();   // Viền nhựa trắng bạc màu
+  ctx.fillStyle = '#c2410c';
+  ctx.beginPath(); ctx.arc(x, y, r + 1, Math.PI * 0.15, Math.PI * 0.85); ctx.fill(); // Vạch cam an toàn
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.clip();
+  const glass = ctx.createRadialGradient(x - 3, y - 4, 1, x, y, r);
+  glass.addColorStop(0, '#a39a74');
+  glass.addColorStop(1, '#4a4530');
+  ctx.fillStyle = glass;
+  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  const p = fr.player;
+  const dist = Math.hypot(p.x - x, p.y - y);
+  if (sprites.an && dist < 170) {
+    // Bóng An thu nhỏ, lệch theo vị trí đứng, nhoè đôi như mắt hoa
+    const near = 1 - dist / 170;
+    const w = 20;
+    const h = 30;
+    const rx = Math.round(x - w / 2 + Math.max(-4, Math.min(4, (p.y - 230) * 0.05)));
+    const ry = Math.round(y - h / 2 + 4);
+    ctx.globalAlpha = 0.35 + near * 0.35;
+    drawSpriteFrame(ctx, sprites.an, 1, 0, false, rx, ry, w, h);
+    ctx.globalAlpha = 0.2 + near * 0.15;
+    drawSpriteFrame(ctx, sprites.an, 1, 0, false, rx + 1, ry - 1, w, h);
+    ctx.globalAlpha = 1;
+    // Băng gạc trắng quấn trán + chấm máu thấm qua
+    const bandA = 0.45 + near * 0.5;
+    px(ctx, rx + 6, ry + 5, 9, 2, `rgba(241,245,249,${bandA})`);
+    px(ctx, rx + 11, ry + 5, 2, 2, `rgba(185,28,28,${bandA})`);
+    px(ctx, rx + 12, ry + 7, 1, 2, `rgba(153,27,27,${bandA * 0.8})`);
+  }
+  // Ố vàng + đốm mốc + vệt phản quang cong theo mặt lồi
+  ctx.fillStyle = 'rgba(150,120,50,0.32)';
+  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  for (const [sx, sy] of [[-6, 4], [5, -5], [3, 7], [-2, -8]]) px(ctx, x + sx, y + sy, 2, 1, 'rgba(60,50,20,0.55)');
+  ctx.strokeStyle = 'rgba(255,255,240,0.5)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(x, y, r - 3, Math.PI * 1.1, Math.PI * 1.45); ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * Vệt chân ướt hiện dần trên gạch, từ cầu thang tối tiến lại sau lưng An.
+ * 'base' vẽ dưới lớp tối (vết loang sẫm), 'sheen' vẽ sau lớp tối (ánh nước lấp lánh trong bóng tối)
+ */
+function drawFootprints(ctx: CanvasRenderingContext2D, st: Stalker, t: number, pass: 'base' | 'sheen') {
+  for (const f of st.prints) {
+    const grow = Math.min(1, (t - f.born) / 0.5);
+    const fade = st.state === 'done' ? Math.max(0, 1 - (t - st.doneAt - 6) / 4) : 1;
+    const a = grow * Math.min(1, fade);
+    if (a <= 0.01) continue;
+    const fx = Math.round(f.x);
+    const fy = Math.round(f.y + (f.left ? -3 : 3));
+    if (pass === 'base') {
+      px(ctx, fx, fy, 6, 3, `rgba(6,12,20,${a * 0.8})`);               // Lòng bàn chân
+      px(ctx, fx + 7, fy, 2, 3, `rgba(6,12,20,${a * 0.8})`);           // Gót
+      px(ctx, fx - 1, fy + 1, 1, 1, `rgba(6,12,20,${a * 0.6})`);       // Ngón
+    } else {
+      const glint = 0.22 + Math.sin(t * 2.3 + fx * 0.3) * 0.06;
+      px(ctx, fx + 1, fy, 4, 1, `rgba(150,190,230,${a * glint})`);     // Ánh nước loang
+      px(ctx, fx + 7, fy + 1, 1, 1, `rgba(150,190,230,${a * glint})`);
+    }
+  }
+}
+
+/** Bóng Miên quay lưng, áo len tím mờ ảo; lại gần thì giật nhiễu 2 frame rồi tan vào bóng tối */
+function drawFleetingShadow(ctx: CanvasRenderingContext2D, fr: HallFrame, ghost: Ghost) {
+  if (ghost.state === 'pending' || ghost.state === 'gone' || !ghost.tinted) return;
+  const img = ghost.tinted;
+  const x = GHOST_FEET.x - 21;
+  const y = GHOST_FEET.y - 61;
+  const flicker = fr.tubes.reduce((m, v) => Math.max(m, v), 0);
+  let alpha = 0.34 + Math.sin(fr.t * 1.7) * 0.05 + flicker * 0.25;
+  ctx.save();
+  if (ghost.state === 'fading') {
+    const k = Math.min(1, (fr.t - ghost.at) / GHOST_FADE_SEC);
+    alpha *= 1 - k;
+    // Tan từ trên xuống: từng hàng 3px biến mất theo thứ tự ngẫu nhiên
+    for (let row = 0; row < 63; row += 3) {
+      if (hash(row * 7 + 3) < k) continue;
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(img, 0, row, 42, 3, x + (hash(row + Math.floor(fr.t * 30)) - 0.5) * 6 * k, y + row, 42, 3);
+    }
+    ctx.restore();
+    return;
+  }
+  // Bóng mờ dưới chân
+  ctx.fillStyle = `rgba(0,0,0,${alpha * 0.6})`;
+  ctx.beginPath();
+  ctx.ellipse(GHOST_FEET.x, GHOST_FEET.y, 12, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+  if (ghost.state === 'glitch') {
+    // Giật nhiễu: cắt 5 dải ngang lệch nhau + tách kênh đỏ / xanh lơ
+    ctx.globalAlpha = Math.min(1, alpha + 0.3);
+    for (let i = 0; i < 5; i++) {
+      const sy = Math.floor((i * 63) / 5);
+      const sh = Math.ceil(63 / 5);
+      const off = (hash(i * 13 + ghost.glitchFrames * 5) - 0.5) * 14;
+      ctx.drawImage(img, 0, sy, 42, sh, x + off, y + sy, 42, sh);
+    }
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.35;
+    ctx.drawImage(img, x - 3, y);
+    ctx.fillStyle = 'rgba(34,211,238,0.25)';
+    ctx.fillRect(x + 3, y, 42, 63);
+    ctx.restore();
+    return;
+  }
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(img, x, y + Math.sin(fr.t * 0.9) * 0.5);
+  ctx.restore();
+}
+
+/** Nhuộm frame quay lưng của Miên thành bóng tím sẫm (dựng một lần) */
+function buildGhostSprite(img: HTMLImageElement): HTMLCanvasElement | null {
+  const fs = getSpriteFrame(img, 1, 1, false, 42, 63);
+  if (fs.src === img) return null;                                    // Sheet chưa nướng xong, thử lại frame sau
+  const c = document.createElement('canvas');
+  c.width = 42;
+  c.height = 63;
+  const g = c.getContext('2d');
+  if (!g) return null;
+  g.imageSmoothingEnabled = false;
+  g.drawImage(fs.src, fs.sx, fs.sy, fs.w, fs.h, 0, 0, 42, 63);
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = 'rgba(30,14,48,0.72)';
+  g.fillRect(0, 0, 42, 63);
+  return c;
+}
+
 /** HUD trên canvas: khung ngắm vật thể đang nhắm tới + đồng hồ/SANITY + nhãn điện áp */
 function drawHallHUD(ctx: CanvasRenderingContext2D, fr: HallFrame) {
   const n = fr.nearest;
@@ -903,7 +1161,7 @@ function drawHallHUD(ctx: CanvasRenderingContext2D, fr: HallFrame) {
     drawTargetMarker(ctx, n, done ? 'rgba(161,161,170,0.75)' : '#fb923c', fr.t);
   }
   drawVitals(ctx, fr.t, fr.sanity);
-  drawHudSubtitle(ctx, fr.powerOn ? 'ĐIỆN: ỔN ĐỊNH' : 'ĐIỆN: MẤT', fr.powerOn ? '#6ee7b7' : '#f87171');
+  drawHudSubtitle(ctx, fr.powerOn ? tx('ĐIỆN: ỔN ĐỊNH') : tx('ĐIỆN: MẤT'), fr.powerOn ? '#6ee7b7' : '#f87171');
 }
 
 // =====================================================================
@@ -927,20 +1185,49 @@ function createHallSim(): HallSim {
     secondFlashAt: -1,
     thunderAt: -1,
     nextTyping: 2,
+    shake: 0,
+    prevPower: null,
+    tubeOnAt: TUBES.map(() => -1),
+    clockBack: false,
+    nextClockTick: 1.5,
+    ghost: { state: 'pending', at: 0, glitchFrames: 0, tinted: null },
+    stalker: { state: 'idle', still: 0, step: 0, nextAt: 0, dir: 'up', doneAt: 0, prints: [] },
   };
 }
 
 /** Cập nhật mô phỏng; trả về các sự kiện âm thanh cần phát trong frame này */
 function updateHallSim(sim: HallSim, k: number, t: number, powerOn: boolean) {
-  const events = { buzz: false, thunder: false };
+  const events = { buzz: false, thunder: false, ballast: false, relays: [] as number[], clockTick: false };
+
+  // Giảm dần rung lắc màn hình
+  sim.shake = Math.max(0, (sim.shake || 0) - 0.22 * k);
+
+  // Vừa đóng cầu dao: các bóng mồi starter rồi bắt sáng lần lượt (vào màn khi đã có điện thì sáng sẵn)
+  if (sim.prevPower === false && powerOn) {
+    sim.tubeOnAt = TUBES.map((_, i) => t + TUBE_KICK_DELAY + i * TUBE_KICK_GAP);
+    events.ballast = true;
+  }
+  sim.prevPower = powerOn;
 
   // Đèn tuýp: có điện → sáng ổn định (thỉnh thoảng nháy nhẹ); mất điện → hầu như tắt, chớp rè rè ngắt quãng
-  for (const tb of sim.tubes) {
+  for (let i = 0; i < sim.tubes.length; i++) {
+    const tb = sim.tubes[i];
+    if (powerOn && sim.tubeOnAt[i] > 0) {
+      const lead = sim.tubeOnAt[i] - t;
+      if (lead > 0) {
+        // Starter đang mồi: tối om, loé vài lần ngắn ngay trước khi bắt
+        tb.level = lead < 0.14 && Math.random() < 0.5 ? 0.7 : 0;
+        continue;
+      }
+      sim.tubeOnAt[i] = -1;
+      tb.burst = 6;
+      events.relays.push(i);
+    }
     if (powerOn) {
       if (tb.burst > 0) { tb.burst -= k; tb.level = Math.random() < 0.5 ? 0.55 : 1; }
       else {
         tb.level = 0.94 + Math.random() * 0.06;
-        if (Math.random() < 0.002 * k) tb.burst = 4 + Math.random() * 8;
+        if (Math.random() < (i === TUBE_PURPLE ? 0.012 : 0.002) * k) tb.burst = 4 + Math.random() * 8;
       }
     } else if (tb.burst > 0) {
       tb.burst -= k;
@@ -992,23 +1279,94 @@ function updateHallSim(sim: HallSim, k: number, t: number, powerOn: boolean) {
     if (d.y < 20) { d.y = 410; d.x = 110 + Math.random() * 440; }
   }
 
-  // Sét: chớp chính → chớp phụ → sấm trễ (dày hơn khi mất điện)
-  sim.lightning = Math.max(0, sim.lightning - 0.05 * k);
+  // Sét: chớp chính → chớp phụ → sấm nổ đanh ngay khoảnh khắc chớp nháy ở cửa sổ
+  sim.lightning = Math.max(0, sim.lightning - 0.045 * k);
   if (t >= sim.nextLightning) {
     sim.lightning = 1;
     sim.secondFlashAt = t + 0.16;
-    sim.thunderAt = t + 0.8;
+    sim.thunderAt = t + 0.06; // Nổ sấm gần như tức thì (~60ms) khi chớp vừa nháy ở cửa sổ!
+    sim.shake = 3.5;          // Rung chấn màn hình theo tia chớp
     sim.nextLightning = t + (powerOn ? 10 : 6) + Math.random() * 9;
   }
   if (sim.secondFlashAt > 0 && t >= sim.secondFlashAt) {
-    sim.lightning = Math.max(sim.lightning, 0.65);
+    sim.lightning = Math.max(sim.lightning, 0.7);
+    sim.shake = Math.max(sim.shake, 2.0);
     sim.secondFlashAt = -1;
   }
   if (sim.thunderAt > 0 && t >= sim.thunderAt) {
     sim.thunderAt = -1;
     events.thunder = true;
   }
+
+  // Đồng hồ kẹt 03:14: kim giây thỉnh thoảng giật lùi một nấc rồi bật về chỗ cũ
+  if (t >= sim.nextClockTick) {
+    sim.clockBack = !sim.clockBack;
+    sim.nextClockTick = t + (sim.clockBack ? 0.9 : 1.6 + Math.random() * 2.4);
+    events.clockTick = true;
+  }
   return events;
+}
+
+/** Bóng ma thoáng qua; trả về true đúng frame nó bắt đầu tan */
+function updateGhost(ghost: Ghost, t: number, p: PlayerState, powerOn: boolean, seen: boolean, mien: HTMLImageElement | null): boolean {
+  if (ghost.state === 'pending') {
+    if (seen || powerOn) { ghost.state = 'gone'; return false; }
+    if (!mien) return false;
+    ghost.tinted ??= buildGhostSprite(mien);
+    if (ghost.tinted) ghost.state = 'standing';
+    return false;
+  }
+  // Lại gần, hoặc đèn bật sáng, thì bóng ma tan (không bao giờ đứng giữa hành lang sáng đèn)
+  if (ghost.state === 'standing' && (powerOn || Math.hypot(p.x - GHOST_FEET.x, p.y + 16 - GHOST_FEET.y) < GHOST_VANISH_DIST)) {
+    ghost.state = 'glitch';
+    ghost.glitchFrames = 0;
+    return true;
+  }
+  if (ghost.state === 'glitch' && ++ghost.glitchFrames > 2) {
+    ghost.state = 'fading';
+    ghost.at = t;
+  }
+  if (ghost.state === 'fading' && t - ghost.at > GHOST_FADE_SEC) ghost.state = 'gone';
+  return false;
+}
+
+/** Ai đó lẹp xẹp đi tới sau lưng An khi An đứng lặng ở hộp cầu dao trong bóng tối */
+function updateStalker(st: Stalker, t: number, k: number, p: PlayerState, nearFuse: boolean, powerOn: boolean) {
+  const ev = { step: -1, stop: false };
+  if (st.state === 'done') return ev;
+  const turned = p.isMoving || p.dir !== st.dir || powerOn;
+  if (st.state === 'idle') {
+    st.still = !powerOn && nearFuse && !p.isMoving ? st.still + k / 60 : 0;
+    if (st.still >= STALKER_IDLE_SEC) {
+      st.state = 'walking';
+      st.step = 0;
+      st.nextAt = t + 0.4;
+      st.dir = p.dir;
+    }
+    return ev;
+  }
+  if (turned) {
+    // Quay lại nhìn: im bặt, không có ai cả
+    st.state = 'done';
+    st.doneAt = t;
+    ev.stop = st.step > 0;
+    if (!ev.stop) st.state = 'idle';
+    return ev;
+  }
+  if (st.state === 'walking' && t >= st.nextAt) {
+    const f = (st.step + 1) / STALKER_STEPS;
+    st.prints.push({
+      x: 70 + (p.x - 34 - 70) * f,
+      y: p.y + 22 - (1 - f) * 10,
+      left: st.step % 2 === 0,
+      born: t,
+    });
+    ev.step = st.step;
+    st.step++;
+    st.nextAt = t + 0.62 - st.step * 0.04;                            // Bước dồn dần khi tới gần
+    if (st.step >= STALKER_STEPS) st.state = 'behind';
+  }
+  return ev;
 }
 
 // =====================================================================
@@ -1026,10 +1384,15 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
   inventoryIds = EMPTY_IDS,
   onUpdateInventory,
   volume = 80,
+  parallax = true,
 }) => {
+  const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const anSpriteRef = useRef<HTMLImageElement | null>(null);
+  const mienSpriteRef = useRef<HTMLImageElement | null>(null);
+  // Bấm [E] ở hộp cầu dao lúc chưa sửa được → tiếng bước chân bắt đầu ngay, không chờ đứng yên
+  const stalkerPokeRef = useRef(false);
 
   // Vị trí người chơi trong hành lang (bắt đầu ngay trước cửa phòng 314)
   const playerRef = useRef({
@@ -1152,31 +1515,37 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     } catch {}
   }, [getAudioContext, volume]);
 
+  // Bong bóng cảm xúc trên đầu An (hành lang không có Miên)
+  const emotesRef = useRef<EmoteDirector | null>(null);
+  const emotes = useCallback(() => (emotesRef.current ??= createEmoteDirector()), []);
+
   // Độc thoại nội tâm
   const showMonologueWhisper = useCallback((msg: string) => {
+    emoteNow(emotes(), 'an', 'dots');
     if (whisperTimerRef.current) clearTimeout(whisperTimerRef.current);
     setMonologueWhisper(msg);
     whisperTimerRef.current = setTimeout(() => {
       setMonologueWhisper(null);
-    }, 4000);
-  }, []);
+    }, Math.max(4000, msg.length * 60)); // Câu dài hiện lâu hơn để kịp đọc
+  }, [emotes]);
 
   // Banner nhặt đồ
   const showPickupAlert = useCallback((name: string, icon: string, msg: string) => {
     playPickupSound();
+    emoteNow(emotes(), 'an', 'exclaim');
     if (pickupAlertTimerRef.current) clearTimeout(pickupAlertTimerRef.current);
     setPickupAlert({ name, icon, msg });
     pickupAlertTimerRef.current = setTimeout(() => {
       setPickupAlert(null);
-    }, 4500);
-  }, [playPickupSound]);
+    }, Math.max(4500, msg.length * 55));
+  }, [playPickupSound, emotes]);
 
   // Xử lý sử dụng vật phẩm trực tiếp từ Túi đồ
   const handleUseItem = useCallback(
     (item: InventoryItem) => {
       if (item.id === 'coffee') {
         if (localInteractedIds.includes('coffee_used')) {
-          showMonologueWhisper('Bạn đã uống cạn cốc cà phê này rồi.');
+          showMonologueWhisper('Hết sạch rồi. Liếm đáy cốc thì hơi mất giá quá.');
           return;
         }
         if (setSanity) {
@@ -1274,14 +1643,14 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     {
       id: 'door_316',
       name: 'Cửa Phòng #316 (Phòng Cũ Của Miên)',
-      actionText: '[E] Soi khe cửa phòng niêm phong của Miên [✨]',
+      actionText: '[E] Soi khe cửa phòng cũ của Miên [✨]',
       x: 500,
       y: 120,
       w: 48,
       h: 50,
       triggerNodeId: 'node_hallway_door_316',
       canRepeat: true,
-      checkedMonologue: 'Băng niêm phong cảnh sát dán kín cửa phòng của Miên. Không thể vào trong.',
+      checkedMonologue: 'Hai dải giấy của chủ trọ dán chéo kín cửa phòng Miên. Không thể vào trong.',
     },
     {
       id: 'hallway_window',
@@ -1294,6 +1663,28 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
       triggerNodeId: 'node_hallway_window',
       canRepeat: true,
       checkedMonologue: 'Mưa vẫn rơi tầm tã... Thành phố bên ngoài im lìm trong bóng tối.',
+    },
+    {
+      id: 'obj_hall_mirror',
+      name: 'Gương Cầu Lồi Góc Cầu Thang',
+      actionText: '[E] Soi vào tấm gương cầu lồi ố vàng [🪞]',
+      x: 40,
+      y: 150,
+      w: 30,
+      h: 40,
+      triggerNodeId: 'obj_hall_mirror',
+      checkedMonologue: 'Mình không muốn nhìn vào tấm gương đó thêm lần nào nữa.',
+    },
+    {
+      id: 'obj_hall_clock',
+      name: 'Đồng Hồ Treo Tường',
+      actionText: '[E] Xem chiếc đồng hồ tròn treo giữa hai cửa phòng [🕒]',
+      x: 185,
+      y: 110,
+      w: 50,
+      h: 40,
+      triggerNodeId: 'obj_hall_clock',
+      checkedMonologue: 'Tíc... tắc... Kim giây vẫn giật lùi. Vẫn mãi là 03:14.',
     },
     {
       id: 'stairs',
@@ -1315,6 +1706,11 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     anImg.src = characterSprite;
     anImg.onload = () => { anSpriteRef.current = anImg; };
   }, [characterSprite]);
+  useEffect(() => {
+    const mienImg = new Image();
+    mienImg.src = '/assets/mien_spritesheet.png';
+    mienImg.onload = () => { mienSpriteRef.current = mienImg; };
+  }, []);
 
   // Xử lý bàn phím
   useEffect(() => {
@@ -1376,7 +1772,8 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
               return;
             }
 
-            showMonologueWhisper('Cầu chì bị đứt khiến cả hành lang chìm trong bóng tối... Bạn cần tìm Cuộn Băng Dính hoặc Kẹp Ghim để nối lại!');
+            stalkerPokeRef.current = true;
+            showMonologueWhisper('Cầu chì lại đứt. Lần trước mình cắm cùng lúc nồi cơm, quạt và máy tính là cả tầng tối om, đến giờ chủ trọ vẫn nhìn mình bằng ánh mắt đó... Cần Cuộn Băng Dính hoặc Kẹp Ghim để nối lại!');
             return;
           }
 
@@ -1410,7 +1807,20 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
             return;
           }
 
-          // 5. Các điểm tương tác khác
+          // 5. Gương & đồng hồ: xem kỹ một lần (gương trừ Sanity), lần sau chỉ độc thoại ngắn
+          if (target.id === 'obj_hall_mirror' || target.id === 'obj_hall_clock') {
+            if (localInteractedIds.includes(target.id)) {
+              showMonologueWhisper(target.checkedMonologue ?? '');
+              return;
+            }
+            const id = target.id;
+            setLocalInteractedIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+            onMarkInteracted?.(id);
+            onTrigger(target.triggerNodeId);
+            return;
+          }
+
+          // 6. Các điểm tương tác khác
           onTrigger(target.triggerNodeId);
         }
       }
@@ -1461,32 +1871,87 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     } catch {}
   }, [getAudioContext, volume]);
 
-  // Tiếng sấm rền xa sau mỗi tia chớp
+  // Tiếng sấm rền chân thực ngay khi chớp nháy ở cửa sổ hành lang
   const playThunder = useCallback(() => {
     if (volume <= 0) return;
     const ctx = getAudioContext();
     if (!ctx) return;
     try {
       const t = ctx.currentTime;
-      const dur = 2.2;
-      const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-      const src = ctx.createBufferSource();
-      src.buffer = buffer;
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.setValueAtTime(160, t);
-      lp.frequency.exponentialRampToValueAtTime(60, t + dur);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime((volume / 100) * 0.22, t + 0.12);
-      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-      src.connect(lp);
-      lp.connect(g);
-      g.connect(ctx.destination);
-      src.start(t);
-      src.stop(t + dur);
+      const masterVol = volume / 100;
+
+      // 1. Tiếng nổ sét đanh xé toạc (Initial Strike Crack)
+      const crackDur = 0.22;
+      const crackBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * crackDur), ctx.sampleRate);
+      const crackData = crackBuf.getChannelData(0);
+      for (let i = 0; i < crackData.length; i++) {
+        crackData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.04));
+      }
+      const crackSrc = ctx.createBufferSource();
+      crackSrc.buffer = crackBuf;
+      const crackFilter = ctx.createBiquadFilter();
+      crackFilter.type = 'bandpass';
+      crackFilter.frequency.setValueAtTime(1100, t);
+      crackFilter.Q.setValueAtTime(2.2, t);
+      const crackGain = ctx.createGain();
+      crackGain.gain.setValueAtTime(masterVol * 0.45, t);
+      crackGain.gain.exponentialRampToValueAtTime(0.001, t + crackDur);
+      crackSrc.connect(crackFilter);
+      crackFilter.connect(crackGain);
+      crackGain.connect(ctx.destination);
+      crackSrc.start(t);
+      crackSrc.stop(t + crackDur);
+
+      // 2. Xung kích trầm rung ngực (Low-end Thump)
+      const thumpOsc = ctx.createOscillator();
+      const thumpGain = ctx.createGain();
+      thumpOsc.type = 'sine';
+      thumpOsc.frequency.setValueAtTime(220, t);
+      thumpOsc.frequency.exponentialRampToValueAtTime(45, t + 0.18);
+      thumpGain.gain.setValueAtTime(masterVol * 0.38, t);
+      thumpGain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      thumpOsc.connect(thumpGain);
+      thumpGain.connect(ctx.destination);
+      thumpOsc.start(t);
+      thumpOsc.stop(t + 0.2);
+
+      // 3. Tiếng sấm gầm rền rĩ kéo dài (Rolling Rumble)
+      const rumbleDur = 3.2;
+      const rumbleBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * rumbleDur), ctx.sampleRate);
+      const rumbleData = rumbleBuf.getChannelData(0);
+      for (let i = 0; i < rumbleData.length; i++) {
+        rumbleData[i] = Math.random() * 2 - 1;
+      }
+      const rumbleSrc = ctx.createBufferSource();
+      rumbleSrc.buffer = rumbleBuf;
+      const rumbleFilter = ctx.createBiquadFilter();
+      rumbleFilter.type = 'lowpass';
+      rumbleFilter.frequency.setValueAtTime(450, t);
+      rumbleFilter.frequency.exponentialRampToValueAtTime(80, t + rumbleDur);
+      const rumbleGain = ctx.createGain();
+      rumbleGain.gain.setValueAtTime(0.001, t);
+      rumbleGain.gain.linearRampToValueAtTime(masterVol * 0.36, t + 0.08);
+      rumbleGain.gain.exponentialRampToValueAtTime(masterVol * 0.18, t + 0.9);
+      rumbleGain.gain.exponentialRampToValueAtTime(0.001, t + rumbleDur);
+      rumbleSrc.connect(rumbleFilter);
+      rumbleFilter.connect(rumbleGain);
+      rumbleGain.connect(ctx.destination);
+      rumbleSrc.start(t);
+      rumbleSrc.stop(t + rumbleDur);
+
+      // 4. Sóng rung Sub-bass dập dềnh
+      const subOsc = ctx.createOscillator();
+      const subGain = ctx.createGain();
+      subOsc.type = 'triangle';
+      subOsc.frequency.setValueAtTime(65, t);
+      subOsc.frequency.linearRampToValueAtTime(38, t + 2.5);
+      subGain.gain.setValueAtTime(0.001, t);
+      subGain.gain.linearRampToValueAtTime(masterVol * 0.25, t + 0.1);
+      subGain.gain.exponentialRampToValueAtTime(0.001, t + 2.5);
+      subOsc.connect(subGain);
+      subGain.connect(ctx.destination);
+      subOsc.start(t);
+      subOsc.stop(t + 2.5);
     } catch {}
   }, [getAudioContext, volume]);
 
@@ -1515,6 +1980,185 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     } catch {}
   }, [getAudioContext, volume]);
 
+  /** Đoạn nhiễu trắng dùng chung cho tiếng gió / bước chân ướt / rơ-le */
+  const noiseBufRef = useRef<AudioBuffer | null>(null);
+  const getNoise = useCallback((ctx: AudioContext) => {
+    if (!noiseBufRef.current || noiseBufRef.current.sampleRate !== ctx.sampleRate) {
+      const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      noiseBufRef.current = buf;
+    }
+    return noiseBufRef.current;
+  }, []);
+
+  // Rơ-le đèn tuýp: "tách" nhỏ cho từng bóng, bóng cuối "TẠCH!" nặng
+  const playRelay = useCallback((i: number) => {
+    if (volume <= 0) return;
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    try {
+      const t = ctx.currentTime;
+      const last = i === TUBES.length - 1;
+      const vol = (volume / 100) * (last ? 0.32 : 0.14);
+      const src = ctx.createBufferSource();
+      src.buffer = getNoise(ctx);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = last ? 1600 : 2600;
+      bp.Q.value = 1.4;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + (last ? 0.06 : 0.03));
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = (TUBES[i] + 30) / CANVAS_WIDTH * 1.4 - 0.7;
+      src.connect(bp).connect(g).connect(pan).connect(ctx.destination);
+      src.start(t, Math.random() * 0.5);
+      src.stop(t + 0.07);
+      if (last) {
+        const o = ctx.createOscillator();
+        const og = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(130, t);
+        o.frequency.exponentialRampToValueAtTime(50, t + 0.12);
+        og.gain.setValueAtTime((volume / 100) * 0.16, t);
+        og.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+        o.connect(og).connect(ctx.destination);
+        o.start(t);
+        o.stop(t + 0.15);
+      }
+    } catch {}
+  }, [getAudioContext, getNoise, volume]);
+
+  // Tăng phô huỳnh quang rít nhẹ rồi lắng xuống thành tiếng ù
+  const playBallastWhine = useCallback(() => {
+    if (volume <= 0) return;
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    try {
+      const t = ctx.currentTime;
+      const vol = volume / 100;
+      const whine = ctx.createOscillator();
+      whine.type = 'sine';
+      whine.frequency.setValueAtTime(6200, t);
+      whine.frequency.linearRampToValueAtTime(7800, t + 1.2);
+      const wg = ctx.createGain();
+      wg.gain.setValueAtTime(0.0001, t);
+      wg.gain.linearRampToValueAtTime(vol * 0.012, t + 0.5);
+      wg.gain.exponentialRampToValueAtTime(0.0001, t + 2.4);
+      const hum = ctx.createOscillator();
+      hum.type = 'sawtooth';
+      hum.frequency.value = 100;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 400;
+      const hg = ctx.createGain();
+      hg.gain.setValueAtTime(0.0001, t);
+      hg.gain.linearRampToValueAtTime(vol * 0.03, t + 0.9);
+      hg.gain.exponentialRampToValueAtTime(0.0001, t + 2.6);
+      whine.connect(wg).connect(ctx.destination);
+      hum.connect(lp).connect(hg).connect(ctx.destination);
+      whine.start(t);
+      hum.start(t);
+      whine.stop(t + 2.5);
+      hum.stop(t + 2.7);
+    } catch {}
+  }, [getAudioContext, volume]);
+
+  // Gió rít nhẹ khi bóng ma tan vào bóng tối
+  const playGhostWind = useCallback(() => {
+    if (volume <= 0) return;
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    try {
+      const t = ctx.currentTime;
+      const src = ctx.createBufferSource();
+      src.buffer = getNoise(ctx);
+      src.loop = true;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.Q.value = 6;
+      bp.frequency.setValueAtTime(700, t);
+      bp.frequency.exponentialRampToValueAtTime(2300, t + 0.5);
+      bp.frequency.exponentialRampToValueAtTime(500, t + 1.6);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime((volume / 100) * 0.09, t + 0.25);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.7);
+      const pan = ctx.createStereoPanner();
+      pan.pan.setValueAtTime(-0.1, t);
+      pan.pan.linearRampToValueAtTime(0.5, t + 1.6);
+      src.connect(bp).connect(g).connect(pan).connect(ctx.destination);
+      src.start(t);
+      src.stop(t + 1.75);
+    } catch {}
+  }, [getAudioContext, getNoise, volume]);
+
+  // Bước chân ướt "bẹp" từ phía cầu thang: to dần, tiến dần từ trái vào sau lưng
+  const playWetStep = useCallback((i: number) => {
+    if (volume <= 0) return;
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    try {
+      const t = ctx.currentTime;
+      const f = (i + 1) / STALKER_STEPS;
+      const vol = (volume / 100) * (0.05 + f * 0.13);
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = -0.85 + f * 0.6;
+      pan.connect(ctx.destination);
+      // Tiếng dép ướt dính sàn
+      const src = ctx.createBufferSource();
+      src.buffer = getNoise(ctx);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.Q.value = 1.3;
+      bp.frequency.setValueAtTime(900, t);
+      bp.frequency.exponentialRampToValueAtTime(260, t + 0.14);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      src.connect(bp).connect(g).connect(pan);
+      src.start(t, Math.random() * 0.5);
+      src.stop(t + 0.17);
+      // Tiếng nước bị ép ra "bẹp"
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(260, t + 0.02);
+      o.frequency.exponentialRampToValueAtTime(90, t + 0.1);
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.0001, t + 0.02);
+      og.gain.linearRampToValueAtTime(vol * 0.6, t + 0.03);
+      og.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+      o.connect(og).connect(pan);
+      o.start(t + 0.02);
+      o.stop(t + 0.12);
+    } catch {}
+  }, [getAudioContext, getNoise, volume]);
+
+  // Tíc (kim giật lùi) / tắc (bật về) của đồng hồ kẹt giờ, nhỏ dần theo khoảng cách
+  const playClockTick = useCallback((back: boolean, loudness: number) => {
+    if (volume <= 0 || loudness <= 0) return;
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    try {
+      const t = ctx.currentTime;
+      const o = ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.setValueAtTime(back ? 2300 : 1700, t);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = back ? 2600 : 1900;
+      bp.Q.value = 4;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime((volume / 100) * 0.05 * loudness, t);
+      g.gain.exponentialRampToValueAtTime(0.0005, t + 0.025);
+      o.connect(bp).connect(g).connect(ctx.destination);
+      o.start(t);
+      o.stop(t + 0.03);
+    } catch {}
+  }, [getAudioContext, volume]);
+
   // Ảnh chụp state mới nhất cho vòng lặp RAF (tránh khởi động lại loop mỗi lần state đổi)
   const snapshotRef = useRef<HallSnapshot>({
     sanity,
@@ -1531,10 +2175,22 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     };
   }, [sanity, localInteractedIds, localInventoryIds, isInventoryOpen]);
 
-  const soundRef = useRef({ playStepSound, playFluoroBuzz, playThunder, playGhostTyping });
+  const soundRef = useRef({ playStepSound, playFluoroBuzz, playThunder, playGhostTyping, playRelay, playBallastWhine, playGhostWind, playWetStep, playClockTick });
   useEffect(() => {
-    soundRef.current = { playStepSound, playFluoroBuzz, playThunder, playGhostTyping };
-  }, [playStepSound, playFluoroBuzz, playThunder, playGhostTyping]);
+    soundRef.current = { playStepSound, playFluoroBuzz, playThunder, playGhostTyping, playRelay, playBallastWhine, playGhostWind, playWetStep, playClockTick };
+  }, [playStepSound, playFluoroBuzz, playThunder, playGhostTyping, playRelay, playBallastWhine, playGhostWind, playWetStep, playClockTick]);
+
+  // Sự kiện một lần từ vòng lặp (bóng ma tan / quay lại không thấy ai) → ghi cờ + độc thoại
+  const onceRef = useRef({ mark: (id: string) => { void id; }, whisper: (msg: string) => { void msg; } });
+  useEffect(() => {
+    onceRef.current = {
+      mark: (id: string) => {
+        setLocalInteractedIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+        onMarkInteracted?.(id);
+      },
+      whisper: showMonologueWhisper,
+    };
+  }, [onMarkInteracted, showMonologueWhisper]);
 
   const promptKeyRef = useRef('');
 
@@ -1545,12 +2201,13 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     if (!canvas || !ctx) return;
 
     const staticLayer = buildHallStaticLayer();
-    const postDark = buildPostLayer(CANVAS_WIDTH, CANVAS_HEIGHT, 0.92, 120);
-    const postLit = buildPostLayer(CANVAS_WIDTH, CANVAS_HEIGHT, 0.6, 180);
+    const postLayer = buildPostLayer(CANVAS_WIDTH, CANVAS_HEIGHT, 0);
+    const followLight = createFollowLight(); // Vignette động bám theo An
     const lightLayer = document.createElement('canvas');
     lightLayer.width = CANVAS_WIDTH;
     lightLayer.height = CANVAS_HEIGHT;
     const sim = createHallSim();
+    const em = emotes();
 
     let animId = 0;
     let last = performance.now();
@@ -1596,7 +2253,10 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
           if (canMoveX) p.x = nextX;
           if (canMoveY) p.y = nextY;
           // Chu kỳ bước 0-1-2-1 (đổi chân mỗi 8 tick), tiếng bước khi chân chạm sàn
-          if (stepWalk(p, k)) soundRef.current.playStepSound();
+          if (stepWalk(p, k)) {
+            soundRef.current.playStepSound();
+            followLight.pulse = 1;
+          }
         } else {
           stopWalk(p);
         }
@@ -1608,6 +2268,20 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
       const events = updateHallSim(sim, k, t, powerOn);
       if (events.buzz) soundRef.current.playFluoroBuzz();
       if (events.thunder) soundRef.current.playThunder();
+      if (events.ballast) soundRef.current.playBallastWhine();
+      for (const i of events.relays) soundRef.current.playRelay(i);
+      if (events.clockTick) {
+        const dc = Math.hypot(p.x - HALL_CLOCK.x, p.y - 150);
+        if (dc < 170) soundRef.current.playClockTick(sim.clockBack, 1 - dc / 170);
+      }
+
+      // Bóng ma thoáng qua trước cửa #312
+      const mienImg = mienSpriteRef.current && mienSpriteRef.current.complete ? mienSpriteRef.current : null;
+      if (updateGhost(sim.ghost, t, p, powerOn, snap.interacted.includes(GHOST_FLAG), mienImg)) {
+        soundRef.current.playGhostWind();
+        emoteNow(em, 'an', 'exclaim');
+        onceRef.current.mark(GHOST_FLAG);
+      }
       if (t >= sim.nextTyping) {
         sim.nextTyping = t + 1.2 + Math.random() * 2.5;
         const d312 = Math.hypot(p.x - (DOOR_312.x + 24), p.y - 170);
@@ -1624,12 +2298,34 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
           nearTarget = obj;
         }
       }
+      // Tiếng bước chân ướt sau lưng khi đứng ở hộp cầu dao trong bóng tối (một lần mỗi ván)
+      if (sim.stalker.state === 'idle' && snap.interacted.includes(STALKER_FLAG)) sim.stalker.state = 'done';
+      if (stalkerPokeRef.current) {
+        stalkerPokeRef.current = false;
+        if (sim.stalker.state === 'idle') sim.stalker.still = STALKER_IDLE_SEC;
+      }
+      const st = updateStalker(sim.stalker, t, k, p, nearTarget?.id === 'fuse_box', powerOn);
+      if (st.step >= 0) soundRef.current.playWetStep(st.step);
+      if (st.stop) {
+        emoteNow(em, 'an', 'exclaim');
+        onceRef.current.mark(STALKER_FLAG);
+        if (!powerOn) onceRef.current.whisper('...Không có ai cả. Rõ ràng vừa có người đứng ngay sau lưng mình. Nhưng sao vệt nước dưới sàn vẫn còn ướt?');
+      }
+
       const prompt = nearTarget ? computePrompt(nearTarget, snap) : null;
       const promptKey = prompt ? `${prompt.isDone}|${prompt.text}` : '';
       if (promptKey !== promptKeyRef.current) {
         promptKeyRef.current = promptKey;
         setActivePrompt(prompt);
       }
+      updateEmotes(em, {
+        t,
+        nearId: nearTarget ? nearTarget.id : null,
+        nearDone: !!prompt?.isDone,
+        sanity: snap.sanity,
+        moving: p.isMoving,
+        distToMien: null,
+      });
 
       // Vẽ
       const fr: HallFrame = {
@@ -1640,18 +2336,29 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
         hasFuseItem: snap.inventory.includes('electrical_tape') || snap.inventory.includes('paperclip'),
         lightning: sim.lightning,
         tubes: sim.tubes.map((tb) => tb.level),
+        clockSec: sim.clockBack ? CLOCK_STUCK_SEC - 1 : CLOCK_STUCK_SEC,
         player: p,
         nearest: nearTarget,
         snap,
       };
       const sprites: HallSprites = {
         an: anSpriteRef.current && anSpriteRef.current.complete ? anSpriteRef.current : null,
+        mien: mienImg,
       };
 
       ctx.imageSmoothingEnabled = false;
+      const shakeAmt = sim.shake || 0;
+      if (shakeAmt > 0.05) {
+        ctx.save();
+        const sx = (Math.random() - 0.5) * shakeAmt;
+        const sy = (Math.random() - 0.5) * shakeAmt;
+        ctx.translate(sx, sy);
+      }
       ctx.drawImage(staticLayer, 0, 0);
       drawTubes(ctx, fr);
       drawStairs(ctx, fr);
+      drawHallMirror(ctx, fr, sprites);
+      drawHallClock(ctx, fr);
       drawHallWindow(ctx, fr);
       drawDoor314(ctx, fr);
       drawDoor312(ctx, fr);
@@ -1660,6 +2367,7 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
       drawNoticeBoard(ctx, fr);
       drawDoor316(ctx, fr);
       drawPuddles(ctx, fr, sprites, sim.ripples);
+      drawFootprints(ctx, sim.stalker, t, 'base');
       // Ghế và An sắp xếp theo chiều sâu
       if (p.y + 16 < CHAIR.y + 25) {
         drawPlayer(ctx, fr, sprites);
@@ -1669,8 +2377,17 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
         drawPlayer(ctx, fr, sprites);
       }
       drawHallLighting(ctx, lightLayer, fr);
+      // Bóng ma vẽ sau lớp tối: tự hắt một quầng mờ, chỉ thấy lờ mờ ở cuối vùng nhìn
+      drawFleetingShadow(ctx, fr, sim.ghost);
+      drawFootprints(ctx, sim.stalker, t, 'sheen');
       drawDust(ctx, sim.dust, fr);
-      ctx.drawImage(powerOn ? postLit : postDark, 0, 0);
+      updateFollowLight(followLight, p.x, p.y - 20, k);
+      drawFollowVignette(ctx, CANVAS_WIDTH, CANVAS_HEIGHT, followLight, fr.sanity, t, hallVignette(fr));
+      ctx.drawImage(postLayer, 0, 0);
+      if (shakeAmt > 0.05) {
+        ctx.restore();
+      }
+      drawEmotes(ctx, em, { cx: p.x, headY: p.y - AN_DRAW_H + 20 });
       drawHallHUD(ctx, fr);
 
       animId = requestAnimationFrame(gameLoop);
@@ -1678,60 +2395,47 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
 
     animId = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(animId);
-  }, []);
+  }, [emotes]);
+
+  // Lớp giao diện HTML phóng to cùng tỉ lệ với khung canvas
+  const { ref: frameRef, scale: uiScale } = useFrameScale(CANVAS_WIDTH);
+  useMouseParallax(canvasRef, parallax);
 
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center bg-black overflow-hidden select-none">
       {/* Khung Canvas hiển thị Hành lang tầng 3 */}
-      <div className="relative border-4 border-zinc-800 shadow-[0_0_50px_rgba(0,0,0,0.9)] rounded-sm overflow-hidden">
+      <div className="relative border-4 border-zinc-800 shadow-[0_0_50px_rgba(0,0,0,0.9)] rounded-sm overflow-hidden" ref={frameRef} style={{ width: `min(96vw, calc((100vh - 60px) * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, marginTop: 44 }}>
         <canvas
           ref={canvasRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
-          className="pixelated block cursor-pointer max-w-full max-h-[86vh] object-contain"
+          className="pixelated block cursor-pointer w-full h-full"
           style={{ imageRendering: 'pixelated' }}
         />
+        <div className="absolute top-0 left-0" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${uiScale})`, transformOrigin: 'top left' }}>
 
-        {/* Nút truy cập Túi Đồ [I] */}
-        <button
-          onClick={() => setIsInventoryOpen(true)}
-          className="absolute top-3 right-3 z-30 flex items-center gap-1.5 px-3 py-1.5 bg-black/85 hover:bg-zinc-900 border border-cyan-500/80 hover:border-cyan-300 text-cyan-300 rounded shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all font-mono text-xs cursor-pointer group"
-          title="Nhấn phím [I] để mở túi đồ"
-        >
-          <span className="text-sm group-hover:scale-110 transition-transform">🎒</span>
-          <span className="font-bold tracking-wider">[I] TÚI ĐỒ</span>
-          <span className="bg-cyan-950 px-1.5 py-0.5 rounded border border-cyan-800 text-[10px] text-cyan-400 font-bold">
-            {localInventoryIds.length}
-          </span>
-        </button>
 
         {/* Banner thông báo nhặt được vật phẩm mới */}
         {pickupAlert && (
-          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 max-w-sm sm:max-w-md w-[92%] px-2 animate-bounce">
-            <div className="bg-black/95 border-2 border-yellow-400 p-3 rounded shadow-[0_0_25px_rgba(234,179,8,0.5)] flex items-center gap-3 backdrop-blur-md">
-              <div className="text-3xl shrink-0 p-1.5 bg-yellow-950/80 border border-yellow-500 rounded">
-                {pickupAlert.icon}
+          <div className="absolute top-3 right-3 z-40 w-72 max-w-[60%]" style={{ animation: 'pickup-in 0.25s ease-out' }}>
+            <style>{'@keyframes pickup-in { from { opacity: 0; transform: translateX(16px) } to { opacity: 1; transform: none } }'}</style>
+            <div className="bg-black/90 border border-yellow-500/80 px-2.5 py-2 rounded-md shadow-[0_0_10px_rgba(234,179,8,0.3)] flex items-start gap-2 backdrop-blur-md font-mono">
+              <div className="text-lg leading-none shrink-0 mt-0.5">{pickupAlert.icon}</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold text-yellow-300 truncate">{tx(pickupAlert.name)}</span>
+                  <button
+                    onClick={() => {
+                      setPickupAlert(null);
+                      setIsInventoryOpen(true);
+                    }}
+                    className="text-[9px] px-1 py-0.5 border border-yellow-600/70 text-yellow-400 hover:bg-yellow-500 hover:text-black rounded cursor-pointer shrink-0"
+                  >
+                    I
+                  </button>
+                </div>
+                <div className="text-[10px] text-zinc-300 mt-0.5 leading-snug">{tx(pickupAlert.msg)}</div>
               </div>
-              <div className="flex-1 overflow-hidden font-mono">
-                <div className="text-[10px] text-yellow-400 font-bold tracking-widest uppercase">
-                  ✨ VẬT PHẨM MỚI ĐÃ THU THẬP
-                </div>
-                <div className="text-xs sm:text-sm font-bold text-white truncate">
-                  {pickupAlert.name}
-                </div>
-                <div className="text-[10px] sm:text-[11px] text-zinc-300 mt-0.5 leading-snug">
-                  {pickupAlert.msg}
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setPickupAlert(null);
-                  setIsInventoryOpen(true);
-                }}
-                className="px-2.5 py-1 text-[10px] bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded cursor-pointer shrink-0 font-mono shadow-sm"
-              >
-                XEM [I]
-              </button>
             </div>
           </div>
         )}
@@ -1739,22 +2443,22 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
         {/* Thanh gợi ý tương tác [E] dạng viên thuốc nổi đỉnh màn hình (chuẩn Màn 1 & 3) */}
         {activePrompt && (
           <div
-            className={`absolute top-16 left-1/2 -translate-x-1/2 z-20 max-w-[92%] px-3.5 py-1.5 font-mono text-xs rounded-full flex items-center gap-2 backdrop-blur-sm ${
+            className={`absolute bottom-12 left-3 z-20 max-w-[55%] px-2 py-1 font-mono text-[11px] rounded-md flex items-center gap-1.5 backdrop-blur-sm ${
               activePrompt.isDone
                 ? 'bg-black/85 border border-zinc-700/80 text-zinc-400'
-                : 'bg-black/90 border border-orange-500 text-orange-100 shadow-[0_0_20px_rgba(249,115,22,0.6)] animate-bounce'
+                : 'bg-black/90 border border-orange-500 text-orange-100 shadow-[0_0_8px_rgba(249,115,22,0.35)]'
             }`}
           >
             <span
-              className={`shrink-0 px-1.5 py-0.5 font-bold rounded text-[10px] ${
+              className={`shrink-0 px-1 py-0.5 font-bold rounded text-[10px] leading-none ${
                 activePrompt.isDone
                   ? 'bg-zinc-800 text-zinc-400 border border-zinc-700'
                   : 'bg-orange-500 text-black shadow-[0_0_8px_rgba(249,115,22,0.9)]'
               }`}
             >
-              {activePrompt.isDone ? 'ĐÃ KIỂM TRA' : 'E'}
+              {activePrompt.isDone ? '✓' : 'E'}
             </span>
-            <span className="truncate">{activePrompt.text}</span>
+            <span className="truncate">{tx(activePrompt.text).replace(/^\[E\]\s*/, '').replace(/\s*-?\s*(?:Nhấn|Press) \[E\]\s*(?:để\s*|to\s*)?/i, ' · ')}</span>
           </div>
         )}
 
@@ -1763,14 +2467,14 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
           <div
             onClick={() => setMonologueWhisper(null)}
             className="absolute bottom-12 right-3 max-w-xs sm:max-w-sm bg-black/95 border-l-4 border-cyan-400 border-t border-r border-b border-zinc-800 p-3 rounded-r shadow-2xl animate-fade-in z-20 backdrop-blur-md cursor-pointer hover:border-cyan-300 transition-colors"
-            title="Click để đóng nhanh"
+            title={tx('Click để đóng nhanh')}
           >
             <div className="flex items-center gap-1.5 text-[10px] uppercase font-mono text-cyan-400 tracking-wider mb-1">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping inline-block" />
-              Độc thoại nội tâm
+              {tx('Độc thoại nội tâm')}
             </div>
-            <p className="text-xs sm:text-sm font-sans text-zinc-300 italic leading-snug">
-              &ldquo;{monologueWhisper}&rdquo;
+            <p className="text-xs sm:text-sm font-sans text-zinc-300 italic leading-snug text-justify">
+              &ldquo;{tx(monologueWhisper)}&rdquo;
             </p>
           </div>
         )}
@@ -1779,26 +2483,27 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
         <div className="absolute bottom-2 left-3 right-3 z-10 p-0.5 rounded border border-orange-500/70 bg-black/80 shadow-[0_0_14px_rgba(249,115,22,0.35)] backdrop-blur-sm">
           <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-3 py-1 rounded-sm border border-red-900/80 text-[10px] font-mono text-zinc-400 whitespace-nowrap">
             <div className="flex items-center gap-2.5">
-              <span><span className="text-orange-400 font-bold">WASD</span> Di chuyển</span>
+              <span><span className="text-orange-400 font-bold">WASD</span> {t.hud.move}</span>
               <button
                 onClick={() => setIsInventoryOpen(true)}
                 className="hover:text-zinc-200 cursor-pointer"
-                title="Nhấn phím [I] để mở túi đồ"
+                title={t.hud.inventoryTitle}
               >
-                <span className="text-cyan-300 font-bold">I</span> Túi đồ
+                <span className="text-cyan-300 font-bold">I</span> {t.hud.inventory}
               </button>
-              <span><span className="text-orange-400 font-bold">E</span> Tương tác</span>
+              <span><span className="text-orange-400 font-bold">E</span> {t.hud.interact}</span>
             </div>
             <div className="text-center">
-              Điện áp:{' '}
+              {tx('Điện áp:')}{' '}
               {isPowerOn ? (
-                <span className="text-emerald-400 font-bold">ỔN ĐỊNH 💡</span>
+                <span className="text-emerald-400 font-bold">{tx('ỔN ĐỊNH 💡')}</span>
               ) : (
-                <span className="text-red-400 font-bold animate-pulse">MẤT ĐIỆN ⚡</span>
+                <span className="text-red-400 font-bold animate-pulse">{tx('MẤT ĐIỆN ⚡')}</span>
               )}
             </div>
-            <div className="text-red-500/80 font-bold truncate">HÀNH LANG TẦNG 3 • KHU TẬP THỂ CŨ</div>
+            <div className="text-red-500/80 font-bold truncate">{tx('HÀNH LANG TẦNG 3 • KHU TẬP THỂ CŨ')}</div>
           </div>
+        </div>
         </div>
       </div>
 

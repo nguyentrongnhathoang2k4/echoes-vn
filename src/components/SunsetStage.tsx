@@ -3,11 +3,18 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MusicBoxMinigame } from './minigames/MusicBoxMinigame';
 import { PolaroidMinigame } from './minigames/PolaroidMinigame';
 import { RadioMinigame } from './minigames/RadioMinigame';
+import { FlashbackCutscene } from './FlashbackCutscene';
 import {
   DORM_PAL, hash, px, block, outlinedText,
   buildPostLayer, drawTargetMarker, drawVitals, drawHudSubtitle,
+  createFollowLight, updateFollowLight, drawFollowVignette,
 } from './pixel/pixelKit';
 import { drawSpriteFrame, getSpriteFrame, stepWalk, stopWalk, bodyBob, mienFloat, drawSwayingFigure, drawHoloShadow, drawHoloDust } from './pixel/spriteKit';
+import { useFrameScale } from './pixel/useFrameScale';
+import { useMouseParallax } from './pixel/useMouseParallax';
+import { useLanguage } from '../context/LanguageContext';
+import { EmoteDirector, createEmoteDirector, emoteNow, updateEmotes, drawEmotes } from './pixel/emote';
+import { tx } from '../locales/tx';
 
 interface InteractableObject {
   id: string;
@@ -30,6 +37,10 @@ interface SunsetStageProps {
   interactedIds?: string[];
   onMarkInteracted?: (id: string) => void;
   volume?: number;
+  /** Khung canvas nghiêng nhẹ theo con trỏ chuột (cài đặt) */
+  parallax?: boolean;
+  /** Báo cho trang khi Màn 2 bắt đầu / kết thúc một cutscene riêng (tắt nhạc nền, chặn phím tắt) */
+  onCutsceneChange?: (active: boolean) => void;
 }
 
 type Direction = 'down' | 'left' | 'right' | 'up';
@@ -47,7 +58,7 @@ const CANVAS_HEIGHT = 500;
 export const CORE_ANOMALY_IDS = ['ch2_river', 'ch2_pigeon', 'ch2_coffee', 'ch2_bench', 'ch2_music_box'];
 
 // =====================================================================
-// BỐ CỤC BẾN BÌNH AN (THỊ TRẤN HOÀNG HÔN) — 800x500
+// BỐ CỤC BẾN AN YÊN (THỊ TRẤN HOÀNG HÔN) — 800x500
 // Thiên đường nhân tạo Miên dựng trong máy chủ: đẹp như tranh Shinkai / PC-98,
 // nhưng từng chi tiết đều "lỗi": khói lặp 2s, bồ câu đông cứng, sông trôi mã nhị phân.
 // =====================================================================
@@ -60,6 +71,8 @@ const PROMENADE_TOP = 240;
 const SUN = { x: 400, y: SKY_BOTTOM, r: 48 };
 const INTERACT_RADIUS = 65;
 const HITBOX_HALF_W = 14;
+// Viền tím mộng mị bám theo An (nhẹ hơn các màn tối)
+const SUNSET_VIGNETTE = { tint: [36, 8, 42], strength: 0.5, inner: 210, outer: 480 } as const;
 const SPRITE_W = 42;
 const SPRITE_H = 63;
 
@@ -154,13 +167,13 @@ const computePrompt = (target: InteractableObject, interacted: string[]): { text
     const isReady = anomaliesFound >= 5;
     return {
       text: isReady
-        ? `✨ Quyết định số phận cùng Miên (Đã tìm đủ 5/5 manh mối)`
-        : `Tâm sự với Miên (Cần tìm đủ 5 manh mối: hiện có ${anomaliesFound}/5)`,
+        ? tx('✨ Quyết định số phận cùng Miên (Đã tìm đủ 5/5 manh mối)')
+        : tx('Tâm sự với Miên (Cần tìm đủ 5 manh mối: hiện có {0}/5)', anomaliesFound),
       isDone: false,
     };
   }
   const isDone = interacted.includes(target.id) && !target.canRepeat;
-  return { text: isDone ? `${target.name} - Nhấn [E] để xem lại` : target.actionText, isDone };
+  return { text: isDone ? tx('{0} - Nhấn [E] để xem lại', tx(target.name)) : target.actionText, isDone };
 };
 
 // =====================================================================
@@ -645,7 +658,7 @@ function drawMusicBox(ctx: CanvasRenderingContext2D, fr: SunsetFrame) {
   note(x + 11, y - 14 + Math.sin(fr.t * 4.8 + 1.5) * 4, done ? '#f472b6' : '#f59e0b');
 }
 
-/** Biển tên góc phố BẾN BÌNH AN • SEC_1705 */
+/** Biển tên góc phố BẾN AN YÊN • SEC_1705 */
 function drawSign(ctx: CanvasRenderingContext2D, fr: SunsetFrame) {
   const { x, y } = SIGN;
   longShadow(ctx, x + 8, y + 20, 22, 3, 0.25);
@@ -654,7 +667,7 @@ function drawSign(ctx: CanvasRenderingContext2D, fr: SunsetFrame) {
   ctx.font = 'bold 7px monospace';
   ctx.textAlign = 'center';
   ctx.fillStyle = '#fef08a';
-  ctx.fillText('BẾN BÌNH AN', x + 8, y - 6);
+  ctx.fillText(tx('BẾN AN YÊN'), x + 8, y - 6);
   ctx.font = '6px monospace';
   ctx.fillStyle = Math.sin(fr.t * 6) > 0.7 ? '#22d3ee' : '#94a3b8';
   ctx.fillText('SEC_1705', x + 8, y - 1);
@@ -1014,6 +1027,199 @@ function drawSunsetLighting(ctx: CanvasRenderingContext2D, fr: SunsetFrame) {
   ctx.restore();
 }
 
+// =====================================================================
+// BẾN AN YÊN BUỔI SÁNG — dùng cho cutscene Ending A
+// Cùng bố cục, cùng vật thể với Màn 2 (vẽ bằng chính các hàm ở trên),
+// chỉ đổi trời hoàng hôn thành bình minh và các mảng tím mộng mị sang tông sáng sớm.
+// =====================================================================
+
+export const BEN_AN_YEN = {
+  width: CANVAS_WIDTH,
+  height: CANVAS_HEIGHT,
+  bench: BENCH,
+  tree: TREE,
+  horizon: SKY_BOTTOM,
+  sun: SUN,
+  bridge: BRIDGE,
+  mien: MIEN,
+  riverTop: RIVER_TOP,
+  riverBottom: RIVER_BOTTOM,
+  promenadeTop: PROMENADE_TOP,
+} as const;
+
+/** Khung hình giả: mọi dị tượng đã tắt, gió nhẹ */
+function morningFrame(t: number): SunsetFrame {
+  return {
+    t,
+    sanity: 100,
+    anomalies: 0,
+    phase: 0,
+    wind: 0.6,
+    interacted: new Set<string>(),
+    player: { x: -100, y: -100, speed: 0, dir: 'down', isMoving: false, frame: 1, animTimer: 0 },
+    nearest: null,
+  };
+}
+
+/** Đổi các mảng tím/hồng (giấc mơ) sang xanh lơ – xám đá buổi sáng, giữ nguyên các màu khác */
+function recolorToMorning(c: HTMLCanvasElement) {
+  const g = c.getContext('2d');
+  if (!g) return;
+  let img: ImageData;
+  try {
+    img = g.getImageData(0, 0, c.width, c.height);
+  } catch {
+    return;
+  }
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    const r = d[i] / 255;
+    const gg = d[i + 1] / 255;
+    const b = d[i + 2] / 255;
+    const max = Math.max(r, gg, b);
+    const min = Math.min(r, gg, b);
+    const l = (max + min) / 2;
+    if (max === min) continue;
+    const delta = max - min;
+    const s = l > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+    let h = max === r ? (gg - b) / delta + (gg < b ? 6 : 0) : max === gg ? (b - r) / delta + 2 : (r - gg) / delta + 4;
+    h *= 60;
+    if (s < 0.12 || h < 250 || h > 345) continue;
+    // Tím (sông, kè, bờ xa, nhà phố) → xanh lơ nhạt; hồng mận (gạch vỉa hè) → đá be ấm
+    const toStone = h >= 305;
+    const nh = toStone ? 32 / 360 : (200 + (h - 250) * 0.2) / 360;
+    const ns = toStone ? s * 0.3 : s * 0.5;
+    const nl = toStone ? Math.min(0.86, l * 1.55 + 0.16) : Math.min(0.9, l * 1.4 + 0.12);
+    const q = nl < 0.5 ? nl * (1 + ns) : nl + ns - nl * ns;
+    const p = 2 * nl - q;
+    const hue2rgb = (tt: number) => {
+      let x = tt;
+      if (x < 0) x += 1;
+      if (x > 1) x -= 1;
+      if (x < 1 / 6) return p + (q - p) * 6 * x;
+      if (x < 1 / 2) return q;
+      if (x < 2 / 3) return p + (q - p) * (2 / 3 - x) * 6;
+      return p;
+    };
+    d[i] = Math.round(hue2rgb(nh + 1 / 3) * 255);
+    d[i + 1] = Math.round(hue2rgb(nh) * 255);
+    d[i + 2] = Math.round(hue2rgb(nh - 1 / 3) * 255);
+  }
+  g.putImageData(img, 0, 0);
+}
+
+let morningLayers: { back: HTMLCanvasElement; tree: HTMLCanvasElement; front: HTMLCanvasElement } | null = null;
+
+function buildMorningLayers() {
+  const fr = morningFrame(0);
+  const make = (draw: (ctx: CanvasRenderingContext2D) => void, recolor: boolean) => {
+    const c = document.createElement('canvas');
+    c.width = CANVAS_WIDTH;
+    c.height = CANVAS_HEIGHT;
+    const ctx = c.getContext('2d');
+    if (ctx) draw(ctx);
+    if (recolor) recolorToMorning(c);
+    return c;
+  };
+  return {
+    back: make((ctx) => {
+      drawSkyline(ctx, 0);
+      drawFarBank(ctx, 0);
+      drawRiverBase(ctx, 0);
+      drawPromenade(ctx, 0);
+      drawDock(ctx, fr);
+      drawBridge(ctx, fr);
+      drawSign(ctx, fr);
+    }, true),
+    // Cây hoa tử đằng giữ nguyên sắc tím thật
+    tree: make((ctx) => drawWisteria(ctx, fr), false),
+    front: make((ctx) => {
+      drawStreetLamp(ctx, fr);
+      drawUmbrellaRadio(ctx, fr);
+      drawBicycle(ctx, fr);
+      drawCafe(ctx, fr);
+      drawBench(ctx, fr);
+    }, true),
+  };
+}
+
+let sunsetStaticCache: HTMLCanvasElement | null = null;
+
+/**
+ * Bến An Yên lúc hoàng hôn y như Màn 2 (dị tượng đã tắt) — dùng cho cutscene Ending B.
+ * pigeons = false: đàn bồ câu biến mất (vòng lặp bắt đầu mục rữa).
+ * bridge = false: bỏ cầu gỗ + hộp nhạc (để mặt trời lộ rõ, dùng cho ảnh Polaroid).
+ */
+export function drawBenAnYenSunset(ctx: CanvasRenderingContext2D, t: number, opts: { pigeons?: boolean; bridge?: boolean } = {}) {
+  if (!sunsetStaticCache) sunsetStaticCache = buildSunsetStaticLayer(0);
+  // Dị tượng đã tắt: sông chảy, hộp nhạc yên, bồ câu không còn khung xanh 0xDEAD
+  const fr: SunsetFrame = { ...morningFrame(t), interacted: new Set(['ch2_river', 'ch2_music_box', 'ch2_pigeon']) };
+  ctx.drawImage(sunsetStaticCache, 0, 0);
+  drawSun(ctx, fr);
+  drawClouds(ctx, fr);
+  drawDock(ctx, fr);
+  if (opts.bridge !== false) {
+    drawBridge(ctx, fr);
+    if (opts.pigeons !== false) drawPigeons(ctx, fr);
+    drawMusicBox(ctx, fr);
+  }
+  drawSign(ctx, fr);
+  drawWisteria(ctx, fr);
+  drawStreetLamp(ctx, fr);
+  drawUmbrellaRadio(ctx, fr);
+  drawBicycle(ctx, fr);
+  drawCafe(ctx, fr);
+  drawBench(ctx, fr);
+  // Ráng chiều phủ toàn cảnh
+  ctx.fillStyle = 'rgba(244,63,94,0.08)';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+}
+
+/** Vẽ Bến An Yên lúc bình minh lên canvas 800x500; t = giây kể từ đầu cảnh */
+export function drawBenAnYenMorning(ctx: CanvasRenderingContext2D, t: number) {
+  if (!morningLayers) morningLayers = buildMorningLayers();
+  // Trời sáng sớm
+  const sky = ctx.createLinearGradient(0, 0, 0, SKY_BOTTOM);
+  sky.addColorStop(0, '#8fb8de');
+  sky.addColorStop(0.6, '#cfe0ee');
+  sky.addColorStop(1, '#fbd9b8');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, SKY_BOTTOM + 2);
+  // Mặt trời mọc đúng chỗ mặt trời lặn ở Màn 2
+  const sunY = SUN.y - 12 - t * 3;
+  const glow = ctx.createRadialGradient(SUN.x, sunY, 6, SUN.x, sunY, 120);
+  glow.addColorStop(0, 'rgba(255,244,214,0.95)');
+  glow.addColorStop(1, 'rgba(255,244,214,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(SUN.x - 130, sunY - 130, 260, 260);
+  ctx.fillStyle = '#fff6da';
+  ctx.beginPath();
+  ctx.arc(SUN.x, sunY, 24, 0, Math.PI * 2);
+  ctx.fill();
+  // Mây trắng trôi chậm
+  for (let i = 0; i < 6; i++) {
+    const x = ((hash(i) * CANVAS_WIDTH + t * (4 + i)) % (CANVAS_WIDTH + 120)) - 60;
+    const y = 18 + hash(i + 5) * 60;
+    px(ctx, x, y, 44 + hash(i + 2) * 40, 6, 'rgba(255,255,255,0.75)');
+    px(ctx, x + 10, y - 4, 24, 4, 'rgba(255,255,255,0.6)');
+  }
+  ctx.drawImage(morningLayers.back, 0, 0);
+  // Mặt sông lấp lánh nắng sớm
+  for (let i = 0; i < 46; i++) {
+    const x = (i * 53 + t * 10) % CANVAS_WIDTH;
+    const y = RIVER_TOP + 4 + ((i * 17) % (RIVER_BOTTOM - RIVER_TOP - 8));
+    if (Math.sin(t * 3 + i) > 0.35) px(ctx, x, y, 6, 1, 'rgba(255,250,235,0.75)');
+  }
+  // Vệt mặt trời phản chiếu trên sông
+  for (let y = RIVER_TOP + 2; y < RIVER_BOTTOM; y += 4) {
+    const w = 30 - (y - RIVER_TOP) * 0.2 + Math.sin(t * 2 + y) * 4;
+    px(ctx, SUN.x - w / 2, y, w, 1, 'rgba(255,240,200,0.45)');
+  }
+  ctx.drawImage(morningLayers.tree, 0, 0);
+  ctx.drawImage(morningLayers.front, 0, 0);
+}
+
 /** HUD canvas: chấm lấp lánh manh mối chưa xem, khung ngắm, nhãn Miên, đồng hồ/SANITY tông hồng tím */
 function drawSunsetHUD(ctx: CanvasRenderingContext2D, fr: SunsetFrame, interactables: InteractableObject[]) {
   for (const item of interactables) {
@@ -1029,7 +1235,7 @@ function drawSunsetHUD(ctx: CanvasRenderingContext2D, fr: SunsetFrame, interacta
       drawTargetMarker(ctx, n, ready ? '#f472b6' : '#fda4af', fr.t);
       ctx.font = 'bold 9px monospace';
       ctx.textAlign = 'center';
-      outlinedText(ctx, ready ? '[E] ✦ SỐ PHẬN' : `[E] (${fr.anomalies}/5)`, n.x + n.w / 2, n.y - 16, ready ? '#f9a8d4' : '#fecdd3');
+      outlinedText(ctx, ready ? tx('[E] ✦ SỐ PHẬN') : `[E] (${fr.anomalies}/5)`, n.x + n.w / 2, n.y - 16, ready ? '#f9a8d4' : '#fecdd3');
       ctx.textAlign = 'left';
     } else {
       const done = fr.interacted.has(n.id) && !n.canRepeat;
@@ -1037,7 +1243,7 @@ function drawSunsetHUD(ctx: CanvasRenderingContext2D, fr: SunsetFrame, interacta
     }
   }
   drawVitals(ctx, fr.t, fr.sanity, { clock: '#f9a8d4', heart: '#f472b6', label: '#fdba74', bar: '#f0abfc' });
-  const label = fr.phase === 2 ? 'ẢO ẢNH: SỤP ĐỔ' : fr.phase === 1 ? 'ẢO ẢNH: RẠN NỨT' : 'ẢO ẢNH: BÌNH YÊN';
+  const label = fr.phase === 2 ? tx('ẢO ẢNH: SỤP ĐỔ') : fr.phase === 1 ? tx('ẢO ẢNH: RẠN NỨT') : tx('ẢO ẢNH: BÌNH YÊN');
   drawHudSubtitle(ctx, label, fr.phase === 2 ? '#f87171' : fr.phase === 1 ? '#f0abfc' : '#fdba74');
 }
 
@@ -1046,7 +1252,7 @@ function drawSunsetHUD(ctx: CanvasRenderingContext2D, fr: SunsetFrame, interacta
 // =====================================================================
 
 function createSunsetSim(): SunsetSim {
-  const words = ['17/05', 'AN', 'MIÊN', 'KÝ ỨC', '03:14', 'BÌNH AN'];
+  const words = ['17/05', 'AN', tx('MIÊN'), tx('KÝ ỨC'), '03:14', tx('AN YÊN')];
   const binary = ['01000001', '01010101', '01001101', '10110100', '00110001', '01110111'];
   const streams: DataStream[] = [];
   for (let i = 0; i < 12; i++) {
@@ -1110,7 +1316,10 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
   interactedIds = EMPTY_IDS,
   onMarkInteracted,
   volume = 80,
+  parallax = true,
+  onCutsceneChange,
 }) => {
+  const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const anSpriteRef = useRef<HTMLImageElement | null>(null);
@@ -1239,6 +1448,20 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
   const [activeMinigame, setActiveMinigame] = useState<'MUSIC_BOX' | 'POLAROID' | 'RADIO' | null>(null);
   const activeMinigameRef = useRef<'MUSIC_BOX' | 'POLAROID' | 'RADIO' | null>(null);
   useEffect(() => { activeMinigameRef.current = activeMinigame; }, [activeMinigame]);
+  // Hồi tưởng chiếu đè lên minigame Polaroid (minigame vẫn mở bên dưới, giữ nguyên trạng thái)
+  const [showFlashback, setShowFlashback] = useState(false);
+  const [flashbackDone, setFlashbackDone] = useState(false);
+  const showFlashbackRef = useRef(false);
+  useEffect(() => { showFlashbackRef.current = showFlashback; }, [showFlashback]);
+  const startFlashback = useCallback(() => {
+    setShowFlashback(true);
+    onCutsceneChange?.(true);
+  }, [onCutsceneChange]);
+  const endFlashback = useCallback(() => {
+    setShowFlashback(false);
+    setFlashbackDone(true);
+    onCutsceneChange?.(false);
+  }, [onCutsceneChange]);
   const whisperTimerRef = useRef<NodeJS.Timeout | null>(null);
   const keysHeld = useRef<Set<string>>(new Set());
 
@@ -1249,13 +1472,18 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     setLocalInteractedIds(interactedIds);
   }
 
+  // Bong bóng cảm xúc trên đầu An & Miên
+  const emotesRef = useRef<EmoteDirector | null>(null);
+  const emotes = useCallback(() => (emotesRef.current ??= createEmoteDirector()), []);
+
   const showMonologueWhisper = useCallback((msg: string) => {
+    emoteNow(emotes(), 'an', 'dots');
     if (whisperTimerRef.current) clearTimeout(whisperTimerRef.current);
     setMonologueWhisper(msg);
     whisperTimerRef.current = setTimeout(() => {
       setMonologueWhisper(null);
     }, 4500);
-  }, []);
+  }, [emotes]);
 
   // Lời tự sự mở màn khi bước vào Thị Trấn Hoàng Hôn
   useEffect(() => {
@@ -1427,6 +1655,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
   // Xử lý bàn phím
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (showFlashbackRef.current) return;   // Phím thuộc về đoạn hồi tưởng
       if (activeMinigameRef.current !== null) {
         if (e.key === 'Escape') {
           setActiveMinigame(null);
@@ -1483,8 +1712,10 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
 
     // Nền tĩnh dựng lười theo từng giai đoạn bầu trời (tối đa 3 bản)
     const staticLayers: Array<HTMLCanvasElement | null> = [null, null, null];
-    const postLayer = buildPostLayer(CANVAS_WIDTH, CANVAS_HEIGHT, 0.55, 220);
+    const postLayer = buildPostLayer(CANVAS_WIDTH, CANVAS_HEIGHT, 0);
+    const followLight = createFollowLight(); // Vignette động bám theo An
     const sim = createSunsetSim();
+    const em = emotes();
 
     let animId = 0;
     let last = performance.now();
@@ -1531,7 +1762,10 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
           if (canMoveX) p.x = nextX;
           if (canMoveY) p.y = nextY;
           // Chu kỳ bước 0-1-2-1 (đổi chân mỗi 8 tick), tiếng bước khi chân chạm đất
-          if (stepWalk(p, k)) soundRef.current.playStepSound();
+          if (stepWalk(p, k)) {
+            soundRef.current.playStepSound();
+            followLight.pulse = 1;
+          }
         } else {
           stopWalk(p);
         }
@@ -1554,6 +1788,17 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
         promptKeyRef.current = promptKey;
         setActivePrompt(prompt);
       }
+      // Miên ngân nga khi bến sông còn bình yên; An phát hiện càng nhiều dị tượng, cô càng lặng đi
+      updateEmotes(em, {
+        t,
+        nearId: nearTarget ? nearTarget.id : null,
+        nearDone: !!prompt?.isDone,
+        sanity: snap.sanity,
+        moving: p.isMoving,
+        distToMien: Math.hypot(p.x - (MIEN.x + SPRITE_W / 2), p.y - (MIEN.y + SPRITE_H - 4)),
+        mienGreet: phase < 2 ? 'heart' : 'dots',
+        mienIdle: phase === 0 ? 'note' : 'dots',
+      });
 
       // 4. Vẽ
       const fr: SunsetFrame = {
@@ -1589,7 +1834,15 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
       drawGroundObjects(ctx, fr, sprites);
       drawPetals(ctx, sim.petals);
       drawSunsetLighting(ctx, fr);
+      updateFollowLight(followLight, p.x, p.y - 20, k);
+      drawFollowVignette(ctx, CANVAS_WIDTH, CANVAS_HEIGHT, followLight, fr.sanity, t, SUNSET_VIGNETTE);
       ctx.drawImage(postLayer, 0, 0);
+      drawEmotes(
+        ctx,
+        em,
+        { cx: p.x, headY: p.y - SPRITE_H + 20 },
+        { cx: MIEN.x + SPRITE_W / 2, headY: MIEN.y + mienFloat(t) + 2 },
+      );
       drawSunsetHUD(ctx, fr, interactables.current);
 
       animId = requestAnimationFrame(gameLoop);
@@ -1597,21 +1850,26 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
 
     animId = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(animId);
-  }, []);
+  }, [emotes]);
 
   const anomaliesCount = localInteractedIds.filter(id => CORE_ANOMALY_IDS.includes(id)).length;
+
+  // Lớp giao diện HTML phóng to cùng tỉ lệ với khung canvas
+  const { ref: frameRef, scale: uiScale } = useFrameScale(CANVAS_WIDTH);
+  useMouseParallax(canvasRef, parallax);
 
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center bg-black overflow-hidden select-none">
       {/* Khung Canvas hiển thị Thị Trấn Hoàng Hôn */}
-      <div className="relative border-4 border-fuchsia-950/80 shadow-[0_0_60px_rgba(217,70,239,0.35)] rounded-sm overflow-hidden">
+      <div className="relative border-4 border-fuchsia-950/80 shadow-[0_0_60px_rgba(217,70,239,0.35)] rounded-sm overflow-hidden" ref={frameRef} style={{ width: `min(96vw, calc((100vh - 60px) * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, marginTop: 44 }}>
         <canvas
           ref={canvasRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
-          className="pixelated block cursor-pointer max-w-full max-h-[86vh] object-contain"
+          className="pixelated block cursor-pointer w-full h-full"
           style={{ imageRendering: 'pixelated' }}
         />
+        <div className="absolute top-0 left-0" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${uiScale})`, transformOrigin: 'top left' }}>
 
         {/* Thông báo tương tác [E] nổi phía trên */}
         {activePrompt && (
@@ -1625,22 +1883,22 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
               });
               if (target) handleInteractWith(target);
             }}
-            className={`absolute top-16 left-1/2 -translate-x-1/2 z-30 max-w-[92%] px-3.5 py-1.5 font-mono text-xs rounded-full flex items-center gap-2 backdrop-blur-sm cursor-pointer ${
+            className={`absolute bottom-12 left-3 z-30 max-w-[55%] px-2 py-1 font-mono text-[11px] rounded-md flex items-center gap-1.5 backdrop-blur-sm cursor-pointer ${
               activePrompt.isDone
                 ? 'bg-black/85 border border-zinc-700/80 text-zinc-400'
-                : 'bg-black/90 border border-pink-500 text-pink-100 shadow-[0_0_20px_rgba(236,72,153,0.6)] animate-bounce'
+                : 'bg-black/90 border border-pink-500 text-pink-100 shadow-[0_0_8px_rgba(236,72,153,0.35)]'
             }`}
           >
             <span
-              className={`shrink-0 px-1.5 py-0.5 font-bold rounded text-[10px] ${
+              className={`shrink-0 px-1 py-0.5 font-bold rounded text-[10px] leading-none ${
                 activePrompt.isDone
                   ? 'bg-zinc-800 text-zinc-400 border border-zinc-700'
                   : 'bg-pink-500 text-black shadow-[0_0_8px_rgba(236,72,153,0.9)]'
               }`}
             >
-              {activePrompt.isDone ? 'ĐÃ KIỂM TRA' : 'E'}
+              {activePrompt.isDone ? '✓' : 'E'}
             </span>
-            <span className="truncate">{activePrompt.text}</span>
+            <span className="truncate">{tx(activePrompt.text).replace(/^\[E\]\s*/, '').replace(/\s*-?\s*(?:Nhấn|Press) \[E\]\s*(?:để\s*|to\s*)?/i, ' · ')}</span>
           </div>
         )}
 
@@ -1649,14 +1907,14 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
           <div
             onClick={() => setMonologueWhisper(null)}
             className="absolute bottom-12 right-3 max-w-xs sm:max-w-sm bg-black/95 border-l-4 border-pink-400 border-t border-r border-b border-zinc-800 p-3 rounded-r shadow-2xl animate-fade-in z-20 backdrop-blur-md cursor-pointer hover:border-pink-300 transition-colors"
-            title="Click để đóng nhanh"
+            title={tx('Click để đóng nhanh')}
           >
             <div className="flex items-center gap-1.5 text-[10px] uppercase font-mono text-pink-400 tracking-wider mb-1">
               <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-ping inline-block" />
-              Độc thoại nội tâm
+              {tx('Độc thoại nội tâm')}
             </div>
-            <p className="text-xs sm:text-sm font-sans text-zinc-300 italic leading-snug">
-              &ldquo;{monologueWhisper}&rdquo;
+            <p className="text-xs sm:text-sm font-sans text-zinc-300 italic leading-snug text-justify">
+              &ldquo;{tx(monologueWhisper)}&rdquo;
             </p>
           </div>
         )}
@@ -1665,20 +1923,21 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
         <div className="absolute bottom-2 left-3 right-3 z-10 p-0.5 rounded border border-pink-500/70 bg-black/80 shadow-[0_0_14px_rgba(236,72,153,0.35)] backdrop-blur-sm">
           <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-3 py-1 rounded-sm border border-fuchsia-900/80 text-[10px] font-mono text-zinc-400 whitespace-nowrap">
             <div className="flex items-center gap-2.5">
-              <span><span className="text-pink-300 font-bold">WASD</span> Khám phá</span>
-              <span><span className="text-pink-300 font-bold">E</span> Tương tác</span>
+              <span><span className="text-pink-300 font-bold">WASD</span> {t.hud.explore}</span>
+              <span><span className="text-pink-300 font-bold">E</span> {t.hud.interact}</span>
             </div>
             <div className="text-center truncate">
               {anomaliesCount >= 5 ? (
-                <span className="text-pink-300 font-bold animate-pulse">[ĐÃ TÌM ĐỦ 5 MANH MỐI • HÃY TỚI GẶP MIÊN TRÊN CẦU]</span>
+                <span className="text-pink-300 font-bold animate-pulse">{tx('[ĐÃ TÌM ĐỦ 5 MANH MỐI • HÃY TỚI GẶP MIÊN TRÊN CẦU]')}</span>
               ) : (
                 <>
-                  Ký ức bất thường: <span className="text-pink-300 font-bold">{anomaliesCount}/5</span> manh mối
+                  {tx('Ký ức bất thường:')} <span className="text-pink-300 font-bold">{anomaliesCount}/5</span> {tx('manh mối')}
                 </>
               )}
             </div>
-            <div className="text-pink-400/80 font-bold truncate">MÀN 2: THỊ TRẤN HOÀNG HÔN • BẾN BÌNH AN</div>
+            <div className="text-pink-400/80 font-bold truncate">{tx('MÀN 2: THỊ TRẤN HOÀNG HÔN • BẾN AN YÊN')}</div>
           </div>
+        </div>
         </div>
       </div>
 
@@ -1711,6 +1970,8 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
       {activeMinigame === 'POLAROID' && (
         <PolaroidMinigame
           volume={volume}
+          onTriggerFlashback={startFlashback}
+          flashbackDone={flashbackDone}
           onComplete={() => {
             setActiveMinigame(null);
             setSanity?.(prev => Math.max(10, prev - 5));
@@ -1729,6 +1990,12 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
             onTrigger('obj_ch2_bench');
           }}
         />
+      )}
+
+      {showFlashback && (
+        <div className="fixed inset-0 z-[60]">
+          <FlashbackCutscene volume={volume} onComplete={endFlashback} />
+        </div>
       )}
 
       {activeMinigame === 'RADIO' && (

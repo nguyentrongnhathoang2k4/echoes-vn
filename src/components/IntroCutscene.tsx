@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { tx } from '../locales/tx';
 
 interface IntroCutsceneProps {
   onComplete: () => void;
@@ -65,7 +66,7 @@ export const IntroCutscene: React.FC<IntroCutsceneProps> = ({
   const sirenOscRef = useRef<OscillatorNode | null>(null);
 
   const currentStep = CUTSCENE_STEPS[stepIndex];
-  const targetText = currentStep?.lines[displayedLineIndex] || '';
+  const targetText = tx(currentStep?.lines[displayedLineIndex] || '');
 
   const isTypingRef = useRef(false);
   const targetTextRef = useRef('');
@@ -273,7 +274,7 @@ export const IntroCutscene: React.FC<IntroCutsceneProps> = ({
       <div className="w-full h-12 sm:h-16 bg-black z-30 border-b border-zinc-900/60 flex items-center justify-between px-4 sm:px-8">
         <div className="flex items-center gap-2 text-xs font-mono tracking-widest text-zinc-500">
           <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
-          <span>PROLOGUE // THỰC TẠI ẢO ẢNH</span>
+          <span>{tx('PROLOGUE // THỰC TẠI ẢO ẢNH')}</span>
         </div>
 
         {/* Nút BỎ QUA (SKIP) */}
@@ -284,7 +285,7 @@ export const IntroCutscene: React.FC<IntroCutsceneProps> = ({
           }}
           className="group flex items-center gap-1.5 px-3 py-1.5 rounded bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-700/80 hover:border-cyan-400 text-zinc-300 hover:text-cyan-300 text-xs font-mono tracking-wider transition-all shadow-md cursor-pointer"
         >
-          <span>BỎ QUA</span>
+          <span>{tx('BỎ QUA')}</span>
           <span className="text-[10px] text-zinc-500 group-hover:text-cyan-400">[ESC / SPACE]</span>
           <span className="text-cyan-400 font-bold group-hover:translate-x-0.5 transition-transform">»</span>
         </button>
@@ -304,13 +305,13 @@ export const IntroCutscene: React.FC<IntroCutsceneProps> = ({
               : 'text-amber-400/90'
           }`}
         >
-          [ {currentStep.tag} ]
+          [ {tx(currentStep.tag)} ]
         </div>
 
         {/* Người nói (nếu có) */}
         {currentStep.speaker && (
           <div className="text-xs sm:text-sm font-mono tracking-widest text-zinc-400 mb-2 font-bold">
-            &lt; {currentStep.speaker} &gt;
+            &lt; {tx(currentStep.speaker)} &gt;
           </div>
         )}
 
@@ -335,7 +336,7 @@ export const IntroCutscene: React.FC<IntroCutsceneProps> = ({
         {/* Gợi ý tiếp tục */}
         {!isTyping && (
           <div className="mt-8 flex items-center gap-2 text-xs font-mono text-zinc-500 animate-pulse">
-            <span>[Nhấp chuột hoặc bấm Space để tiếp tục]</span>
+            <span>{tx('[Nhấp chuột hoặc bấm Space để tiếp tục]')}</span>
             <span className="text-cyan-400">▼</span>
           </div>
         )}
@@ -343,7 +344,7 @@ export const IntroCutscene: React.FC<IntroCutsceneProps> = ({
 
       {/* 3. Thanh Letterbox điện ảnh phía dưới */}
       <div className="w-full h-12 sm:h-16 bg-black z-30 border-t border-zinc-900/60 flex items-center justify-between px-4 sm:px-8 text-[11px] font-mono text-zinc-600">
-        <div>ECHOES OF REALITY // 2026</div>
+        <div>ECHOES OF REALITY // 03:14</div>
         <div className="flex gap-1.5">
           {CUTSCENE_STEPS.map((_, idx) => (
             <span
@@ -354,7 +355,7 @@ export const IntroCutscene: React.FC<IntroCutsceneProps> = ({
             />
           ))}
         </div>
-        <div>PHÒNG TRỌ 314</div>
+        <div>{tx('PHÒNG TRỌ 314')}</div>
       </div>
 
       {/* Background Glitch & Scanline Overlay */}

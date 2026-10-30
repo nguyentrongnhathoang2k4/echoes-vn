@@ -5,8 +5,15 @@ import {
   hash, px, block, dropShadow, outlinedText,
   drawWoodFloor, drawDormWalls, drawCalendar, drawPoster,
   buildPostLayer, drawTargetMarker, drawClock, drawHudSubtitle,
+  createFollowLight, updateFollowLight, drawFollowVignette,
 } from './pixel/pixelKit';
 import { drawSpriteFrame, getSpriteFrame, stepWalk, stopWalk, bodyBob, mienFloat, drawSwayingFigure, drawHoloShadow, drawHoloDust } from './pixel/spriteKit';
+import { useFrameScale } from './pixel/useFrameScale';
+import { useMouseParallax } from './pixel/useMouseParallax';
+import { useLanguage } from '../context/LanguageContext';
+import { audioEngine } from '../services/audioEngine';
+import { EmoteDirector, createEmoteDirector, emoteNow, updateEmotes, drawEmotes } from './pixel/emote';
+import { tx } from '../locales/tx';
 
 interface InteractableObject {
   id: string;
@@ -27,8 +34,12 @@ interface PixelBleedStageProps {
   setSanity?: React.Dispatch<React.SetStateAction<number>>;
   onTrigger: (nodeId: string) => void;
   interactedIds?: string[];
+  /** Người chơi đang điều khiển An (không mở thoại / menu): chỉ khi đó mới tính thời gian đứng yên */
+  active?: boolean;
   onMarkInteracted?: (id: string) => void;
   volume?: number;
+  /** Khung canvas nghiêng nhẹ theo con trỏ chuột (cài đặt) */
+  parallax?: boolean;
 }
 
 type Direction = 'down' | 'left' | 'right' | 'up';
@@ -59,7 +70,7 @@ export const CH3_CORE_ANOMALIES = [
 // =====================================================================
 // HẰNG SỐ BỐ CỤC CĂN PHÒNG (Glitch Dichotomy)
 // Nửa trái: phòng trọ #314 (sàn gỗ, bàn học, quạt máy, poster cũ)
-// Nửa phải: phòng cấp cứu ICU Bạch Mai (gạch men, giường, IV, máy sốc tim)
+// Nửa phải: phòng cấp cứu ICU Trung Hoà (gạch men, giường, IV, máy sốc tim)
 // Hai nửa bị khâu lại bằng một vết rách zig-zag chạy xéo qua phòng.
 // =====================================================================
 
@@ -67,14 +78,29 @@ const ROOM = { left: 70, right: 570, top: 95, bottom: 435 } as const;
 const INTERACT_RADIUS = 75;
 const HITBOX_HALF_W = 14;
 const REQUIRED_CLUES = 5;
+const IDLE_LIMIT = 5;            // Giây đứng yên trước khi cơn hoảng loạn ập tới
+// Chiếc balo chứa hộp nhẫn cưới: manh mối bắt buộc trước khi được đối chất với Miên
+const KEY_CLUE = 'ch3_bag';
+// Miên can ngăn khi An lại gần những thứ cô cố giấu: chưa xem thì hoảng hốt van xin,
+// đã xem rồi thì chỉ còn nỗi buồn lặng lẽ (câu khác, không giật mình)
+const PLEA_RADIUS = 90;
+const PLEA_IDS = ['ch3_mirror', 'ch3_chart'];
+type PleaKind = 'hide' | 'grieve';
+const PLEA_LINES: Record<PleaKind, string> = {
+  hide: 'Miên run rẩy: "Đừng nhìn vào đó An ơi... em xin anh đấy..."',
+  grieve: 'Miên thì thầm: "Anh thấy rồi mà... đừng nhìn thêm nữa, đau lắm..."',
+};
 
 // Kích thước vẽ sprite
+// Viền tối bám theo An (ánh đỏ bầm của vết rách thực tại)
+const BLEED_VIGNETTE = { tint: [16, 2, 9], strength: 0.68, inner: 140, outer: 380 } as const;
 const AN_DRAW_W = 42;
 const AN_DRAW_H = 63;
 // Miên dùng chung spritesheet 3x3 (64x96/frame) và kích thước vẽ như Màn 1
 const MIEN_DRAW_W = 42;
 const MIEN_DRAW_H = 63;
 const MIEN_DIR_ROW = 0; // Hàng 0: đứng quay mặt xuống
+const MIEN_SIDE_ROW = 2; // Hàng 2: nhìn sang phải (lật ngang = trái), dùng khi quay về phía An
 
 // Gốc toạ độ các nguồn sáng / vật thể động
 const WINDOW_RECT = { x: 345, y: 28, w: 70, h: 60 };
@@ -121,16 +147,35 @@ const PAL = {
   sheetShade: '#b9c4ca',
 } as const;
 
-// Các đỉnh zig-zag của vết rách thực tại (từ trần xuống sàn, xéo dần sang trái)
-const SEAM_POINTS: ReadonlyArray<{ x: number; y: number }> = (() => {
-  const pts: Array<{ x: number; y: number }> = [];
+// ---- Vết rách thực tại mở rộng theo manh mối ----
+// Mỗi manh mối tìm thấy, ICU nuốt thêm 18% căn phòng: 0 → 15% (vết nứt nhỏ góc phải), 5 → 100%
+const BLEED_BASE = 0.15;
+const BLEED_PER_CLUE = 0.18;
+const bleedRatioFor = (clues: number) => Math.min(1, BLEED_BASE + clues * BLEED_PER_CLUE);
+const SEAM_REF_Y = 265;                  // Tung độ dùng để đo vị trí vết rách (giữa sàn)
+const SEAM_SLANT = 0.2;                  // Vết rách xéo dần sang trái khi đi xuống
+// Hình răng cưa cố định của vết rách; chỉ vị trí của nó trôi theo bleedRatio
+const SEAM_ZIG: ReadonlyArray<{ dx: number; y: number }> = (() => {
+  const pts: Array<{ dx: number; y: number }> = [];
   for (let i = 0, y = 0; y <= CANVAS_HEIGHT + 14; i++, y += 14) {
-    const base = 356 - y * 0.2;
     const zig = (i % 2 === 0 ? -1 : 1) * (5 + hash(i) * 9);
-    pts.push({ x: Math.round(base + zig), y: Math.min(y, CANVAS_HEIGHT) });
+    pts.push({ dx: (SEAM_REF_Y - y) * SEAM_SLANT + zig, y: Math.min(y, CANVAS_HEIGHT) });
   }
   return pts;
 })();
+
+/** Hoành độ giữa sàn của vết rách ứng với tỉ lệ xâm lấn (1.0: đẩy hẳn ra khỏi mép trái, phòng trọ biến mất) */
+const seamMidFor = (ratio: number) =>
+  ROOM.right - ratio * (ROOM.right - ROOM.left) - Math.max(0, (ratio - 0.87) / 0.13) * 130;
+
+// Toạ độ hiện tại của vết rách. Chỉ có một Màn 3 tại một thời điểm, vòng lặp vẽ cập nhật mỗi frame
+// qua setSeamRatio(); mọi hàm vẽ / âm thanh bước chân đọc chung mảng này
+const SEAM_POINTS: Array<{ x: number; y: number }> = SEAM_ZIG.map((z) => ({ x: 0, y: z.y }));
+const setSeamRatio = (ratio: number) => {
+  const mid = seamMidFor(ratio);
+  for (let i = 0; i < SEAM_ZIG.length; i++) SEAM_POINTS[i].x = Math.round(mid + SEAM_ZIG[i].dx);
+};
+setSeamRatio(BLEED_BASE);
 
 /** Hoành độ của vết rách tại tung độ y (nội suy tuyến tính giữa các đỉnh zig-zag) */
 const seamXAt = (y: number) => {
@@ -164,19 +209,19 @@ const INTERACTABLES: InteractableObject[] = [
     ...BED,
     triggerNodeId: 'obj_ch3_bed',
     canRepeat: true,
-    checkedMonologue: 'Chiếc nệm bọc drap Bạch Mai vấy máu... Bạn nhận ra đây chính là chiếc giường cấp cứu của mình.',
+    checkedMonologue: 'Chiếc nệm bọc drap Trung Hoà vấy máu... Bạn nhận ra đây chính là chiếc giường cấp cứu của mình.',
   },
   {
     id: 'ch3_chart',
     name: 'Bìa Bệnh Án Cấp Cứu Treo Đầu Giường',
-    actionText: '[E] Xem Bệnh án Bạch Mai & Chẩn đoán 17/05 [📋]',
+    actionText: '[E] Xem Bệnh án Trung Hoà & Chẩn đoán 17/05 [📋]',
     x: 408,
     y: 260,
     w: 24,
     h: 32,
     triggerNodeId: 'obj_ch3_chart',
     canRepeat: true,
-    checkedMonologue: 'Tờ bệnh án dập dấu đỏ Bạch Mai: "Trần Hoàng An - Hôn mê sâu Glasgow 3 điểm". Nét chữ nhòe nước mắt của Miên...',
+    checkedMonologue: 'Tờ bệnh án dập dấu đỏ Trung Hoà: "Trần Hoàng An - Hôn mê sâu Glasgow 3 điểm". Nét chữ nhòe nước mắt của Miên...',
   },
   {
     id: 'ch3_bag',
@@ -185,7 +230,7 @@ const INTERACTABLES: InteractableObject[] = [
     ...BAG,
     triggerNodeId: 'obj_ch3_bag',
     canRepeat: true,
-    checkedMonologue: 'Chiếc hộp nhung đỏ chứa đôi nhẫn cưới bạc "AN & MIÊN • BẾN BÌNH AN". Lời hứa cầu hôn chưa kịp thực hiện...',
+    checkedMonologue: 'Chiếc hộp nhung đỏ chứa đôi nhẫn cưới bạc "AN & MIÊN • BẾN AN YÊN". Lời hứa cầu hôn chưa kịp thực hiện...',
   },
   {
     id: 'ch3_monitor',
@@ -246,6 +291,8 @@ const INTERACTABLES: InteractableObject[] = [
   },
 ];
 
+const PLEA_TARGETS = INTERACTABLES.filter((o) => PLEA_IDS.includes(o.id));
+
 // Vật cản Solid Bounding Boxes (hằng số module → không tái tạo mỗi lần render)
 const COLLIDERS: ReadonlyArray<{ x: number; y: number; w: number; h: number }> = [
   { x: 0, y: 0, w: CANVAS_WIDTH, h: ROOM.top },                                   // Tường trên
@@ -303,7 +350,10 @@ interface FrameState {
   phase: 1 | 2 | 3;     // Cấp độ xâm thực
   glitch: number;       // 0..1 cường độ nhiễu (theo sanity + phase)
   clues: number;
-  ready: boolean;       // Đủ manh mối để đối chất
+  bleed: number;        // 0..1 tỉ lệ phòng đã bị ICU nuốt (đang trượt dần tới mức theo manh mối)
+  ready: boolean;       // Đủ manh mối (có cả chiếc balo) để đối chất
+  /** Miên đang can ngăn: quay về phía An, since = lúc bắt đầu (để giật mình), kind = chưa xem / đã xem */
+  mienAlarm: { dir: 'left' | 'right'; since: number; kind: PleaKind } | null;
   defibDone: boolean;
   bpm: number;
   interacted: ReadonlySet<string>;
@@ -313,10 +363,13 @@ interface FrameState {
   nearest: InteractableObject | null;
 }
 
+/** 3 frame đứng của một hướng, mỗi frame dựng sẵn bản gốc + kênh đỏ + kênh cyan */
+interface MienFacing { ghost: HTMLCanvasElement[]; red: HTMLCanvasElement[]; cyan: HTMLCanvasElement[] }
+type MienDir = 'down' | 'left' | 'right';
+
 interface SpriteBank {
   an: HTMLImageElement | null;
-  // Mỗi lớp là mảng 3 frame đứng (hàng 0 của spritesheet)
-  mien: { ghost: HTMLCanvasElement[]; red: HTMLCanvasElement[]; cyan: HTMLCanvasElement[]; w: number; h: number } | null;
+  mien: (Record<MienDir, MienFacing> & { w: number; h: number }) | null;
 }
 
 // =====================================================================
@@ -328,7 +381,7 @@ interface SpriteBank {
 function drawTileFloor(ctx: CanvasRenderingContext2D) {
   const size = 24;
   for (let y = ROOM.top, r = 0; y < CANVAS_HEIGHT; y += size, r++) {
-    for (let x = 240, c = 0; x < CANVAS_WIDTH; x += size, c++) {
+    for (let x = 48, c = 0; x < CANVAS_WIDTH; x += size, c++) {
       const h = hash(r * 97 + c * 13);
       px(ctx, x, y, size, size, PAL.tileGrout);
       px(ctx, x + 1, y + 1, size - 2, size - 2, h < 0.33 ? PAL.tileA : h < 0.66 ? PAL.tileB : PAL.tileC);
@@ -393,10 +446,9 @@ function drawWalls(ctx: CanvasRenderingContext2D, icu: boolean) {
   px(ctx, 0, 0, CANVAS_WIDTH, 4, '#050307');
 }
 
-/** Đồ trang trí tĩnh trên tường và sàn của hai nửa phòng */
-function drawStaticDecor(ctx: CanvasRenderingContext2D) {
-  // --- PHÒNG TRỌ ---
-  // Lịch 05/2024 khoanh ngày 17 + poster "Hà Nội mùa hạ" (cùng đồ vật với Màn 1)
+/** Đồ trang trí tĩnh của phòng trọ (bị ICU nuốt dần) */
+function drawDormDecor(ctx: CanvasRenderingContext2D) {
+  // Lịch tháng 5 khoanh ngày 17 + poster "Phố cũ mùa hạ" (cùng đồ vật với Màn 1)
   drawCalendar(ctx, 120, 26);
   drawPoster(ctx, 160, 16, PAL.wallDorm);
 
@@ -411,13 +463,15 @@ function drawStaticDecor(ctx: CanvasRenderingContext2D) {
   ctx.fill();
   px(ctx, 110, 258, 50, 2, '#3a5270');
   px(ctx, 120, 272, 40, 2, '#3a5270');
+}
 
-  // --- ICU ---
+/** Đồ trang trí tĩnh của phòng ICU */
+function drawIcuDecor(ctx: CanvasRenderingContext2D) {
   // Biển khoa Hồi Sức Tích Cực
   block(ctx, 432, 22, 120, 12, '#e8f1f2', '#ffffff', '#a8b8ba');
   ctx.font = 'bold 6px monospace';
   ctx.fillStyle = '#0369a1';
-  ctx.fillText('BV BẠCH MAI • KHOA HSTC', 436, 31);
+  ctx.fillText(tx('BV TRUNG HOÀ • KHOA HSTC'), 436, 31);
   // Hộp ổ khí y tế O2 / AIR / VAC
   block(ctx, 522, 44, 34, 22, '#d9e2e4', '#f4f8f9', '#a0adb0');
   px(ctx, 526, 50, 7, 7, '#16a34a');
@@ -451,29 +505,42 @@ function drawSeamDebris(ctx: CanvasRenderingContext2D) {
   ctx.stroke();
 }
 
-/** Dựng toàn bộ lớp nền tĩnh: sàn gỗ / gạch, tường, trang trí, mép rách */
-function buildStaticLayer(): HTMLCanvasElement {
-  const c = document.createElement('canvas');
-  c.width = CANVAS_WIDTH;
-  c.height = CANVAS_HEIGHT;
-  const ctx = c.getContext('2d');
-  if (!ctx) return c;
+/**
+ * Dựng sẵn hai căn phòng nguyên vẹn (một lần): phòng trọ toàn sàn gỗ và ICU toàn gạch men.
+ * Mỗi frame chỉ cắt ICU theo vị trí vết rách hiện tại rồi phủ lên (drawBleedRoom).
+ */
+function buildRoomLayers(): { dorm: HTMLCanvasElement; icu: HTMLCanvasElement } {
+  const make = (draw: (ctx: CanvasRenderingContext2D) => void) => {
+    const c = document.createElement('canvas');
+    c.width = CANVAS_WIDTH;
+    c.height = CANVAS_HEIGHT;
+    const ctx = c.getContext('2d');
+    if (ctx) draw(ctx);
+    return c;
+  };
+  return {
+    dorm: make((ctx) => {
+      drawWoodFloor(ctx, ROOM.left, ROOM.top, CANVAS_WIDTH, CANVAS_HEIGHT);
+      drawWalls(ctx, false);
+      drawDormDecor(ctx);
+    }),
+    icu: make((ctx) => {
+      drawTileFloor(ctx);
+      drawWalls(ctx, true);
+      drawIcuDecor(ctx);
+    }),
+  };
+}
 
-  // Nửa phòng trọ phủ toàn bộ trước
-  drawWoodFloor(ctx, ROOM.left, ROOM.top, CANVAS_WIDTH, CANVAS_HEIGHT);
-  drawWalls(ctx, false);
-
-  // Nửa ICU được cắt theo vết rách rồi phủ lên
+/** Nền căn phòng theo vết rách hiện tại: phòng trọ, ICU cắt theo vết rách phủ lên, mép rách */
+function drawBleedRoom(ctx: CanvasRenderingContext2D, layers: { dorm: HTMLCanvasElement; icu: HTMLCanvasElement }) {
+  ctx.drawImage(layers.dorm, 0, 0);
   ctx.save();
   traceIcuRegion(ctx);
   ctx.clip();
-  drawTileFloor(ctx);
-  drawWalls(ctx, true);
+  ctx.drawImage(layers.icu, 0, 0);
   ctx.restore();
-
-  drawStaticDecor(ctx);
   drawSeamDebris(ctx);
-  return c;
 }
 
 /**
@@ -483,14 +550,14 @@ function buildStaticLayer(): HTMLCanvasElement {
 function buildMienLayers(img: HTMLImageElement): NonNullable<SpriteBank['mien']> {
   const w = MIEN_DRAW_W;
   const h = MIEN_DRAW_H;
-  const make = (frame: number, tint: string | null) => {
+  const make = (frame: number, row: number, flip: boolean, tint: string | null) => {
     const c = document.createElement('canvas');
     c.width = w;
     c.height = h;
     const g = c.getContext('2d');
     if (!g) return c;
     g.imageSmoothingEnabled = false;
-    const f = getSpriteFrame(img, frame, MIEN_DIR_ROW, false, w, h);
+    const f = getSpriteFrame(img, frame, row, flip, w, h);
     g.drawImage(f.src, f.sx, f.sy, f.w, f.h, 0, 0, w, h);
     if (tint) {
       g.globalCompositeOperation = 'source-atop';
@@ -500,10 +567,15 @@ function buildMienLayers(img: HTMLImageElement): NonNullable<SpriteBank['mien']>
     return c;
   };
   const frames = [0, 1, 2];
+  const facing = (row: number, flip: boolean): MienFacing => ({
+    ghost: frames.map((f) => make(f, row, flip, null)),
+    red: frames.map((f) => make(f, row, flip, 'rgba(255,30,60,1)')),
+    cyan: frames.map((f) => make(f, row, flip, 'rgba(30,230,255,1)')),
+  });
   return {
-    ghost: frames.map((f) => make(f, null)),
-    red: frames.map((f) => make(f, 'rgba(255,30,60,1)')),
-    cyan: frames.map((f) => make(f, 'rgba(30,230,255,1)')),
+    down: facing(MIEN_DIR_ROW, false),
+    right: facing(MIEN_SIDE_ROW, false),
+    left: facing(MIEN_SIDE_ROW, true),
     w,
     h,
   };
@@ -739,7 +811,7 @@ function drawIVPole(ctx: CanvasRenderingContext2D, ivDropY: number, reflected = 
   ctx.stroke();
 }
 
-/** Giường cấp cứu ICU Bạch Mai: khung inox, drap rách, máu, logo, bìa bệnh án ở chân giường */
+/** Giường cấp cứu ICU Trung Hoà: khung inox, drap rách, máu, logo, bìa bệnh án ở chân giường */
 function drawBed(ctx: CanvasRenderingContext2D, fs: FrameState) {
   const { x, y, w, h } = BED;
   dropShadow(ctx, x + w / 2 + 4, y + h + 2, w / 2 + 4, 7, 0.5);
@@ -776,12 +848,12 @@ function drawBed(ctx: CanvasRenderingContext2D, fs: FrameState) {
   // Gối (đầu giường bên phải) dính máu
   block(ctx, x + w - 26, y + 14, 18, h - 26, '#f8fafc', '#ffffff', '#cbd5e1');
   px(ctx, x + w - 22, y + 24, 8, 6, 'rgba(185,28,28,0.8)');
-  // Logo Bạch Mai in trên drap: chữ thập xanh + chữ
+  // Logo Trung Hoà in trên drap: chữ thập xanh + chữ
   px(ctx, x + 12, y + 50, 7, 2, '#0284c7');
   px(ctx, x + 14.5, y + 47.5, 2, 7, '#0284c7');
   ctx.font = 'bold 6px monospace';
   ctx.fillStyle = '#0369a1';
-  ctx.fillText('BẠCH MAI', x + 22, y + 54);
+  ctx.fillText(tx('TRUNG HOÀ'), x + 22, y + 54);
   // Thanh chắn hai bên (lan can giường)
   for (const ry of [y + 4, y + h - 6]) {
     px(ctx, x + 8, ry, w - 40, 3, PAL.outline);
@@ -800,7 +872,7 @@ function drawBed(ctx: CanvasRenderingContext2D, fs: FrameState) {
   block(ctx, cx, cy, 22, 28, '#a8b3bf', '#d6dde4', '#6b7785');
   px(ctx, cx + 2, cy + 4, 18, 22, '#f5efd6');
   for (let i = 0; i < 6; i++) px(ctx, cx + 4, cy + 7 + i * 3, i % 2 ? 10 : 14, 1, '#6b7280');
-  ctx.fillStyle = 'rgba(220,38,38,0.85)';                    // Mộc đỏ Bạch Mai
+  ctx.fillStyle = 'rgba(220,38,38,0.85)';                    // Mộc đỏ Trung Hoà
   ctx.beginPath();
   ctx.arc(cx + 15, cy + 20, 3.5, 0, Math.PI * 2);
   ctx.fill();
@@ -916,7 +988,7 @@ function drawDesk(ctx: CanvasRenderingContext2D, fs: FrameState, sparks: Particl
   ctx.fillStyle = Math.sin(fs.t * 5) > 0 ? '#ffffff' : '#f87171';
   ctx.fillText('SECTOR_1705', mx + 6, my + 18);
   ctx.fillStyle = '#ef4444';
-  ctx.fillText('[ĐÃ KHÓA]', mx + 6, my + 25);
+  ctx.fillText(tx('[ĐÃ KHÓA]'), mx + 6, my + 25);
   for (let sy = my + 4; sy < my + 28; sy += 2) px(ctx, mx + 4, sy, 36, 1, 'rgba(0,0,0,0.3)');
   px(ctx, mx + 36, my + 31, 3, 2, '#22c55e');                  // Đèn nguồn
   // Bàn phím
@@ -1038,7 +1110,7 @@ function drawDoor(ctx: CanvasRenderingContext2D, fs: FrameState) {
   px(ctx, bx + 11, by + 7, 2, 2, '#111');
   ctx.font = 'bold 4px monospace';
   ctx.fillStyle = '#111';
-  ctx.fillText('CÁCH LY', bx + 3, by + 17);
+  ctx.fillText(tx('CÁCH LY'), bx + 3, by + 17);
 }
 
 /** Balo ướt sũng: vải dù sẫm, bùn đất, nước nhỏ giọt, hộp nhung đỏ hé lộ nhẫn bạc */
@@ -1144,10 +1216,16 @@ function drawPuddles(ctx: CanvasRenderingContext2D, fs: FrameState, sprites: Spr
 /** Bóng ma Miên: đứng như Màn 1, lơ lửng sin(tick*0.08)*3, tóc & váy lay, hào quang tím/đỏ, nước mắt pixel vỡ thành bụi sáng */
 function drawMien(ctx: CanvasRenderingContext2D, fs: FrameState, sprites: SpriteBank, sim: SimState) {
   const hover = mienFloat(fs.t);
-  const shake = fs.ready ? (Math.random() - 0.5) * 3 : 0;
+  const alarm = fs.mienAlarm;
+  // Giật mình mạnh lúc vừa thấy An lại gần, sau đó run lẩy bẩy
+  // Đồ vật An đã xem rồi: chỉ run khẽ, không giật mình nữa
+  const startled = alarm?.kind === 'hide' && fs.t - alarm.since < 0.35;
+  const jolt = alarm ? (startled ? 6 : alarm.kind === 'hide' ? 1.6 : 0.8) : 0;
+  const shake = (fs.ready ? (Math.random() - 0.5) * 3 : 0) + (Math.random() - 0.5) * jolt;
   const mx = MIEN_ANCHOR.x + shake;
-  const my = MIEN_ANCHOR.y + hover;
-  const layers = sprites.mien;
+  const my = MIEN_ANCHOR.y + hover + (startled ? -2 : 0);
+  const bank = sprites.mien;
+  const layers = bank ? bank[alarm ? alarm.dir : 'down'] : null;
   const mw = MIEN_DRAW_W;
   const mh = MIEN_DRAW_H;
   // Đứng thẳng ở frame 1 (tóc & tà váy lay riêng, không giậm chân)
@@ -1275,7 +1353,9 @@ function drawLightingOverlay(ctx: CanvasRenderingContext2D, light: HTMLCanvasEle
   // 1) Lightmap: phủ bóng tối rồi "khoét" vùng sáng bằng destination-out
   l.globalCompositeOperation = 'source-over';
   l.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  l.fillStyle = `rgba(6,3,12,${0.78 + fs.phase * 0.03})`;
+  // ICU càng lấn, bóng tối càng bị ánh đèn mổ xua đi
+  const surgical = Math.max(0, (fs.bleed - 0.6) / 0.4);
+  l.fillStyle = `rgba(6,3,12,${0.78 + fs.phase * 0.03 - surgical * 0.3})`;
   l.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   l.globalCompositeOperation = 'destination-out';
   const punch = (x: number, y: number, r: number, s: number) => {
@@ -1295,6 +1375,7 @@ function drawLightingOverlay(ctx: CanvasRenderingContext2D, light: HTMLCanvasEle
   punch(MIEN_ANCHOR.x + MIEN_DRAW_W / 2, MIEN_ANCHOR.y + MIEN_DRAW_H / 2, fs.ready ? 95 : 70, fs.ready ? 0.7 : 0.5); // Miên
   for (let yy = 40; yy < CANVAS_HEIGHT; yy += 90) punch(seamXAt(yy), yy, 40, 0.35); // Vết rách
   punch(DOOR.x + DOOR.w, DOOR.y + DOOR.h / 2, 40, 0.3);            // Ánh đỏ khe cửa
+  punch(CANVAS_WIDTH / 2, 240, 330, 0.75 * surgical);              // Đèn mổ phủ cả phòng
   ctx.drawImage(light, 0, 0);
 
   // 2) Nguồn sáng màu cộng dồn
@@ -1348,7 +1429,28 @@ function drawLightingOverlay(ctx: CanvasRenderingContext2D, light: HTMLCanvasEle
   glow(494, 108, 30, fs.defibDone ? '52,211,153' : '248,113,113', 0.15);
   // Ánh tím của vết rách
   for (let yy = 60; yy < CANVAS_HEIGHT; yy += 120) glow(seamXAt(yy), yy, 55, '192,38,211', 0.09 + fs.phase * 0.02);
+  // Đèn mổ trắng xanh lạnh lẽo áp đảo mọi màu ấm còn sót lại
+  if (surgical > 0) {
+    ctx.fillStyle = `rgba(215,240,245,${0.1 * surgical})`;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    glow(CANVAS_WIDTH / 2, 30, 300, '225,245,255', 0.22 * surgical);
+  }
   ctx.restore();
+}
+
+/**
+ * Áp lực khi đứng yên: viền đỏ tối khép dần vào giữa, co thắt theo nhịp tim.
+ * tension 0..1, beat 0..1 (vừa đập = 1, nhạt dần)
+ */
+function drawTensionVignette(ctx: CanvasRenderingContext2D, cx: number, cy: number, tension: number, beat: number) {
+  if (tension <= 0.01) return;
+  const inner = 230 - tension * 120 - beat * 22 * tension;
+  const g = ctx.createRadialGradient(cx, cy, Math.max(30, inner), cx, cy, inner + 260);
+  g.addColorStop(0, 'rgba(30,0,4,0)');
+  g.addColorStop(0.55, `rgba(55,0,8,${0.55 * tension})`);
+  g.addColorStop(1, `rgba(12,0,2,${0.92 * tension})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 }
 
 /** Hậu kỳ: scanline/vignette dựng sẵn + lát xé ngang ngẫu nhiên khi nhiễu cao */
@@ -1376,23 +1478,23 @@ function drawHUD(ctx: CanvasRenderingContext2D, fs: FrameState) {
 
   // Lời mời đối chất rõ nét phía trên Miên khi đủ manh mối
   if (fs.ready) {
-    const tx = MIEN_ANCHOR.x + MIEN_DRAW_W / 2;
-    const ty = MIEN_ANCHOR.y - 12 + mienFloat(fs.t);
-    const label = '▶ ĐỐI CHẤT VỚI MIÊN [E] ◀';
+    const lx = MIEN_ANCHOR.x + MIEN_DRAW_W / 2;
+    const ly = MIEN_ANCHOR.y - 12 + mienFloat(fs.t);
+    const label = tx('▶ ĐỐI CHẤT VỚI MIÊN [E] ◀');
     ctx.font = 'bold 10px monospace';
     ctx.textAlign = 'center';
     const tw = ctx.measureText(label).width;
-    px(ctx, tx - tw / 2 - 6, ty - 10, tw + 12, 14, 'rgba(10,0,4,0.85)');
-    px(ctx, tx - tw / 2 - 6, ty - 10, tw + 12, 1, '#e11d48');
-    px(ctx, tx - tw / 2 - 6, ty + 3, tw + 12, 1, '#e11d48');
+    px(ctx, lx - tw / 2 - 6, ly - 10, tw + 12, 14, 'rgba(10,0,4,0.85)');
+    px(ctx, lx - tw / 2 - 6, ly - 10, tw + 12, 1, '#e11d48');
+    px(ctx, lx - tw / 2 - 6, ly + 3, tw + 12, 1, '#e11d48');
     const jx = (Math.random() - 0.5) * 2;
     ctx.globalCompositeOperation = 'lighter';
     ctx.fillStyle = 'rgba(255,0,60,0.7)';
-    ctx.fillText(label, tx - 2 + jx, ty);
+    ctx.fillText(label, lx - 2 + jx, ly);
     ctx.fillStyle = 'rgba(0,220,255,0.6)';
-    ctx.fillText(label, tx + 2 + jx, ty);
+    ctx.fillText(label, lx + 2 + jx, ly);
     ctx.globalCompositeOperation = 'source-over';
-    outlinedText(ctx, label, tx, ty, Math.sin(fs.t * 8) > 0 ? '#fff1f2' : '#fecdd3');
+    outlinedText(ctx, label, lx, ly, Math.sin(fs.t * 8) > 0 ? '#fff1f2' : '#fecdd3');
     ctx.textAlign = 'left';
   }
 
@@ -1530,7 +1632,10 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
   interactedIds = EMPTY_IDS,
   onMarkInteracted,
   volume = 80,
+  parallax = true,
+  active = true,
 }) => {
+  const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const spritesRef = useRef<SpriteBank>({ an: null, mien: null });
@@ -1551,6 +1656,8 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
   const [activePrompt, setActivePrompt] = useState<{ text: string; isDone: boolean } | null>(null);
   const [monologueWhisper, setMonologueWhisper] = useState<string | null>(null);
   const whisperTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Phụ đề Miên can ngăn (chỉ setState khi bật / tắt)
+  const [mienPlea, setMienPlea] = useState<PleaKind | null>(null);
   const keysHeld = useRef<Set<string>>(new Set());
 
   // Ref phản chiếu state để vòng lặp RAF đọc được giá trị mới nhất mà không phải khởi động lại
@@ -1563,6 +1670,10 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
   useEffect(() => { interactedRef.current = localInteractedIds; }, [localInteractedIds]);
   useEffect(() => { defibOpenRef.current = isDefibMinigameOpen; }, [isDefibMinigameOpen]);
   useEffect(() => { sanityRef.current = sanity; }, [sanity]);
+  const activeRef = useRef(active);
+  useEffect(() => { activeRef.current = active; }, [active]);
+  // Số giây An đứng yên (đang điều khiển, không bấm phím di chuyển)
+  const idleTimeRef = useRef(0);
 
   // Web Audio Context
   const getAudioContext = useCallback(() => {
@@ -1583,7 +1694,8 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
   /** Phát một nốt oscillator ngắn (dùng chung cho mọi hiệu ứng âm thanh) */
   const playTone = useCallback(
     (type: OscillatorType, freqs: Array<[number, number, 'set' | 'ramp']>, gain: number, dur: number) => {
-      if (volume <= 0) return;
+      // Khoảng lặng chân không (vd. lúc mở hộp nhẫn): kể cả tiếng bíp máy đo tim cũng im
+      if (volume <= 0 || audioEngine.isDeadSilent()) return;
       const ctx = getAudioContext();
       if (!ctx) return;
       try {
@@ -1624,11 +1736,21 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
     playTone('sawtooth', [[80, 0, 'set'], [260, 0.03, 'set'], [60, 0.07, 'set']], 0.06, 0.15);
   }, [playTone]);
 
+  // Tim An đập dồn khi đứng yên quá lâu (lub = true: tiếng đầu, mạnh hơn)
+  const playHeartThump = useCallback((lub: boolean) => {
+    playTone('sine', [[lub ? 64 : 52, 0, 'set'], [34, 0.12, 'ramp']], lub ? 0.24 : 0.16, 0.16);
+  }, [playTone]);
+
+  // Thực tại bị xé thêm một mảng khi tìm được manh mối
+  const playRipSound = useCallback(() => {
+    playTone('sawtooth', [[55, 0, 'set'], [180, 0.25, 'ramp'], [40, 0.9, 'ramp']], 0.08, 1);
+  }, [playTone]);
+
   // Giữ phiên bản mới nhất của các hàm âm thanh cho vòng lặp RAF
-  const soundRef = useRef({ playStepSound, playHeartMonitorBeep });
+  const soundRef = useRef({ playStepSound, playHeartMonitorBeep, playHeartThump, playRipSound });
   useEffect(() => {
-    soundRef.current = { playStepSound, playHeartMonitorBeep };
-  }, [playStepSound, playHeartMonitorBeep]);
+    soundRef.current = { playStepSound, playHeartMonitorBeep, playHeartThump, playRipSound };
+  }, [playStepSound, playHeartMonitorBeep, playHeartThump, playRipSound]);
 
   // Đồng bộ interactedIds từ parent (điều chỉnh state ngay trong render thay vì effect)
   const [prevInteractedIds, setPrevInteractedIds] = useState(interactedIds);
@@ -1637,13 +1759,18 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
     setLocalInteractedIds(interactedIds);
   }
 
+  // Bong bóng cảm xúc trên đầu An & Miên
+  const emotesRef = useRef<EmoteDirector | null>(null);
+  const emotes = useCallback(() => (emotesRef.current ??= createEmoteDirector()), []);
+
   const showMonologueWhisper = useCallback((msg: string) => {
+    emoteNow(emotes(), 'an', 'dots');
     if (whisperTimerRef.current) clearTimeout(whisperTimerRef.current);
     setMonologueWhisper(msg);
     whisperTimerRef.current = setTimeout(() => {
       setMonologueWhisper(null);
     }, 4500);
-  }, []);
+  }, [emotes]);
 
   // Lời tự sự mở màn khi bước vào căn phòng bị xâm thực
   useEffect(() => {
@@ -1710,11 +1837,16 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
 
         playGlitchBuzz();
 
-        // Chưa đủ manh mối thì Miên né tránh, chưa cho đối chất (không thể đi tắt bỏ qua Màn 3)
+        // Chưa đủ manh mối thì Miên né tránh, chưa cho đối chất (không thể đi tắt bỏ qua Màn 3).
+        // Đủ 5 manh mối nhưng chưa mở balo: Miên khóc, gợi về thứ An mang theo đêm hôm đó
         if (target.id === 'ch3_mien') {
           const clues = interactedRef.current.filter(id => CH3_CORE_ANOMALIES.includes(id)).length;
           if (clues < REQUIRED_CLUES) {
             onTrigger('ch3_mien_early');
+            return;
+          }
+          if (!interactedRef.current.includes(KEY_CLUE)) {
+            onTrigger('ch3_mien_need_bag');
             return;
           }
         }
@@ -1751,13 +1883,25 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
 
-    const staticLayer = buildStaticLayer();
-    const postLayer = buildPostLayer(CANVAS_WIDTH, CANVAS_HEIGHT);
+    const roomLayers = buildRoomLayers();
+    const postLayer = buildPostLayer(CANVAS_WIDTH, CANVAS_HEIGHT, 0);
+    const followLight = createFollowLight(); // Vignette động bám theo An
     const lightLayer = document.createElement('canvas');
     lightLayer.width = CANVAS_WIDTH;
     lightLayer.height = CANVAS_HEIGHT;
     if (!simRef.current) simRef.current = createSimState();
     const sim = simRef.current;
+    const em = emotes();
+    let lastClues = -1;
+    let bleed = -1;                 // Tỉ lệ xâm lấn đang hiển thị (trượt dần tới mức mục tiêu)
+    let tension = 0;                // 0..1 áp lực đứng yên đang hiển thị
+    let nextThump = 0;              // Thời điểm nhịp tim kế tiếp (giây)
+    let dubAt = -1;                 // Tiếng "dub" theo sau "lub"
+    let lastThump = -10;
+    let nextSweat = 0;
+    let mienAlarm: FrameState['mienAlarm'] = null;
+    let nextSob = 0;
+    let pleaShown: PleaKind | null = null;
 
     let animId = 0;
     let last = performance.now();
@@ -1807,10 +1951,45 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
         if (canMoveY) p.y = nextY;
 
         // Chu kỳ bước 0-1-2-1 (đổi chân mỗi 8 tick), tiếng bước khi chân chạm sàn
-        if (stepWalk(p, k)) soundRef.current.playStepSound();
+        if (stepWalk(p, k)) {
+          soundRef.current.playStepSound();
+          followLight.pulse = 1;
+        }
       } else {
         stopWalk(p);
       }
+
+      // 1b. Áp lực đứng yên: quá IDLE_LIMIT giây không di chuyển → rung, viền đỏ khép lại, tim đập dồn
+      const dt = k / 60;
+      const controlling = activeRef.current && !defibOpenRef.current;
+      if (!controlling || dx !== 0 || dy !== 0) idleTimeRef.current = 0;
+      else idleTimeRef.current += dt;
+      const over = idleTimeRef.current - IDLE_LIMIT;
+      const target = over > 0 ? Math.min(1, 0.25 + over / 8) : 0;
+      // Dâng lên từ từ, nhưng bước đi một bước là dịu xuống ngay
+      tension = target > tension ? tension + (target - tension) * Math.min(1, 0.05 * k) : target === 0 ? 0 : target;
+      if (over > 0) {
+        const thumpBpm = 82 + tension * 70;
+        if (t >= nextThump) {
+          soundRef.current.playHeartThump(true);
+          dubAt = t + 0.17;
+          lastThump = t;
+          nextThump = t + 60 / thumpBpm;
+        }
+        if (dubAt > 0 && t >= dubAt) {
+          soundRef.current.playHeartThump(false);
+          dubAt = -1;
+        }
+        if (t >= nextSweat) {
+          emoteNow(em, 'an', 'sweat');
+          nextSweat = t + 3.2;
+        }
+      } else {
+        nextThump = t + 0.4;
+        nextSweat = 0;
+        dubAt = -1;
+      }
+      const beatGlow = Math.max(0, 1 - (t - lastThump) / 0.35);
 
       // 2. Tiến trình & cấp độ xâm thực thực tại
       const clues = interacted.filter(id => CH3_CORE_ANOMALIES.includes(id)).length;
@@ -1827,6 +2006,16 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
 
       updateSim(sim, k, phase, t);
 
+      // Vết rách trôi dần sang trái theo số manh mối (lần đầu đặt thẳng, không trượt từ 0)
+      const bleedTarget = bleedRatioFor(clues);
+      if (bleed < 0) bleed = bleedTarget;
+      else if (bleed !== bleedTarget) {
+        bleed += (bleedTarget - bleed) * Math.min(1, 0.025 * k);
+        if (Math.abs(bleedTarget - bleed) < 0.001) bleed = bleedTarget;
+      }
+      setSeamRatio(bleed);
+      const ripping = Math.abs(bleedTarget - bleed);
+
       // 3. Prompt tương tác: chỉ setState khi thực sự thay đổi (tránh re-render 60 lần/giây)
       const nearest = findNearest();
       const isDone = nearest ? interacted.includes(nearest.id) : false;
@@ -1836,6 +2025,54 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
         setActivePrompt(nearest ? { text: nearest.actionText, isDone } : null);
       }
 
+      // Miên can ngăn: An lại gần mảnh gương / bệnh án → cô quay về phía An.
+      // Chưa xem: giật mình, bong bóng "!"; đã xem: run khẽ, chỉ "..." (đồ chưa xem được ưu tiên)
+      const mienCx = MIEN_ANCHOR.x + MIEN_DRAW_W / 2;
+      let plea: PleaKind | null = null;
+      if (activeRef.current) {
+        for (const o of PLEA_TARGETS) {
+          if (Math.hypot(p.x - (o.x + o.w / 2), p.y - (o.y + o.h / 2)) >= PLEA_RADIUS) continue;
+          plea = interacted.includes(o.id) ? plea ?? 'grieve' : 'hide';
+        }
+      }
+      if (plea) {
+        const dir = p.x < mienCx ? 'left' : 'right';
+        if (!mienAlarm || mienAlarm.kind !== plea) {
+          mienAlarm = { dir, since: t, kind: plea };
+          emoteNow(em, 'mien', plea === 'hide' ? 'exclaim' : 'dots');
+          nextSob = t + (plea === 'hide' ? 2.4 : 3.6);
+        } else {
+          mienAlarm.dir = dir;
+          if (t >= nextSob) {
+            emoteNow(em, 'mien', 'dots');
+            nextSob = t + 3.6;
+          }
+        }
+      } else {
+        mienAlarm = null;
+      }
+      if (plea !== pleaShown) {
+        pleaShown = plea;
+        setMienPlea(plea);
+      }
+
+      // Bong bóng: An giật mình mỗi khi tìm thêm một manh mối bệnh viện
+      if (lastClues >= 0 && clues > lastClues) {
+        emoteNow(em, 'an', 'exclaim');
+        soundRef.current.playRipSound();
+      }
+      lastClues = clues;
+      updateEmotes(em, {
+        t,
+        nearId: nearest ? nearest.id : null,
+        nearDone: isDone,
+        sanity: sanityRef.current,
+        moving: p.isMoving,
+        distToMien: Math.hypot(p.x - (MIEN_ANCHOR.x + AN_DRAW_W / 2), p.y - (MIEN_ANCHOR.y + AN_DRAW_H - 4)),
+        mienGreet: 'dots',
+        mienIdle: null,
+      });
+
       // 4. Vẽ
       const lampFlicker = Math.random() < 0.03 ? 0.35 : 0;
       const fs: FrameState = {
@@ -1843,20 +2080,25 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
         phase,
         glitch: Math.min(1, (100 - sanityRef.current) / 100 + (phase - 1) * 0.15),
         clues,
-        ready: clues >= REQUIRED_CLUES,
+        bleed,
+        ready: clues >= REQUIRED_CLUES && interacted.includes(KEY_CLUE),
+        mienAlarm,
         defibDone,
         bpm,
         interacted: new Set(interacted),
         fluoro: sim.fluoro.level,
-        lamp: Math.max(0, 0.6 + Math.sin(t * 2.7) * 0.06 - lampFlicker - (phase - 1) * 0.08),
+        // Đèn bàn của phòng trọ tắt dần khi ICU nuốt tới góc bàn học
+        lamp: Math.max(0, 0.6 + Math.sin(t * 2.7) * 0.06 - lampFlicker - (phase - 1) * 0.08) * Math.min(1, Math.max(0, (0.95 - bleed) / 0.3)),
         player: p,
         nearest,
       };
 
       ctx.imageSmoothingEnabled = false;
       ctx.save();
-      if (fs.ready) ctx.translate(Math.round((Math.random() - 0.5) * 2), Math.round((Math.random() - 0.5) * 2));
-      ctx.drawImage(staticLayer, 0, 0);
+      // Rung: khi đủ manh mối, khi vết rách đang lan, và khi An đứng yên quá lâu (1-2px)
+      const shake = (fs.ready ? 1 : 0) + Math.min(3, ripping * 30) + (tension > 0 ? 1 + tension : 0);
+      if (shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * 2 * shake), Math.round((Math.random() - 0.5) * 2 * shake));
+      drawBleedRoom(ctx, roomLayers);
       drawWindow(ctx, fs);
       drawFluorescentTube(ctx, fs);
       drawMirror(ctx, fs);
@@ -1866,7 +2108,16 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
       drawAnomalies(ctx, fs, spritesRef.current, sim);
       drawLightingOverlay(ctx, lightLayer, fs);
       ctx.restore();
+      updateFollowLight(followLight, p.x, p.y - 20, k);
+      drawFollowVignette(ctx, CANVAS_WIDTH, CANVAS_HEIGHT, followLight, sanityRef.current, t, BLEED_VIGNETTE);
+      drawTensionVignette(ctx, p.x, p.y - 20, tension, beatGlow);
       drawPostFX(ctx, canvas, postLayer, fs);
+      drawEmotes(
+        ctx,
+        em,
+        { cx: p.x, headY: p.y - AN_DRAW_H + 20 },
+        { cx: MIEN_ANCHOR.x + AN_DRAW_W / 2, headY: MIEN_ANCHOR.y + mienFloat(t) + 2 },
+      );
       drawHUD(ctx, fs);
 
       animId = requestAnimationFrame(gameLoop);
@@ -1874,7 +2125,7 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
 
     animId = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(animId);
-  }, [findNearest]);
+  }, [findNearest, emotes]);
 
   // Đếm manh mối đã khám phá
   const cluesCount = localInteractedIds.filter(id => CH3_CORE_ANOMALIES.includes(id)).length;
@@ -1890,75 +2141,76 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
     onTrigger('obj_ch3_monitor');
   };
 
+  // Lớp giao diện HTML phóng to cùng tỉ lệ với khung canvas
+  const { ref: frameRef, scale: uiScale } = useFrameScale(CANVAS_WIDTH);
+  useMouseParallax(canvasRef, parallax);
+
   return (
     <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden select-none">
-      <div className="relative" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }}>
+      <div className="relative" ref={frameRef} style={{ width: `min(96vw, calc((100vh - 60px) * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, marginTop: 44 }}>
         <canvas
           ref={canvasRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
           className="w-full h-full block bg-black border border-red-950/80 shadow-[0_0_50px_rgba(239,68,68,0.25)] [image-rendering:pixelated]"
         />
+        <div className="absolute top-0 left-0" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${uiScale})`, transformOrigin: 'top left' }}>
 
         {/* Nút gợi ý tương tác lơ lửng */}
         {activePrompt && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-3.5 py-1.5 bg-black/90 border border-red-500 text-red-100 font-mono text-xs rounded-full shadow-[0_0_20px_rgba(239,68,68,0.7)] flex items-center gap-2 animate-bounce">
+          <div className="absolute bottom-12 left-3 z-20 max-w-[55%] px-2 py-1 bg-black/90 border border-red-500 text-red-100 font-mono text-[11px] rounded-md shadow-[0_0_8px_rgba(239,68,68,0.35)] flex items-center gap-1.5">
             <span
               className={`px-1.5 py-0.5 font-bold rounded text-[10px] ${
                 activePrompt.isDone ? 'bg-zinc-800 text-zinc-400 border border-zinc-700' : 'bg-red-600 text-white shadow-[0_0_8px_rgba(239,68,68,0.9)]'
               }`}
             >
-              {activePrompt.isDone ? 'ĐÃ KHÁM PHÁ' : 'E'}
+              {activePrompt.isDone ? '✓' : 'E'}
             </span>
-            <span>{activePrompt.text}</span>
+            <span className="truncate">{tx(activePrompt.text).replace(/^\[E\]\s*/, '').replace(/\s*-?\s*(?:Nhấn|Press) \[E\]\s*(?:để\s*|to\s*)?/i, ' · ')}</span>
           </div>
         )}
 
-        {/* Hộp thoại Độc thoại nội tâm */}
-        {monologueWhisper && (
+        {/* Hộp thoại Độc thoại nội tâm (nhường chỗ khi Miên đang can ngăn) */}
+        {monologueWhisper && !mienPlea && (
           <div
             onClick={() => setMonologueWhisper(null)}
             className="absolute bottom-12 right-3 max-w-xs sm:max-w-sm bg-black/95 border-l-4 border-red-500 border-t border-r border-b border-red-950 p-3 rounded-r shadow-2xl animate-fade-in z-20 backdrop-blur-md cursor-pointer hover:border-red-400 transition-colors"
-            title="Click để đóng nhanh"
+            title={tx('Click để đóng nhanh')}
           >
             <div className="flex items-center gap-1.5 text-[10px] uppercase font-mono text-red-400 tracking-wider mb-1">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping inline-block" />
-              Độc thoại nội tâm
+              {tx('Độc thoại nội tâm')}
             </div>
-            <p className="text-xs sm:text-sm font-sans text-zinc-300 italic leading-snug">
-              &ldquo;{monologueWhisper}&rdquo;
+            <p className="text-xs sm:text-sm font-sans text-zinc-300 italic leading-snug text-justify">
+              &ldquo;{tx(monologueWhisper)}&rdquo;
             </p>
           </div>
         )}
 
-        {/* HUD gợi ý điều khiển & Tiến trình Ký ức Chương 3 */}
-        <div className="absolute bottom-2 left-3 right-3 flex justify-between items-center text-[11px] font-mono text-zinc-300 bg-black/85 px-3 py-1.5 border border-red-900/60 rounded backdrop-blur-sm shadow-lg">
-          <div className="flex items-center gap-2">
-            <span className="text-red-400 font-bold">[W A S D]</span> Khám phá
+        {/* Phụ đề: Miên can ngăn khi An lại gần mảnh gương / bệnh án (đổi key để chạy lại hiệu ứng khi đổi câu) */}
+        {mienPlea && (
+          <div key={mienPlea} className="absolute bottom-[86px] left-1/2 -translate-x-1/2 z-20 w-max max-w-[80%] px-3 py-1 bg-black/80 border-b border-pink-500/70 text-center pointer-events-none" style={{ animation: 'mien-plea 0.25s ease-out' }}>
+            <style>{'@keyframes mien-plea { 0% { opacity: 0; transform: translate(calc(-50% - 3px), 2px) } 40% { transform: translate(calc(-50% + 3px), 0) } 100% { opacity: 1; transform: translate(-50%, 0) } }'}</style>
+            <span className={`text-[12px] italic font-sans ${mienPlea === 'hide' ? 'text-pink-200' : 'text-violet-200/90'}`}>{tx(PLEA_LINES[mienPlea])}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-red-400 font-bold">Ký ức bệnh viện:</span>
-            <span
-              className={
-                cluesCount >= REQUIRED_CLUES
-                  ? 'text-red-400 font-bold animate-pulse'
-                  : 'text-zinc-300 font-semibold'
-              }
-            >
-              {cluesCount}/{REQUIRED_CLUES} manh mối
-            </span>
-            {cluesCount >= REQUIRED_CLUES ? (
-              <span className="text-red-400 font-bold hidden sm:inline animate-pulse">
-                [ĐÃ TÌM ĐỦ 5 MANH MỐI • HÃY ĐỐI CHẤT VỚI MIÊN!]
-              </span>
+        )}
+
+        {/* HUD cố định ở đáy: một hàng gọn, viền kép đỏ (đồng bộ Màn 1 / Hành lang / Màn 2) */}
+        <div className="absolute bottom-2 left-3 right-3 z-10 p-0.5 rounded border border-red-500/70 bg-black/80 shadow-[0_0_14px_rgba(239,68,68,0.35)] backdrop-blur-sm">
+          <div className="flex justify-between items-center gap-3 px-3 py-1 rounded-sm border border-red-900/80 text-[11px] font-mono text-zinc-400 whitespace-nowrap">
+            <div className="flex items-center gap-3">
+              <span><span className="text-red-400 font-bold">WASD</span> {t.hud.move}</span>
+              <span><span className="text-red-400 font-bold">E</span> {t.hud.interact}</span>
+            </div>
+            {cluesCount >= REQUIRED_CLUES && localInteractedIds.includes(KEY_CLUE) ? (
+              <div className="text-red-400 font-bold animate-pulse">{tx('Đủ manh mối • Hãy đối chất Miên')}</div>
+            ) : cluesCount >= REQUIRED_CLUES ? (
+              <div className="text-amber-300">{tx('Đủ manh mối • Nhưng Miên vẫn còn giấu một thứ...')}</div>
             ) : (
-              <span className="text-zinc-500 hidden sm:inline">
-                (Khám phá: giường cấp cứu, máy sốc tim, balo ướt, mảnh gương, bệnh án, đèn xe 115...)
-              </span>
+              <div className="text-zinc-300">
+                {tx('Ký ức bệnh viện')} <span className="font-bold text-red-300">{cluesCount}/{REQUIRED_CLUES}</span>
+              </div>
             )}
-          </div>
-          <div className="text-red-500/80 font-bold hidden md:block">
-            MÀN 3: SỰ XÂM THẤU CỦA ĐIỂM ẢNH • KHI HIỆN THỰC RÒ RỈ
           </div>
         </div>
 
@@ -1970,6 +2222,7 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
             onClose={() => finishDefib(false)}
           />
         )}
+        </div>
       </div>
     </div>
   );

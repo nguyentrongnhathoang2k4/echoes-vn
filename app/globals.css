@@ -20,6 +20,15 @@
   --font-mono: "Consolas", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
 }
 
+/* animate-fade-in: chỉ đổi độ mờ, không đụng transform để không đè các class translate/scale sẵn có */
+@theme {
+  --animate-fade-in: fade-in 0.3s ease-out;
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+
 /* ---- Base ---- */
 *, *::before, *::after {
   box-sizing: border-box;
@@ -42,6 +51,20 @@ body {
 .pixelated {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+}
+
+/* ---- Bị trừ Sanity trong hộp thoại: giật nhẹ khung hình + chớp tối viền ---- */
+@keyframes vn-jolt {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(-2px, 1px); }
+  50%  { transform: translate(2px, -1px); }
+  75%  { transform: translate(-1px, 0); }
+  100% { transform: translate(0, 0); }
+}
+@keyframes vn-vignette {
+  0%   { opacity: 0; }
+  20%  { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 /* ---- CRT scanline overlay ---- */

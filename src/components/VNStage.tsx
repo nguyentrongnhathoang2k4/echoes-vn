@@ -1,9 +1,59 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import storyDataRaw from '../data/story.json';
+import { getStory, getBaseStory } from '../data/storyLoader';
+import { useLanguage } from '../context/LanguageContext';
 import { StoryNode, Choice, AnEmotion, MienEmotion } from '../types/vn';
+import { PortraitActor, Gesture, GESTURES, EMOTION_GESTURE } from './PortraitActor';
+import { audioEngine, SilenceAccent } from '../services/audioEngine';
+import { tx } from '../locales/tx';
 
-const storyData = storyDataRaw as Record<string, StoryNode>;
+// Bản gốc tiếng Việt: dùng để nhận diện người nói (bản dịch có thể đổi tên hiển thị)
+const baseStory = getBaseStory();
+
+// Nhịp diễn trong lời thoại: {a:sad} / {m:warm_smile,nod} đổi biểu cảm hoặc làm cử chỉ
+// đúng lúc chữ gõ tới vị trí đó; {s:chime|click|sigh} cắt phụt mọi âm thanh (khoảng lặng chân không).
+// Dấu nhịp bị lược khỏi chữ hiển thị.
+interface Beat {
+  at: number;
+  who: 'a' | 'm' | 's';
+  emotion?: string;
+  gesture?: Gesture;
+  silence?: SilenceAccent;
+}
+
+const SILENCE_ACCENTS: readonly string[] = ['chime', 'click', 'sigh', 'none'];
+
+const BEAT_RE = /\{([ams]):([a-z_,]+)\}/g;
+
+/** Lược dấu nhịp diễn cho nơi khác hiển thị lời thoại (không có chân dung) */
+export const stripBeats = (raw: string) => raw.replace(BEAT_RE, '');
+
+function parseBeats(raw: string): { text: string; beats: Beat[] } {
+  const beats: Beat[] = [];
+  let text = '';
+  let last = 0;
+  for (const m of raw.matchAll(BEAT_RE)) {
+    text += raw.slice(last, m.index);
+    last = m.index + m[0].length;
+    const who = m[1] as Beat['who'];
+    const beat: Beat = { at: text.length, who };
+    for (const name of m[2].split(',')) {
+      if (who === 's') {
+        if (SILENCE_ACCENTS.includes(name)) beat.silence = name as SilenceAccent;
+      } else if ((GESTURES as readonly string[]).includes(name)) beat.gesture = name as Gesture;
+      else if (name in (who === 'a' ? AN_PORTRAITS : MIEN_PORTRAITS)) beat.emotion = name;
+    }
+    beats.push(beat);
+  }
+  return { text: text + raw.slice(last), beats };
+}
+
+/** Biểu cảm của nhịp gần nhất đã gõ tới (undefined nếu chưa có) */
+function beatEmotion(beats: Beat[], who: 'a' | 'm', typed: number): string | undefined {
+  let e: string | undefined;
+  for (const b of beats) if (b.who === who && b.at <= typed && b.emotion) e = b.emotion;
+  return e;
+}
 
 export const AN_PORTRAITS: Record<AnEmotion, string> = {
   normal: '/assets/ModelAN/normalAn.png',
@@ -12,21 +62,10 @@ export const AN_PORTRAITS: Record<AnEmotion, string> = {
   scared: '/assets/ModelAN/ScaredAn.png',
   panic: '/assets/ModelAN/PanicAn.png',
   faint_smile: '/assets/ModelAN/FaintSmileAn.png',
+  smile: '/assets/ModelAN/SmileAn.png',
   doubt: '/assets/ModelAN/Doubt.png',
   glitched: '/assets/ModelAN/GlitchedAn.png',
   determined: '/assets/ModelAN/determinedAn.png',
-};
-
-export const AN_EMOTION_LABELS: Record<AnEmotion, string> = {
-  normal: 'Bình thường',
-  sad: 'Đau buồn',
-  exhausted: 'Kiệt sức',
-  scared: 'Kinh sợ',
-  panic: 'Hoảng loạn',
-  faint_smile: 'Cười gượng',
-  doubt: 'Nghi ngờ',
-  glitched: 'Nhiễu loạn',
-  determined: 'Kiên định',
 };
 
 export const MIEN_PORTRAITS: Record<MienEmotion, string> = {
@@ -42,18 +81,6 @@ export const MIEN_PORTRAITS: Record<MienEmotion, string> = {
   playful: '/assets/ModelMIEN/playfulMien.png',
 };
 
-export const MIEN_EMOTION_LABELS: Record<MienEmotion, string> = {
-  warm_smile: 'Ấm áp',
-  gentle: 'Dịu dàng',
-  worried: 'Lo lắng',
-  melancholy: 'U sầu',
-  surprised: 'Bàng hoàng',
-  fading: 'Mờ nhạt',
-  pleading: 'Cầu xin',
-  corrupted: 'Lỗi mã AURA',
-  crying: 'Rơi lệ',
-  playful: 'Tinh nghịch',
-};
 
 interface VNStageProps {
   initialNodeId: string;
@@ -83,6 +110,7 @@ export const VNStage: React.FC<VNStageProps> = ({
   const [currentNodeId, setCurrentNodeId] = useState<string>(initialNodeId);
   const [displayedText, setDisplayedText] = useState<string>('');
   const [isTyping, setIsTyping] = useState<boolean>(false);
+  const [selectedChoiceIndex, setSelectedChoiceIndex] = useState<number>(0);
   const [sanityDamageFlash, setSanityDamageFlash] = useState<boolean>(false);
   const [recentDamage, setRecentDamage] = useState<number | null>(null);
   const damageTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -92,13 +120,32 @@ export const VNStage: React.FC<VNStageProps> = ({
   const typingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isTypingRef = useRef<boolean>(false);
   const activeTextRef = useRef<string>('');
+  // Khung chữ: lời thoại dài hơn khung thì tự cuộn theo dòng đang gõ
+  const textBoxRef = useRef<HTMLDivElement>(null);
+  const caretRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const box = textBoxRef.current;
+    if (!box) return;
+    // Phần chưa gõ vẫn chiếm chỗ (ẩn), nên cuộn theo con trỏ chứ không cuộn xuống đáy
+    const caret = caretRef.current;
+    box.scrollTop = caret ? Math.max(0, caret.offsetTop + caret.offsetHeight - box.clientHeight) : box.scrollHeight;
+  }, [displayedText, isTyping]);
 
   // Luôn đồng bộ currentNodeId khi initialNodeId từ prop thay đổi
   useEffect(() => {
     setCurrentNodeId(initialNodeId);
+    setSelectedChoiceIndex(0);
   }, [initialNodeId]);
 
+  // Reset lựa chọn đang focus về đầu tiên khi sang câu thoại mới
+  useEffect(() => {
+    setSelectedChoiceIndex(0);
+  }, [currentNodeId]);
+
+  const { t, lang } = useLanguage();
+  const storyData = useMemo(() => getStory(lang), [lang]);
   const currentNode = storyData[currentNodeId] || storyData['start'];
+  const baseSpeaker = (baseStory[currentNodeId] || baseStory['start']).speaker;
   // Lựa chọn hiển thị: lọc theo biến cốt truyện (requiresFlag / forbidsFlag)
   const visibleChoices = useMemo<Choice[] | undefined>(
     () =>
@@ -109,23 +156,22 @@ export const VNStage: React.FC<VNStageProps> = ({
       ),
     [currentNode, storyFlags]
   );
-  const activeText = (sanity <= 40 && currentNode.glitchText) ? currentNode.glitchText : currentNode.text;
+  const rawActiveText = (sanity <= 40 && currentNode.glitchText) ? currentNode.glitchText : currentNode.text;
+  const { text: activeText, beats } = useMemo(() => parseBeats(rawActiveText), [rawActiveText]);
   activeTextRef.current = activeText;
+  // Số ký tự đã gõ của node hiện tại (chữ của node trước còn sót một nhịp render thì tính là 0)
+  const typedLen = activeText.startsWith(displayedText) ? displayedText.length : 0;
 
   // Xác định chân dung nhân vật đang nói & bối cảnh hội thoại
-  const isAn = currentNode.speaker.includes('An');
-  const isMien = currentNode.speaker.includes('Miên') || currentNode.speaker.includes('AURA');
-  const isMonologue = currentNode.speaker.includes('Độc thoại');
-  const isSystem = currentNode.speaker.includes('Hệ thống');
+  const isAn = baseSpeaker.includes('An');
+  // So khớp đầu tên người nói: "Phòng #316 (Phòng Trọ Cũ Của Miên)" là một cánh cửa, không phải Miên đang nói
+  const isMien = /^(Miên|AURA)\b/u.test(baseSpeaker);
+  const isMonologue = baseSpeaker.includes('Độc thoại');
+  const isSystem = baseSpeaker.includes('Hệ thống');
 
-  // Chỉ hiển thị model Miên khi có Miên tham gia cuộc trò chuyện
-  const hasMien =
-    isMien ||
-    currentNodeId.startsWith('node_mien_') ||
-    currentNodeId.startsWith('node_dream_') ||
-    currentNodeId.startsWith('node_climax_') ||
-    currentNodeId.startsWith('node_chapter_1_') ||
-    currentNodeId.startsWith('ch2_mien_');
+  // Ai đang thoại thì chỉ model người đó hiện, ở một ô duy nhất bên trái (khung lựa chọn nằm bên phải).
+  // Hệ thống / đồ vật / người nói khác: không hiện model nào
+  const activeSpeaker: 'an' | 'mien' | null = isMien ? 'mien' : isAn || isMonologue ? 'an' : null;
 
   // Xác định biểu cảm động của An dựa vào node và trạng thái tâm trí
   const getAnEmotion = (): AnEmotion => {
@@ -141,17 +187,17 @@ export const VNStage: React.FC<VNStageProps> = ({
       return 'glitched';
     }
 
-    // 3. Phản ứng tức thì khi bị trừ điểm tỉnh táo (Sanity Damage Flash)
+    // 3. Phản ứng tức thì khi bị trừ điểm tỉnh táo: đau đầu, hoang mang — không tự nhảy sang mặt kinh sợ
     if (sanityDamageFlash || recentDamage !== null) {
-      return sanity <= 35 ? 'panic' : 'scared';
+      if (sanity <= 35) return 'panic';
+      return sanity > 60 ? 'doubt' : 'exhausted';
     }
 
     // 4. Khi môi trường ở trạng thái GLITCH MODE:
-    // Tuyệt đối không dùng model glitched cho An, mà phản ánh tâm lý con người
+    // Không dùng model glitched cho An; phản ánh sự kiệt quệ, tê liệt của một người bệnh
     if (currentNode.worldState === 'GLITCH') {
-      if (sanity <= 30) return 'panic';
-      if (sanity <= 65) return 'scared';
-      return 'doubt';
+      if (sanity <= 25) return 'panic';
+      return 'exhausted';
     }
 
     // 5. Theo ngưỡng Tỉnh Táo (Sanity)
@@ -201,8 +247,40 @@ export const VNStage: React.FC<VNStageProps> = ({
     return 'gentle';
   };
 
-  const anEmotion = getAnEmotion();
-  const mienEmotion = getMienEmotion();
+  const anEmotion = (beatEmotion(beats, 'a', typedLen) as AnEmotion | undefined) ?? getAnEmotion();
+  const mienEmotion = (beatEmotion(beats, 'm', typedLen) as MienEmotion | undefined) ?? getMienEmotion();
+
+  // Khoảng lặng chân không: chạy một lần khi chữ gõ tới dấu {s:...}
+  const firedSilenceRef = useRef<string>('');
+  useEffect(() => {
+    beats.forEach((b, i) => {
+      if (b.who !== 's' || !b.silence || b.at > typedLen) return;
+      const key = `${currentNodeId}#${i}`;
+      if (firedSilenceRef.current.includes(key)) return;
+      firedSilenceRef.current += `|${key}`;
+      audioEngine.triggerDeadSilence(2000, 1200, b.silence);
+    });
+  }, [beats, typedLen, currentNodeId]);
+
+  // Cử chỉ: nhịp có cử chỉ riêng thì dùng nó, không thì tự chọn theo biểu cảm vừa đổi.
+  // Tính ngay trong render (derived state) để cử chỉ khớp đúng khung hình đổi ảnh.
+  const [anGesture, setAnGesture] = useState<{ name: Gesture; id: number } | null>(null);
+  const [mienGesture, setMienGesture] = useState<{ name: Gesture; id: number } | null>(null);
+  const [beatState, setBeatState] = useState({ key: '', applied: 0, an: anEmotion as string, mien: mienEmotion as string });
+  const beatKey = `${currentNodeId}|${activeText}`;
+  const applied = beats.filter((b) => b.at <= typedLen).length;
+  if (beatState.key !== beatKey || beatState.applied !== applied || beatState.an !== anEmotion || beatState.mien !== mienEmotion) {
+    const from = beatState.key === beatKey ? beatState.applied : 0;
+    const fresh = beats.filter((b) => b.at <= typedLen).slice(from);
+    const pick = (who: 'a' | 'm', emotion: string, prevEmotion: string) =>
+      [...fresh].reverse().find((b) => b.who === who && b.gesture)?.gesture ??
+      (emotion !== prevEmotion ? EMOTION_GESTURE[emotion] : undefined);
+    const ag = pick('a', anEmotion, beatState.an);
+    const mg = pick('m', mienEmotion, beatState.mien);
+    if (ag) setAnGesture((g) => ({ name: ag, id: (g?.id ?? 0) + 1 }));
+    if (mg) setMienGesture((g) => ({ name: mg, id: (g?.id ?? 0) + 1 }));
+    setBeatState({ key: beatKey, applied, an: anEmotion, mien: mienEmotion });
+  }
 
   // Khởi tạo AudioContext an toàn
   const getAudioContext = useCallback(() => {
@@ -224,9 +302,30 @@ export const VNStage: React.FC<VNStageProps> = ({
     }
   }, []);
 
+  // Âm thanh di chuyển con trỏ lựa chọn (Retro Cursor Move)
+  const playChoiceHoverSound = useCallback(() => {
+    if (volume <= 0 || audioEngine.isDeadSilent()) return;
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    try {
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(650, t);
+      osc.frequency.exponentialRampToValueAtTime(950, t + 0.025);
+      gain.gain.setValueAtTime((volume / 100) * 0.04, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.025);
+    } catch {}
+  }, [volume, getAudioContext]);
+
   // 1. Âm thanh gõ máy đánh chữ / phím cơ lách cách (Typewriter Click)
   const playTypewriterClick = useCallback(() => {
-    if (volume <= 0) return;
+    if (volume <= 0 || audioEngine.isDeadSilent()) return;
     const ctx = getAudioContext();
     if (!ctx) return;
 
@@ -271,50 +370,6 @@ export const VNStage: React.FC<VNStageProps> = ({
     }
   }, [volume, getAudioContext]);
 
-  // 2. Âm thanh nhịp tim đập dồn dập khi Sanity < 25% (Heartbeat Thump-Thump)
-  const playHeartbeat = useCallback(() => {
-    if (volume <= 0) return;
-    const ctx = getAudioContext();
-    if (!ctx) return;
-
-    try {
-      const t = ctx.currentTime;
-      const hbGainVal = (volume / 100) * 0.09;
-
-      // Nhịp 1 (Thịch...)
-      const osc1 = ctx.createOscillator();
-      const g1 = ctx.createGain();
-      osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(75, t);
-      osc1.frequency.exponentialRampToValueAtTime(40, t + 0.12);
-
-      g1.gain.setValueAtTime(hbGainVal, t);
-      g1.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-
-      osc1.connect(g1);
-      g1.connect(ctx.destination);
-      osc1.start(t);
-      osc1.stop(t + 0.12);
-
-      // Nhịp 2 (...Thịch sau 160ms)
-      const osc2 = ctx.createOscillator();
-      const g2 = ctx.createGain();
-      osc2.type = 'sine';
-      osc2.frequency.setValueAtTime(65, t + 0.16);
-      osc2.frequency.exponentialRampToValueAtTime(35, t + 0.28);
-
-      g2.gain.setValueAtTime(hbGainVal * 0.75, t + 0.16);
-      g2.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
-
-      osc2.connect(g2);
-      g2.connect(ctx.destination);
-      osc2.start(t + 0.16);
-      osc2.stop(t + 0.28);
-    } catch {
-      // Bỏ qua
-    }
-  }, [volume, getAudioContext]);
-
   // 3. Âm thanh rè tĩnh điện / cảnh báo khi bị trừ Sanity
   const playSanityLossSound = useCallback(() => {
     if (volume <= 0) return;
@@ -348,18 +403,6 @@ export const VNStage: React.FC<VNStageProps> = ({
       if (damageTimerRef.current) clearTimeout(damageTimerRef.current);
     };
   }, []);
-
-  // Vòng lặp âm thanh nhịp tim dồn dập khi Sanity < 25%
-  useEffect(() => {
-    if (sanity >= 25) return;
-
-    // Sanity càng thấp thì tim đập càng nhanh (650ms - 850ms)
-    const intervalMs = Math.max(600, 650 + (sanity / 25) * 250);
-    playHeartbeat();
-    const timer = setInterval(playHeartbeat, intervalMs);
-
-    return () => clearInterval(timer);
-  }, [sanity, playHeartbeat]);
 
   // Vòng lặp Typewriter
   useEffect(() => {
@@ -480,7 +523,7 @@ export const VNStage: React.FC<VNStageProps> = ({
       setCurrentNodeId(branch.nextNodeId);
     } else if (currentNode.nextNodeId) {
       setCurrentNodeId(currentNode.nextNodeId);
-    } else if (!visibleChoices) {
+    } else if (!visibleChoices || visibleChoices.length === 0) {
       onClose(currentNode.id);
     }
   }, [currentNode, onClose, storyFlags, visibleChoices]);
@@ -539,7 +582,7 @@ export const VNStage: React.FC<VNStageProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       // 1. Phím Space hoặc Enter để qua câu thoại
       if (e.key === ' ' || e.key === 'Enter') {
-        if (!visibleChoices || isTypingRef.current) {
+        if (!visibleChoices || visibleChoices.length === 0 || isTypingRef.current) {
           e.preventDefault();
           handleNext();
           return;
@@ -560,21 +603,36 @@ export const VNStage: React.FC<VNStageProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentNode, visibleChoices, handleNext, handleChoice]);
 
+  // Khung thoại trầm, tối giản: không nhuộm đỏ rực khi GLITCH hay khi bị trừ Sanity
   const getThemeClasses = () => {
-    if (sanityDamageFlash || currentNode.worldState === 'GLITCH' || sanity <= 25) {
-      return 'bg-red-950/95 border-red-500 text-red-100 animate-pulse shadow-[0_0_40px_rgba(239,68,68,0.65)] ring-1 ring-red-500/50';
+    // Chỉ khi Sanity cực kỳ nguy cấp (<= 20%) mới cho viền đỏ thẫm nhẹ
+    if (sanity <= 20) {
+      return 'bg-black/95 border-red-900/80 text-zinc-100 shadow-[0_0_25px_rgba(185,28,28,0.3)]';
     }
     if (currentNode.worldState === 'DREAM') {
-      return 'bg-indigo-950/90 border-pink-500 text-pink-100 shadow-[0_0_30px_rgba(236,72,153,0.35)]';
+      return 'bg-indigo-950/90 border-pink-500/70 text-pink-100 shadow-[0_0_25px_rgba(236,72,153,0.25)]';
     }
-    return 'bg-zinc-950/95 border-cyan-800 text-zinc-200 shadow-[0_0_25px_rgba(6,182,212,0.2)]';
+    // Mặc định (kể cả GLITCH hay bị trừ Sanity): khung đen mờ, viền xám tro
+    return 'bg-black/90 border-zinc-700/80 text-zinc-100 shadow-[0_0_30px_rgba(0,0,0,0.9)]';
   };
 
   return (
     <div
       onClick={handleNext}
       className="relative w-full h-screen max-h-screen overflow-hidden flex flex-col justify-between p-3 sm:p-5 select-none font-mono cursor-pointer"
+      // Bị trừ Sanity: khung hình giật lệch 2px trong 150ms (thay cho nhuộm đỏ cả màn hình)
+      style={sanityDamageFlash ? { animation: 'vn-jolt 150ms linear' } : undefined}
     >
+      {/* ...kèm một nhịp tối sầm ở viền màn hình rồi sáng lại */}
+      {sanityDamageFlash && (
+        <div
+          className="pointer-events-none absolute inset-0 z-40"
+          style={{
+            background: 'radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.85) 100%)',
+            animation: 'vn-vignette 600ms ease-out forwards',
+          }}
+        />
+      )}
       {/* 1. HUD: Sanity bar & Close - Chỉ đỏ cảnh báo ở thanh này khi bị trừ Sanity */}
       <div
         onClick={(e) => e.stopPropagation()}
@@ -592,7 +650,7 @@ export const VNStage: React.FC<VNStageProps> = ({
                 : 'text-zinc-400'
             }`}
           >
-            ĐỘ TỈNH TÁO:
+            {t.vn.sanity}
           </span>
           <span
             className={`text-xs sm:text-sm font-bold ${
@@ -607,7 +665,7 @@ export const VNStage: React.FC<VNStageProps> = ({
           </span>
           {recentDamage !== null && (
             <span className="text-[10px] sm:text-xs font-mono font-bold text-red-400 bg-red-950/90 border border-red-500 px-1.5 py-0.5 rounded animate-bounce">
-              {recentDamage} SANITY
+              {t.vn.damage(recentDamage)}
             </span>
           )}
         </div>
@@ -635,75 +693,153 @@ export const VNStage: React.FC<VNStageProps> = ({
           onClick={() => onClose()}
           className="text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-800 px-2.5 py-1 border border-zinc-700 transition-colors uppercase tracking-widest rounded"
         >
-          [Đóng]
+          {t.vn.close}
         </button>
       </div>
 
-      {/* 2. KHU VỰC HIỂN THỊ CHÂN DUNG NHÂN VẬT - Model luôn giữ nguyên màu gốc */}
-      <div className="relative flex-1 w-full flex items-end justify-between px-4 sm:px-12 pointer-events-none z-10 min-h-0 overflow-hidden pb-1">
-        
-        {/* MODEL AN (Góc trái) - Dynamic Emotion Portrait */}
-        <div
-          className={`relative transition-all duration-300 transform origin-bottom flex flex-col items-center justify-end max-h-[48vh] ${
-            isAn || isMonologue
-              ? 'opacity-100 translate-y-0 scale-100'
-              : 'opacity-40 translate-y-3 scale-95 blur-[0.5px]'
-          }`}
-        >
-          <img
-            src={AN_PORTRAITS[anEmotion]}
-            alt={`An (${AN_EMOTION_LABELS[anEmotion]})`}
-            key={`an-${anEmotion}`}
-            className="max-h-[40vh] sm:max-h-[46vh] h-auto w-auto max-w-[250px] sm:max-w-[320px] object-contain drop-shadow-[0_0_15px_rgba(100,116,139,0.4)] animate-fade-in transition-all duration-300"
-          />
-          <div className="absolute top-1 left-1 bg-black/85 border border-zinc-700/80 px-2 py-0.5 text-[10px] text-zinc-300 font-bold rounded backdrop-blur-sm shadow flex items-center gap-1.5">
-            <span>AN</span>
-            <span className="text-[9px] text-cyan-400 font-normal">[{AN_EMOTION_LABELS[anEmotion]}]</span>
-          </div>
-        </div>
-
-        {/* MODEL MIÊN / AURA (Góc phải) - Dynamic Emotion Portrait */}
-        {hasMien && (
-          <div
-            className={`relative transition-all duration-300 transform origin-bottom flex flex-col items-center justify-end max-h-[48vh] animate-fade-in ${
-              isMien
-                ? 'opacity-100 translate-y-0 scale-100'
-                : 'opacity-50 translate-y-2 scale-95 blur-[0.5px]'
-            }`}
-          >
-            {/* Hào quang hologram */}
-            <div className="absolute inset-0 bg-pink-500/20 blur-2xl rounded-full -z-10 animate-pulse" />
-            
-            <img
-              src={MIEN_PORTRAITS[mienEmotion]}
-              alt={`Miên (${MIEN_EMOTION_LABELS[mienEmotion]})`}
-              key={`mien-${mienEmotion}`}
-              className={`max-h-[40vh] sm:max-h-[46vh] h-auto w-auto max-w-[250px] sm:max-w-[320px] object-contain drop-shadow-[0_0_20px_rgba(236,72,153,0.5)] transition-all duration-300 animate-fade-in ${
-                isMien ? 'animate-bounce-slow' : ''
-              }`}
+      {/* Vùng giữa: chân dung đứng sát trên khung chat; bảng lựa chọn nổi đè góc phải, không chiếm chỗ */}
+      <div className="relative flex-1 w-full min-h-0 flex flex-col">
+      {/* 2. CHÂN DUNG NGƯỜI ĐANG NÓI (một ô bên trái) - Model luôn giữ nguyên màu gốc */}
+      <div className="relative flex-1 w-full flex items-end justify-start px-4 sm:px-12 pointer-events-none z-10 min-h-0 overflow-hidden pb-1">
+        {activeSpeaker === 'an' && (
+          // key đổi theo người nói → mờ dần vào mỗi khi đổi lượt
+          <div key="an" className="relative transition-all duration-300 transform origin-bottom flex flex-col items-center justify-end max-h-[48vh] animate-fade-in">
+            <PortraitActor
+              src={AN_PORTRAITS[anEmotion]}
+              alt={`An (${t.vn.anEmotion[anEmotion]})`}
+              emotion={anEmotion}
+              gesture={anGesture}
+              talking={isTyping && isAn && !isMonologue}
+              dir={1}
+              imgClassName="drop-shadow-[0_0_15px_rgba(100,116,139,0.4)]"
             />
-            <div className="absolute top-1 right-1 bg-pink-950/85 border border-pink-500 px-2 py-0.5 text-[10px] text-pink-200 font-bold rounded shadow-[0_0_10px_rgba(236,72,153,0.4)] backdrop-blur-sm flex items-center gap-1.5">
-              <span>MIÊN</span>
-              <span className="text-[9px] text-pink-300 font-normal">[{MIEN_EMOTION_LABELS[mienEmotion]}]</span>
+            <div className="absolute top-1 left-1 bg-black/85 border border-zinc-700/80 px-2 py-0.5 text-[10px] text-zinc-300 font-bold rounded backdrop-blur-sm shadow flex items-center gap-1.5">
+              <span>AN</span>
+              <span className="text-[9px] text-cyan-400 font-normal">[{t.vn.anEmotion[anEmotion]}]</span>
             </div>
           </div>
         )}
 
+        {activeSpeaker === 'mien' && (
+          <div key="mien" className="relative transition-all duration-300 transform origin-bottom flex flex-col items-center justify-end max-h-[48vh] animate-fade-in">
+            {/* Hào quang hologram */}
+            <div className="absolute inset-0 bg-pink-500/20 blur-2xl rounded-full -z-10 animate-pulse" />
+            <PortraitActor
+              src={MIEN_PORTRAITS[mienEmotion]}
+              alt={`${tx('Miên')} (${t.vn.mienEmotion[mienEmotion]})`}
+              emotion={mienEmotion}
+              gesture={mienGesture}
+              talking={isTyping}
+              dir={1}
+              imgClassName="drop-shadow-[0_0_20px_rgba(236,72,153,0.5)]"
+            />
+            <div className="absolute top-1 left-1 bg-pink-950/85 border border-pink-500 px-2 py-0.5 text-[10px] text-pink-200 font-bold rounded shadow-[0_0_10px_rgba(236,72,153,0.4)] backdrop-blur-sm flex items-center gap-1.5">
+              <span>{tx('MIÊN')}</span>
+              <span className="text-[9px] text-pink-300 font-normal">[{t.vn.mienEmotion[mienEmotion]}]</span>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* 3. HỘP THOẠI VISUAL NOVEL (Dialogue Box - Chiều cao thích ứng khi có nhiều lựa chọn) */}
+      {/* 2.5. HỘP LỰA CHỌN PHÂN NHÁNH NỔI (FEAR & HUNGER / RETRO RPG STYLE) */}
+      {!isTyping && visibleChoices && visibleChoices.length > 0 && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute inset-x-0 bottom-3 max-h-full overflow-y-auto z-40 flex flex-col items-end gap-2.5 px-2 sm:px-6 pointer-events-auto animate-fade-in"
+        >
+          <div className="flex flex-col gap-2.5 w-full sm:w-auto min-w-[280px] sm:min-w-[380px] max-w-xl">
+            {visibleChoices.map((choice, index) => {
+              const locked = isChoiceLocked(choice);
+              const isSelected = selectedChoiceIndex === index;
+              return (
+                <button
+                  key={index}
+                  disabled={locked}
+                  onMouseEnter={() => {
+                    if (!locked && selectedChoiceIndex !== index) {
+                      setSelectedChoiceIndex(index);
+                      playChoiceHoverSound();
+                    }
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleChoice(choice);
+                  }}
+                  className={`w-full text-left font-mono px-4 py-2.5 sm:px-5 sm:py-3 rounded-lg border-2 transition-all duration-150 flex items-center justify-between group shadow-xl ${
+                    locked
+                      ? 'bg-zinc-900/60 border-zinc-700/50 text-zinc-600 cursor-not-allowed opacity-60'
+                      : isSelected
+                      ? 'bg-black border-white text-white shadow-[0_0_20px_rgba(255,255,255,0.35)] scale-[1.01]'
+                      : 'bg-[#2d2d33]/90 border-zinc-400/80 text-zinc-100 hover:border-zinc-200 hover:bg-[#383840]'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`text-xs transition-all duration-150 ${
+                        isSelected ? 'text-white opacity-100 translate-x-0' : 'opacity-0 -translate-x-1'
+                      }`}
+                    >
+                      ▶
+                    </span>
+                    <span
+                      className={`text-xs sm:text-sm tracking-wide leading-snug ${
+                        isSelected ? 'font-bold text-white' : 'font-medium text-zinc-200'
+                      }`}
+                    >
+                      {choice.text}
+                    </span>
+                  </div>
+
+                  {locked ? (
+                    <span className="text-[9px] sm:text-[10px] font-mono px-2 py-0.5 rounded ml-2 shrink-0 text-zinc-500 bg-zinc-900/90 border border-zinc-700/60">
+                      🔒 {choice.minSanity !== undefined && choice.maxSanity !== undefined
+                        ? t.vn.lockRange(choice.minSanity, choice.maxSanity)
+                        : choice.minSanity !== undefined
+                        ? t.vn.lockMin(choice.minSanity)
+                        : t.vn.lockMax(choice.maxSanity ?? 0)}
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                      {choice.sanityImpact !== 0 && (
+                        <span
+                          className={`text-[9px] sm:text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                            choice.sanityImpact < 0
+                              ? 'text-red-400 bg-red-950/70 border border-red-900/50'
+                              : 'text-emerald-400 bg-emerald-950/70 border border-emerald-900/50'
+                          }`}
+                        >
+                          {t.vn.impact(choice.sanityImpact)}
+                        </span>
+                      )}
+                      <span
+                        className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${
+                          isSelected
+                            ? 'border-white/60 bg-white/10 text-white font-bold'
+                            : 'border-zinc-600/50 bg-black/40 text-zinc-400 group-hover:text-zinc-200'
+                        }`}
+                      >
+                        [{index + 1}]
+                      </span>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      </div>
+
+      {/* 3. HỘP THOẠI VISUAL NOVEL (Dialogue Box) */}
       <div
-        className={`z-30 shrink-0 border-2 p-3 sm:p-4 rounded transition-all duration-300 backdrop-blur-md ${
-          !isTyping && visibleChoices && visibleChoices.length > 0
-            ? 'min-h-[175px] max-h-[320px] sm:max-h-[360px]'
-            : 'min-h-[130px] max-h-[220px] sm:max-h-[240px]'
-        } flex flex-col justify-between overflow-y-auto ${getThemeClasses()}`}
+        className={`z-30 shrink-0 border-2 p-3.5 sm:p-5 rounded-lg transition-all duration-300 backdrop-blur-md min-h-[110px] sm:min-h-[125px] max-h-[190px] flex flex-col justify-between overflow-y-auto ${getThemeClasses()}`}
       >
         {/* Header Tên người nói */}
         <div className="flex justify-between items-center mb-1.5 border-b border-current/30 pb-1 shrink-0">
           <span className="text-xs uppercase tracking-widest font-bold flex items-center gap-2">
             <span className="inline-block w-2 h-2 rounded-full bg-current animate-ping" />
-            {isSystem ? 'HỆ THỐNG // AURA OS' : currentNode.speaker}
+            {isSystem ? t.vn.system : currentNode.speaker}
           </span>
           <span className="text-[10px] opacity-60 uppercase tracking-widest font-mono">
             {currentNode.worldState} MODE
@@ -711,19 +847,25 @@ export const VNStage: React.FC<VNStageProps> = ({
         </div>
 
         {/* Nội dung lời thoại với hiệu ứng Typewriter */}
-        <div className="flex-1 min-h-[48px] my-1 overflow-y-auto pr-1">
-          <p className="text-xs sm:text-sm leading-relaxed font-sans font-medium">
+        <div ref={textBoxRef} className="relative flex-1 min-h-[48px] my-1 overflow-y-auto pr-1">
+          {/* Các đoạn chảy liền nhau, căn đều hai bên. Phần chưa gõ vẫn chiếm chỗ (ẩn) để chữ đang gõ
+              không nhảy xuống dòng giữa chừng khi một từ chạm mép khung */}
+          <p className="text-xs sm:text-sm leading-relaxed font-sans font-medium text-justify">
             {displayedText}
-            {isTyping && <span className="animate-pulse ml-1 text-cyan-400 font-mono">▌</span>}
+            {isTyping && (
+              <span ref={caretRef} className="inline-block w-0 overflow-visible animate-pulse text-cyan-400 font-mono">▌</span>
+            )}
+            {isTyping && activeText.startsWith(displayedText) && (
+              <span className="invisible" aria-hidden="true">{activeText.slice(displayedText.length)}</span>
+            )}
           </p>
         </div>
 
-        {/* Các lựa chọn phân nhánh (Choices) kèm phím tắt [1], [2] */}
         {/* Thanh đếm ngược (node có timeoutSeconds) */}
         {!isTyping && currentNode.timeoutSeconds && countdown !== null && (
           <div className="mt-2 shrink-0 flex items-center gap-2 font-mono text-[11px] text-red-300">
             <span className="font-bold animate-pulse whitespace-nowrap">
-              ⏳ NGẮT NGUỒN SAU 00:{String(countdown).padStart(2, '0')}
+              {t.vn.timeout(countdown)}
             </span>
             <div className="flex-1 h-1.5 bg-red-950/80 rounded overflow-hidden border border-red-900">
               <div
@@ -731,53 +873,6 @@ export const VNStage: React.FC<VNStageProps> = ({
                 style={{ width: `${(countdown / currentNode.timeoutSeconds) * 100}%` }}
               />
             </div>
-          </div>
-        )}
-
-        {!isTyping && visibleChoices && (
-          <div className="mt-2 space-y-1.5 shrink-0 pt-1.5 border-t border-current/20">
-            {visibleChoices.map((choice, index) => {
-              const locked = isChoiceLocked(choice);
-              return (
-              <button
-                key={index}
-                disabled={locked}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleChoice(choice);
-                }}
-                className={`w-full text-left text-xs px-3 py-1.5 sm:py-2 border rounded transition-all duration-150 flex justify-between items-center group ${
-                  locked
-                    ? 'border-zinc-800 bg-black/60 text-zinc-600 cursor-not-allowed opacity-60'
-                    : currentNode.worldState === 'DREAM'
-                    ? 'border-pink-600/80 bg-pink-950/60 hover:bg-pink-900/90 hover:border-pink-300 text-pink-100'
-                    : 'border-zinc-700 bg-zinc-900/70 hover:bg-zinc-800 hover:border-cyan-400 text-zinc-100'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="px-1.5 py-0.5 bg-black/60 border border-current/40 rounded text-[10px] font-mono text-cyan-400 font-bold group-hover:border-cyan-300">
-                    [{index + 1}]
-                  </span>
-                  <span className="font-sans font-medium text-xs sm:text-sm group-hover:translate-x-0.5 transition-transform leading-relaxed">
-                    {choice.text}
-                  </span>
-                </div>
-                {locked ? (
-                  <span className="text-[9px] sm:text-[10px] font-mono px-1.5 py-0.5 rounded shrink-0 ml-2 text-zinc-500 bg-zinc-900 border border-zinc-800">
-                    🔒 {choice.minSanity !== undefined ? `CẦN SANITY ≥ ${choice.minSanity}%` : `CHỈ KHI SANITY ≤ ${choice.maxSanity}%`}
-                  </span>
-                ) : (
-                <span
-                  className={`text-[9px] sm:text-[10px] font-mono px-1.5 py-0.5 rounded shrink-0 ml-2 ${
-                    choice.sanityImpact < 0 ? 'text-red-400 bg-red-950/80' : 'text-emerald-400 bg-emerald-950/80'
-                  }`}
-                >
-                  {choice.sanityImpact < 0 ? `${choice.sanityImpact} Sanity` : `+${choice.sanityImpact} Sanity`}
-                </span>
-                )}
-              </button>
-              );
-            })}
           </div>
         )}
 
@@ -792,136 +887,18 @@ export const VNStage: React.FC<VNStageProps> = ({
               className="w-full py-2.5 sm:py-3 px-4 bg-gradient-to-r from-red-700 via-rose-800 to-zinc-900 hover:from-red-600 hover:to-rose-700 text-white font-bold tracking-widest text-xs sm:text-sm rounded border border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.85)] animate-pulse transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <span>⚡</span>
-              <span>[ SỐC ĐIỆN TIM - TÁI TẠO Ý THỨC (CHƠI LẠI ĐẦU CHƯƠNG 1) ]</span>
+              <span>{t.vn.revive}</span>
               <span>⚡</span>
             </button>
           </div>
         )}
 
-        {/* Nút nổi bật khi hoàn thành Chương 1 */}
-        {currentNode.id === 'end_chapter_1' && !isTyping && (
-          <div className="mt-2 shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose(currentNode.id);
-              }}
-              className="w-full py-2.5 sm:py-3 px-4 bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 hover:from-pink-500 hover:to-indigo-500 text-white font-bold tracking-widest text-xs sm:text-sm rounded border border-pink-400 shadow-[0_0_20px_rgba(236,72,153,0.6)] animate-pulse transition-all flex items-center justify-center gap-2"
-            >
-              <span>✨</span>
-              <span>[ HOÀN THÀNH CHƯƠNG 1 - TIẾP TỤC BƯỚC VÀO THỊ TRẤN HOÀNG HÔN ]</span>
-              <span>✨</span>
-            </button>
-          </div>
-        )}
-
-        {/* Nút nổi bật khi hoàn thành Chương 2 */}
-        {currentNode.id === 'end_chapter_2' && !isTyping && (
-          <div className="mt-2 shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose(currentNode.id);
-              }}
-              className="w-full py-2.5 sm:py-3 px-4 bg-gradient-to-r from-red-600 via-fuchsia-700 to-purple-900 hover:from-red-500 text-white font-bold tracking-widest text-xs sm:text-sm rounded border border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.7)] animate-pulse transition-all flex items-center justify-center gap-2"
-            >
-              <span>⚠️</span>
-              <span>[ HOÀN THÀNH CHƯƠNG 2 - BẦU TRỜI ĐÃ SỤP ĐỔ ]</span>
-              <span>⚠️</span>
-            </button>
-          </div>
-        )}
-
-        {/* Nút hoàn thành True Ending */}
-        {currentNode.id === 'end_game_true' && !isTyping && (
-          <div className="mt-2 shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose(currentNode.id);
-              }}
-              className="w-full py-2.5 sm:py-3 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 hover:from-emerald-500 hover:to-cyan-600 text-white font-bold tracking-widest text-xs sm:text-sm rounded border border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.8)] animate-pulse transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <span>🌅</span>
-              <span>[ TRUE ENDING: BÌNH MINH THẬT SỰ • TRỞ VỀ MENU ]</span>
-              <span>🌅</span>
-            </button>
-          </div>
-        )}
-
-        {/* Nút hoàn thành Bad Ending */}
-        {currentNode.id === 'end_game_bad' && !isTyping && (
-          <div className="mt-2 shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose(currentNode.id);
-              }}
-              className="w-full py-2.5 sm:py-3 px-4 bg-gradient-to-r from-red-800 via-rose-950 to-black hover:from-red-700 text-red-200 font-bold tracking-widest text-xs sm:text-sm rounded border border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.8)] animate-pulse transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <span>🩸</span>
-              <span>[ BAD ENDING: ĐỊA NGỤC NGỌT NGÀO • MẮC KẸT VĨNH VIỄN ]</span>
-              <span>🩸</span>
-            </button>
-          </div>
-        )}
-
-        {/* Nút hoàn thành Neutral Ending */}
-        {currentNode.id === 'end_game_neutral' && !isTyping && (
-          <div className="mt-2 shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose(currentNode.id);
-              }}
-              className="w-full py-2.5 sm:py-3 px-4 bg-gradient-to-r from-zinc-800 via-zinc-900 to-black hover:bg-zinc-700 text-zinc-300 font-bold tracking-widest text-xs sm:text-sm rounded border border-zinc-600 shadow-[0_0_20px_rgba(113,113,122,0.6)] transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <span>⬛</span>
-              <span>[ NEUTRAL ENDING: ĐỨT ĐOẠN KÝ ỨC (MẤT KẾT NỐI VĨNH VIỄN) • TRỞ VỀ MENU ]</span>
-              <span>⬛</span>
-            </button>
-          </div>
-        )}
-
-        {/* Nút khi quay lại dạo quanh Thị trấn Hoàng Hôn */}
-        {currentNode.id === 'end_to_explore_sunset' && !isTyping && (
-          <div className="mt-2 shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose(currentNode.id);
-              }}
-              className="w-full py-2 px-3 bg-fuchsia-950/80 hover:bg-fuchsia-900 border border-pink-500/80 text-pink-200 text-xs font-bold rounded tracking-wider transition-all flex items-center justify-center gap-2"
-            >
-              <span>[ TIẾP TỤC DẠO QUANH THỊ TRẤN HOÀNG HÔN ]</span>
-            </button>
-          </div>
-        )}
-
-        {/* Nút khi quay lại khám phá phòng */}
-        {currentNode.id === 'end_to_explore' && !isTyping && (
-          <div className="mt-2 shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose(currentNode.id);
-              }}
-              className="w-full py-2 px-3 bg-zinc-900/90 hover:bg-zinc-800 border border-cyan-500/80 text-cyan-300 text-xs font-bold rounded tracking-wider transition-all flex items-center justify-center gap-2"
-            >
-              <span>[ TIẾP TỤC KHÁM PHÁ CĂN PHÒNG ]</span>
-            </button>
-          </div>
-        )}
-
-        {/* Gợi ý tiếp tục mặc định */}
+        {/* Gợi ý tiếp tục mặc định (nhấn Enter/Space hoặc click để tiếp tục / qua cutscene) */}
         {!isTyping &&
-          !visibleChoices &&
-          currentNode.id !== 'end_chapter_1' &&
-          currentNode.id !== 'end_chapter_2' &&
-          currentNode.id !== 'end_to_explore' &&
-          currentNode.id !== 'end_to_explore_sunset' && (
+          (!visibleChoices || visibleChoices.length === 0) &&
+          currentNode.id !== 'bad_ending_0' && (
             <div className="mt-1 flex justify-between items-center text-[10px] sm:text-xs opacity-50 font-mono shrink-0">
-              <span>[Phím Space / Enter để tiếp tục]</span>
+              <span>{t.vn.continueHint}</span>
               <span className="animate-bounce">▼</span>
             </div>
           )}

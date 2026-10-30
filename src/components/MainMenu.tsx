@@ -1,10 +1,15 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useLanguage } from '../context/LanguageContext';
+
 
 interface MainMenuProps {
   onStartNewGame: () => void;
   onContinueGame: () => void;
   onOpenSettings: () => void;
+  onOpenAchievements?: () => void;
+  unlockedEndingsCount?: number;
+  totalEndingsCount?: number;
   hasSaveData: boolean;
 }
 
@@ -20,8 +25,12 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onStartNewGame,
   onContinueGame,
   onOpenSettings,
+  onOpenAchievements,
+  unlockedEndingsCount = 0,
+  totalEndingsCount = 5,
   hasSaveData,
 }) => {
+  const { t } = useLanguage();
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [shutdownTriggered, setShutdownTriggered] = useState<boolean>(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -144,8 +153,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   const menuItems: MenuItem[] = [
     {
       id: 'new_game',
-      label: '[ BẮT ĐẦU HÀNH TRÌNH ]',
-      desc: 'Bắt đầu câu chuyện mới tại căn phòng trọ số 314',
+      label: t.menu.newGame,
+      desc: t.menu.newGameDesc,
       action: () => {
         playTerminalConfirm();
         onStartNewGame();
@@ -153,10 +162,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     },
     {
       id: 'continue_game',
-      label: '[ TIẾP TỤC HÀNH TRÌNH ]',
-      desc: hasSaveData
-        ? 'Tải lại điểm lưu gần nhất của bạn'
-        : 'Chưa có dữ liệu lưu (No Save Data)',
+      label: t.menu.continue,
+      desc: hasSaveData ? t.menu.continueDesc : t.menu.continueNoSave,
       disabled: !hasSaveData,
       action: () => {
         if (!hasSaveData) {
@@ -168,9 +175,18 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       },
     },
     {
+      id: 'achievements',
+      label: t.menu.achievements(unlockedEndingsCount, totalEndingsCount),
+      desc: t.menu.achievementsDesc,
+      action: () => {
+        playTerminalConfirm();
+        onOpenAchievements?.();
+      },
+    },
+    {
       id: 'settings',
-      label: '[ CÀI ĐẶT TRÒ CHƠI ]',
-      desc: 'Tùy chỉnh âm lượng, hiệu ứng hình ảnh CRT & tốc độ chữ',
+      label: t.menu.settings,
+      desc: t.menu.settingsDesc,
       action: () => {
         playTerminalConfirm();
         onOpenSettings();
@@ -178,8 +194,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     },
     {
       id: 'shutdown',
-      label: '[ THOÁT TRÒ CHƠI ]',
-      desc: 'Dừng hành trình và khép lại phiên chơi',
+      label: t.menu.shutdown,
+      desc: t.menu.shutdownDesc,
       action: () => {
         playTerminalDeny();
         setShutdownTriggered(true);
@@ -226,10 +242,10 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       <div className="z-10 w-full max-w-4xl flex justify-between items-center text-[10px] sm:text-xs text-zinc-500 border-b border-zinc-800/80 pb-2">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
-          <span>PHÒNG TRỌ SỐ 314 // 03:14 AM</span>
+          <span>{t.menu.roomTag}</span>
         </div>
         <div className="tracking-widest">
-          TRẠNG THÁI: <span className="text-red-400 font-bold">BẤT THƯỜNG</span>
+          {t.menu.statusLabel} <span className="text-red-400 font-bold">{t.menu.statusValue}</span>
         </div>
       </div>
 
@@ -255,7 +271,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           </div>
 
           <div className="mt-1 text-[10px] tracking-widest text-zinc-500 uppercase">
-            // DƯ ÂM LÚC 3 GIỜ 14 PHÚT //
+            {t.menu.tagline}
           </div>
         </div>
 
@@ -322,10 +338,10 @@ export const MainMenu: React.FC<MainMenuProps> = ({
         {/* Hotkey hint */}
         <div className="mt-8 text-[11px] text-zinc-500 tracking-wider flex items-center gap-3">
           <span className="bg-zinc-800 px-1.5 py-0.5 rounded text-[10px] text-zinc-300 font-bold">[W / S / ↑ / ↓]</span>
-          <span>CHỌN</span>
+          <span>{t.menu.hintSelect}</span>
           <span className="text-zinc-700">·</span>
           <span className="bg-zinc-800 px-1.5 py-0.5 rounded text-[10px] text-zinc-300 font-bold">[ENTER]</span>
-          <span>XÁC NHẬN</span>
+          <span>{t.menu.hintConfirm}</span>
         </div>
       </div>
 
@@ -335,8 +351,8 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           <span className="text-zinc-400 font-semibold">BUILD:</span>
           <span className="text-cyan-400 font-mono">v0.3.14-ALPHA</span>
           <span className="text-zinc-700">|</span>
-          <span className="text-zinc-400 font-semibold">TRẠNG THÁI:</span>
-          <span className="text-red-400 font-bold animate-pulse">KÝ ỨC ĐỨT ĐOẠN</span>
+          <span className="text-zinc-400 font-semibold">{t.menu.statusLabel}</span>
+          <span className="text-red-400 font-bold animate-pulse">{t.menu.footerStatus}</span>
         </div>
         <div className="text-zinc-600 text-center sm:text-right">
           PSYCHOLOGICAL HORROR VISUAL NOVEL &copy; 2026
@@ -350,23 +366,23 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             !
           </div>
           <h2 className="text-xl sm:text-2xl font-bold text-red-400 tracking-widest uppercase mb-2">
-            [ TẠM BIỆT ]
+            {t.menu.goodbyeTitle}
           </h2>
           <p className="text-xs sm:text-sm text-zinc-400 max-w-md leading-relaxed mb-6">
-            Câu chuyện của An và Miên tạm dừng tại đây. Bạn có thể đóng tab trình duyệt này hoặc bắt đầu lại bất cứ lúc nào.
+            {t.menu.goodbyeText}
           </p>
           <div className="flex gap-4">
             <button
               onClick={() => window.location.reload()}
               className="px-5 py-2 border border-red-500 bg-red-950/60 hover:bg-red-900 text-red-200 text-xs font-bold rounded tracking-wider transition-all"
             >
-              [ CHƠI LẠI TỪ ĐẦU ]
+              {t.menu.restart}
             </button>
             <button
               onClick={() => setShutdownTriggered(false)}
               className="px-5 py-2 border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold rounded tracking-wider transition-all"
             >
-              [ HỦY BỎ ]
+              {t.menu.cancel}
             </button>
           </div>
         </div>

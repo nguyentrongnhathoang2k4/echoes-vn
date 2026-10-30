@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { audioEngine } from '../services/audioEngine';
+import { tx } from '../locales/tx';
 
 interface SynapticCollapseOverlayProps {
   isOpen: boolean;
@@ -194,11 +195,11 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
             <div className="flex items-center gap-2">
               <span className="w-3.5 h-3.5 rounded-full bg-red-600 animate-ping inline-block" />
               <span className="text-red-500 font-black tracking-widest text-xs md:text-sm uppercase">
-                [ CẢNH BÁO NGUY CẤP: TIM NGỪNG ĐẬP (03:14 AM) ]
+                {tx('[ CẢNH BÁO NGUY CẤP: TIM NGỪNG ĐẬP (03:14 AM) ]')}
               </span>
             </div>
             <div className="text-red-400 font-bold text-xs">
-              0 BPM • VÔ MẠCH
+              {tx('0 BPM • VÔ MẠCH')}
             </div>
           </div>
 
@@ -207,7 +208,7 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
             {/* Đường thẳng Flatline đỏ máu */}
             <div className="w-full h-[2px] bg-red-500 shadow-[0_0_12px_rgba(239,68,68,1)] animate-pulse" />
             <div className="absolute top-2 left-3 text-[10px] text-red-500/80 font-mono tracking-wider">
-              ECG LEAD II • GAIN 1.0x • TÍN HIỆU: PHẲNG LÌ (FLATLINE)
+              {tx('ECG LEAD II • GAIN 1.0x • TÍN HIỆU: PHẲNG LÌ (FLATLINE)')}
             </div>
             <div className="absolute bottom-2 right-3 text-2xl font-black text-red-600/90 tracking-widest">
               ── 00 ──
@@ -217,7 +218,7 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
           {/* Tiếng vọng mờ ảo từ thực tại */}
           <div className="min-h-[52px] flex items-center justify-center mb-6 px-4">
             <p className="text-sm md:text-base italic font-serif text-zinc-300 drop-shadow-[0_0_8px_rgba(255,255,255,0.4)] animate-in fade-in duration-500">
-              {hospitalWhispers[whisperIdx]}
+              {tx(hospitalWhispers[whisperIdx])}
             </p>
           </div>
 
@@ -225,7 +226,7 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
           <div className="space-y-2 mb-6 text-left">
             <div className="flex justify-between text-xs font-bold font-mono">
               <span className="text-zinc-400">
-                ĐIỆN ÁP MÁY KHỬ RUNG TIM (DEFIBRILLATOR CHARGE):
+                {tx('ĐIỆN ÁP MÁY KHỬ RUNG TIM (DEFIBRILLATOR CHARGE):')}
               </span>
               <span className={isCharged ? 'text-amber-400 font-black animate-pulse' : 'text-red-400'}>
                 {Math.floor((chargeProgress / 100) * 360)} / 360 JOULES ({Math.floor(chargeProgress)}%)
@@ -258,14 +259,14 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
               }`}
             >
               {isCharged
-                ? '⚡ [ ĐÃ ĐẠT 360J • NHẤN SPACE / CLICK ĐỂ PHÓNG ĐIỆN: "CLEAR!" ] ⚡'
-                : '⚡ NHẤN LIÊN TỤC [ PHÍM CÁCH (SPACE) ] HOẶC [ CLICK ] ĐỂ NẠP ĐIỆN!'}
+                ? tx('⚡ [ ĐÃ ĐẠT 360J • NHẤN SPACE / CLICK ĐỂ PHÓNG ĐIỆN: "CLEAR!" ] ⚡')
+                : tx('⚡ NHẤN LIÊN TỤC [ PHÍM CÁCH (SPACE) ] HOẶC [ CLICK ] ĐỂ NẠP ĐIỆN!')}
             </button>
 
             <div className="flex items-center justify-between text-[11px] text-zinc-500 font-mono px-1">
-              <span>* Giữ nhịp nhấn dồn dập trước khi điện thế bị tụt</span>
+              <span>{tx('* Giữ nhịp nhấn dồn dập trước khi điện thế bị tụt')}</span>
               <span className="text-red-400 font-bold">
-                CÒN LẠI: {timeLeft.toFixed(1)}s
+                {tx('CÒN LẠI: {0}s', timeLeft.toFixed(1))}
               </span>
             </div>
           </div>
@@ -280,7 +281,7 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
               }}
               className="text-xs font-mono text-zinc-600 hover:text-zinc-400 transition-colors uppercase tracking-wider underline underline-offset-4"
             >
-              [ Chấp nhận từ bỏ • Buông xuôi ý thức ]
+              {tx('[ Chấp nhận từ bỏ • Buông xuôi ý thức ]')}
             </button>
           </div>
         </div>
@@ -295,7 +296,7 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
             ⚡ CLEAR! ⚡
           </div>
           <div className="text-sm font-mono text-white/90 tracking-widest uppercase">
-            [ ĐANG GIẢI PHÓNG 360 JOULES QUA LỒNG NGỰC... ]
+            {tx('[ ĐANG GIẢI PHÓNG 360 JOULES QUA LỒNG NGỰC... ]')}
           </div>
         </div>
       )}
@@ -307,7 +308,7 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
         <div className="relative z-10 w-full max-w-xl px-6 py-8 mx-4 bg-zinc-950/95 border border-cyan-500/80 rounded-lg shadow-[0_0_50px_rgba(6,182,212,0.4)] text-center animate-in zoom-in-95 duration-300">
           <div className="flex items-center justify-center gap-2 text-cyan-400 text-xs font-mono tracking-widest uppercase mb-4">
             <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-            <span>NHỊP TIM ĐÃ TRỞ LẠI: 78 BPM • HỒI TỈNH SAU CƠN NGUY KỊCH</span>
+            <span>{tx('NHỊP TIM ĐÃ TRỞ LẠI: 78 BPM • HỒI TỈNH SAU CƠN NGUY KỊCH')}</span>
           </div>
 
           <div className="w-full h-16 bg-black/60 border border-cyan-900/60 rounded flex items-center justify-center overflow-hidden mb-6">
@@ -325,19 +326,18 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
           </div>
 
           <p className="text-base italic font-serif text-zinc-200 leading-relaxed mb-6">
-            „(Hộc... Hộc... Lồng ngực mình bỏng rát như có dòng điện xé toạc... Mùi thuốc sát trùng nồng nặc...
-            Vừa rồi là cái quái gì thế này? Tiếng ai vừa gọi tên mình... là Miên? Hay chỉ là ảo giác trước ngưỡng cửa cái chết?)‟
+            {tx('„(Hộc... Hộc... Lồng ngực mình bỏng rát như có dòng điện xé toạc... Mùi thuốc sát trùng nồng nặc... Vừa rồi là cái quái gì thế này? Tiếng ai vừa gọi tên mình... là Miên? Hay chỉ là ảo giác trước ngưỡng cửa cái chết?)‟')}
           </p>
 
           <div className="text-xs font-mono text-cyan-300/80 mb-6 tracking-wide">
-            Chỉ số tỉnh táo (Sanity) được kéo lại mốc 30% [Thoi thóp • Cần cẩn trọng]
+            {tx('Chỉ số tỉnh táo (Sanity) được kéo lại mốc 30% [Thoi thóp • Cần cẩn trọng]')}
           </div>
 
           <button
             onClick={() => onRevive(30)}
             className="w-full py-3 px-6 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-400 text-cyan-100 font-mono font-bold text-sm tracking-widest rounded shadow-[0_0_20px_rgba(6,182,212,0.5)] transition-all cursor-pointer"
           >
-            [ HÍT MỘT HƠI THẬT SÂU • MỞ MẮT TRỞ LẠI ]
+            {tx('[ HÍT MỘT HƠI THẬT SÂU • MỞ MẮT TRỞ LẠI ]')}
           </button>
         </div>
       )}
@@ -348,17 +348,16 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
       {phase === 'DEAD' && (
         <div className="relative z-10 w-full max-w-lg px-6 py-8 mx-4 bg-zinc-950/95 border-2 border-zinc-800 rounded-lg shadow-[0_0_60px_rgba(0,0,0,1)] text-center animate-in fade-in duration-700">
           <div className="text-xs font-mono text-red-500 tracking-[0.3em] uppercase mb-2">
-            // BAD ENDING 0: TIẾNG BÍP VÔ TẬN
+            {tx('// BAD ENDING 0: TIẾNG BÍP VÔ TẬN')}
           </div>
           <h2 className="text-2xl md:text-3xl font-black text-zinc-100 tracking-wider mb-4">
-            GIẤC NGỦ NGÀN THU
+            {tx('GIẤC NGỦ NGÀN THU')}
           </h2>
 
           <div className="w-16 h-[1px] bg-red-600 mx-auto mb-4" />
 
           <p className="text-sm font-serif italic text-zinc-400 leading-relaxed mb-6">
-            Đường điện tâm đồ đã kéo dài thành một đường thẳng tắp lúc 03:14 AM. Tiếng bíp dài vô tận vang lên trong phòng hồi sức...
-            Nguyễn Văn An đã vĩnh viễn chìm sâu vào giấc ngủ ngàn thu...
+            {tx('Đường điện tâm đồ đã kéo dài thành một đường thẳng tắp lúc 03:14 AM. Tiếng bíp dài vô tận vang lên trong phòng hồi sức... Trần Hoàng An đã vĩnh viễn chìm sâu vào giấc ngủ ngàn thu...')}
           </p>
 
           <div className="space-y-3 font-mono">
@@ -366,14 +365,14 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
               onClick={onLoadLastSave}
               className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 border border-cyan-600 text-cyan-300 text-xs font-bold rounded tracking-wider transition-all cursor-pointer"
             >
-              ↩ TẢI LẠI ĐIỂM LƯU GẦN NHẤT (LOAD LAST SAVE)
+              {tx('↩ TẢI LẠI ĐIỂM LƯU GẦN NHẤT (LOAD LAST SAVE)')}
             </button>
 
             <button
               onClick={onRestart}
               className="w-full py-2.5 px-4 bg-zinc-950 hover:bg-red-950/50 border border-zinc-700 hover:border-red-600 text-zinc-400 hover:text-red-300 text-xs font-bold rounded tracking-wider transition-all cursor-pointer"
             >
-              ✦ BẮT ĐẦU LẠI TỪ ĐẦU (NEW GAME)
+              {tx('✦ BẮT ĐẦU LẠI TỪ ĐẦU (NEW GAME)')}
             </button>
           </div>
         </div>

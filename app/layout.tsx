@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Be_Vietnam_Pro, Lora } from "next/font/google";
 import "./globals.css";
+import { LanguageProvider } from "../src/context/LanguageContext";
 
 const beVietnamPro = Be_Vietnam_Pro({
   variable: "--font-be-vietnam-pro",
@@ -30,9 +31,13 @@ export default function RootLayout({
   return (
     <html
       lang="vi"
+      // Extension trình duyệt (vd. QuillBot) chèn thuộc tính vào <html> trước khi React hydrate
+      suppressHydrationWarning
       className={`${beVietnamPro.variable} ${lora.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">
+        <LanguageProvider>{children}</LanguageProvider>
+      </body>
     </html>
   );
 }
