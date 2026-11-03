@@ -354,9 +354,9 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md font-mono select-none animate-fade-in">
       <div
-        className={`relative w-full max-w-lg bg-zinc-950 border-2 rounded-lg shadow-[0_0_50px_rgba(244,114,182,0.3)] p-6 transition-all duration-300 ${
+        className={`relative w-full max-w-lg bg-zinc-950 border-2 rounded-lg p-6 transition-all duration-300 ${
           glitchActive
-            ? 'border-red-500 shadow-[0_0_70px_rgba(239,68,68,0.8)] animate-pulse scale-[1.02]'
+            ? 'border-red-500 animate-pulse scale-[1.02]'
             : 'border-amber-600/70'
         }`}
       >
@@ -389,7 +389,7 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({
               }
             `}</style>
             <div className="text-[11px] text-amber-300/80 tracking-[0.3em] mb-3">
-              {glitchActive ? tx('♪ GIAI ĐIỆU ĐANG LẠC NHỊP...') : tx('♪ NẮP HỘP BẬT MỞ ♪')}
+              {glitchActive ? tx('GIAI ĐIỆU ĐANG LẠC NHỊP...') : tx('NẮP HỘP BẬT MỞ')}
             </div>
             <div
               className={`relative max-w-[88%] px-6 py-5 bg-[#f3ead7] text-stone-700 shadow-[0_10px_30px_rgba(0,0,0,0.6)] border border-stone-300/70 transition-colors duration-1000 ${
@@ -417,12 +417,12 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({
             <p className="text-xs text-zinc-300 mb-4 leading-relaxed text-justify">
               {tx('Chiếc hộp nhạc gỗ khảm hoa văn Bến An Yên. Trục cót bị kẹt cứng ở vòng quay cuối cùng và kim tần số âm thanh bị lệch.')}
               <span className="text-amber-400 font-semibold block mt-1">
-                {tx('👉 Nhiệm vụ: Xoay cót lên 100% và kéo thanh trượt để đồng bộ tần số ký ức (17.05 MHz).')}
+                {tx('Nhiệm vụ: Xoay cót lên 100% và kéo thanh trượt để đồng bộ tần số ký ức (17.05 MHz).')}
               </span>
             </p>
 
             {/* Khung mô phỏng Hộp Nhạc Cổ Điển */}
-            <div className="bg-gradient-to-b from-amber-950/40 to-zinc-950 border border-amber-700/60 rounded p-4 mb-4 relative overflow-hidden">
+            <div className="bg-amber-950/40 border border-amber-700/60 rounded p-4 mb-4 relative overflow-hidden">
               {/* Vòng quay bánh răng và gauge cót */}
               <div className="flex flex-col sm:flex-row items-center justify-around gap-4 my-2">
                 {/* Núm vặn cót */}
@@ -430,11 +430,8 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({
                   <button
                     onClick={handleWind}
                     disabled={isBroken}
-                    className="w-20 h-20 rounded-full border-4 border-amber-500 bg-amber-900/40 hover:bg-amber-800/60 active:scale-95 shadow-[0_0_20px_rgba(245,158,11,0.3)] flex flex-col items-center justify-center transition-transform cursor-pointer group"
+                    className="w-20 h-20 rounded-full border-4 border-amber-500 bg-amber-900/40 hover:bg-amber-800/60 active:scale-95 flex flex-col items-center justify-center transition-transform cursor-pointer group"
                   >
-                    <span className="text-2xl group-hover:rotate-45 transition-transform duration-200">
-                      ⚙️
-                    </span>
                     <span className="text-[10px] font-bold text-amber-300 mt-0.5">{tx('VẶN CÓT')}</span>
                   </button>
                   <span className="text-[11px] text-zinc-400">
@@ -449,7 +446,7 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({
                     <span
                       className={`font-bold font-mono px-2 py-0.5 rounded text-xs ${
                         isTargetFreq
-                          ? 'bg-emerald-950 border border-emerald-500 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.5)] animate-pulse'
+                          ? 'bg-emerald-950 border border-emerald-500 text-emerald-300 animate-pulse'
                           : 'bg-zinc-900 border border-zinc-700 text-amber-400'
                       }`}
                     >
@@ -500,7 +497,7 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({
                   <div
                     className={`h-full transition-all duration-200 ${
                       tension >= 100
-                        ? 'bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.8)]'
+                        ? 'bg-emerald-500'
                         : isTargetFreq
                         ? 'bg-amber-400'
                         : 'bg-amber-600'
@@ -529,7 +526,7 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({
         ) : (
           /* MÀN HÌNH TWIST PHÁT HIỆN SỰ THẬT Y TẾ */
           <div className="animate-fade-in flex flex-col items-center text-center">
-            <div className="w-full bg-red-950/40 border-2 border-red-500/80 rounded-lg p-4 mb-4 shadow-[0_0_30px_rgba(239,68,68,0.4)]">
+            <div className="w-full bg-red-950/40 border-2 border-red-500/80 rounded-lg p-4 mb-4">
               <div className="flex items-center justify-center gap-2 text-red-400 text-xs font-bold tracking-widest uppercase mb-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping inline-block" />
                 {tx('CẢNH BÁO: TÍN HIỆU SINH HIỆU NGUY KỊCH')}
@@ -566,7 +563,7 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({
 
             <button
               onClick={onComplete}
-              className="w-full py-2.5 bg-red-700 hover:bg-red-600 active:scale-98 text-white font-bold text-sm tracking-wide rounded shadow-[0_0_20px_rgba(239,68,68,0.6)] transition-all cursor-pointer"
+              className="w-full py-2.5 bg-red-700 hover:bg-red-600 active:scale-98 text-white font-bold text-sm tracking-wide rounded transition-all cursor-pointer"
             >
               {tx('[ĐÓNG NẮP HỘP NHẠC]')}
             </button>

@@ -2,6 +2,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { InventoryItem, CHAPTER_1_ITEMS } from '../types/inventory';
 import { tx } from '../locales/tx';
+import { useUiLayer } from '../services/uiLayers';
+import { ItemSprite } from './pixel/ItemSprite';
+import { MenuOption } from './MenuOption';
 
 interface InventoryModalProps {
   isOpen: boolean;
@@ -16,6 +19,8 @@ interface InventoryModalProps {
 }
 
 const TOTAL_SLOTS = 12;
+// Số cột của lưới ô đồ (grid-cols-4): ↑ ↓ nhảy đúng một hàng
+const GRID_COLS = 4;
 
 export const InventoryModal: React.FC<InventoryModalProps> = ({
   isOpen,
@@ -28,7 +33,23 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
 }) => {
   const [selectedId, setSelectedId] = useState<string | null>(items[0]?.id || null);
   const [combineNotification, setCombineNotification] = useState<string | null>(null);
+  // Ô đang chọn bằng bàn phím thì hiện viền focus sáng (bấm chuột thì tắt).
+  // Túi đồ mở bằng phím [I] / [Tab] nên mỗi lần mở đều bật sẵn khung focus
+  const [keyboardNav, setKeyboardNav] = useState(true);
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
+    if (isOpen) setKeyboardNav(true);
+  }
   const audioCtxRef = useRef<AudioContext | null>(null);
+  // Rời màn / đóng khung thì đóng hẳn AudioContext riêng: không còn âm nào ngân sang cảnh sau
+  useEffect(() => {
+    const ctxRef = audioCtxRef;
+    return () => {
+      void ctxRef.current?.close().catch(() => {});
+      ctxRef.current = null;
+    };
+  }, []);
 
   // Khởi tạo AudioContext
   const getAudioContext = useCallback(() => {
@@ -120,24 +141,10 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
     }
   }, [items, selectedId]);
 
-  // Bắt phím tắt đóng túi đồ (Esc hoặc I)
-  useEffect(() => {
-    if (!isOpen) return;
+  // Túi đồ đang mở thì Esc thuộc về túi đồ, không mở Pause Menu
+  useUiLayer(isOpen);
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' || e.key.toLowerCase() === 'i') {
-        e.preventDefault();
-        e.stopPropagation();
-        onClose();
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
-
+  // Thông tin vật phẩm đang chọn tính trước early return: listener bàn phím bên dưới cần dùng tới
   const currentItem = items.find(i => i.id === selectedId) || null;
 
   // Kiểm tra ghép vật phẩm
@@ -183,55 +190,88 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
     onUseItem?.(currentItem);
   };
 
+  // Hành động chính của ô đang chọn (Enter / Space): dùng nếu dùng được, không thì ghép nếu đủ mảnh
+  const canUse = !!currentItem?.isConsumable && !isCurrentItemConsumed;
+  const canCombine = !!currentItem?.canCombineWith && hasCombinablePartner && hasRequiredTool;
+  const handlePrimaryAction = () => {
+    if (canUse) handleUseItem();
+    else if (canCombine) handleCombine();
+  };
+
+  // Bắt phím tắt: Esc / Tab / I đóng túi đồ • mũi tên hoặc WASD chọn ô • Enter / Space dùng hoặc ghép
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (e.key === 'Escape' || key === 'i' || e.key === 'Tab') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+
+      const step =
+        e.key === 'ArrowLeft' || key === 'a' ? -1
+        : e.key === 'ArrowRight' || key === 'd' ? 1
+        : e.key === 'ArrowUp' || key === 'w' ? -GRID_COLS
+        : e.key === 'ArrowDown' || key === 's' ? GRID_COLS
+        : 0;
+      if (step !== 0) {
+        e.preventDefault();
+        setKeyboardNav(true);
+        if (items.length === 0) return;
+        const cur = items.findIndex((i) => i.id === selectedId);
+        const next = cur < 0 ? 0 : Math.max(0, Math.min(items.length - 1, cur + step));
+        if (next !== cur) {
+          playClickSound();
+          setSelectedId(items[next].id);
+        }
+        return;
+      }
+
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (e.repeat) return;
+        // Nút vừa bấm chuột còn giữ focus: bỏ focus để Enter/Space không kích hoạt nút đó thêm lần nữa
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+        setKeyboardNav(true);
+        handlePrimaryAction();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
+
+  if (!isOpen) return null;
+
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-fade-in select-none"
+      className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-3 sm:p-6 animate-fade-in select-none"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl bg-zinc-950 border-2 border-cyan-500/80 rounded-sm shadow-[0_0_50px_rgba(6,182,212,0.35)] p-4 sm:p-6 flex flex-col gap-4 font-mono text-zinc-200 relative overflow-hidden"
+        className="w-full max-w-2xl flex flex-col gap-5 font-mono text-zinc-200"
       >
-        {/* Scanlines CRT nhẹ */}
-        <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] opacity-40" />
-
-        {/* 1. Header Túi Đồ */}
-        <div className="flex justify-between items-center border-b border-cyan-900/80 pb-3 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping inline-block" />
-            <h2 className="text-sm sm:text-base font-bold text-cyan-300 tracking-widest flex items-center gap-2">
-              <span>🎒</span>
-              <span>{tx('HÀNH TRANG KÝ ỨC // INVENTORY')}</span>
-            </h2>
-            <span className="text-[11px] bg-cyan-950/80 border border-cyan-800 text-cyan-400 px-2 py-0.5 rounded font-bold">
-              {items.length}/{TOTAL_SLOTS}
-            </span>
+        {/* 1. Tiêu đề + số ô đã dùng */}
+        <div className="text-center">
+          <h2 className="text-lg sm:text-xl tracking-[0.3em] pl-[0.3em] uppercase text-zinc-100">{tx('Túi đồ')}</h2>
+          <div className="mt-2 text-xs tracking-[0.4em] pl-[0.4em] text-red-400/80">
+            {items.length}/{TOTAL_SLOTS}
           </div>
-
-          <button
-            onClick={onClose}
-            className="flex items-center gap-1.5 px-3 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 hover:border-cyan-400 text-zinc-400 hover:text-white text-xs rounded transition-colors cursor-pointer"
-          >
-            <span>[I / ESC]</span>
-            <span className="font-bold">{tx('ĐÓNG')}</span>
-          </button>
         </div>
 
         {/* Thông báo ghép đồ thành công */}
         {combineNotification && (
-          <div className="text-xs text-center text-cyan-300 bg-cyan-950/90 border border-cyan-400 p-2 rounded animate-pulse shadow-[0_0_20px_rgba(6,182,212,0.5)]">
-            ✨ {combineNotification}
-          </div>
+          <div className="text-xs text-center text-zinc-200">{combineNotification}</div>
         )}
 
-        {/* 2. Thân Modal (Chia 2 cột: Lưới Slots & Bảng Chi Tiết) */}
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 flex-1 min-h-[290px]">
-          {/* CỘT TRÁI (7 Cột): Lưới các ô đồ */}
-          <div className="sm:col-span-7 flex flex-col gap-2">
-            <div className="text-[10px] text-zinc-400 tracking-wider uppercase font-bold">
-              {tx('CÁC VẬT PHẨM ĐANG MANG THEO:')}
-            </div>
-            <div className="grid grid-cols-4 gap-2 bg-black/60 p-3 rounded border border-zinc-800">
+        {/* 2. Thân: lưới ô đồ (trái) • chi tiết món đang chọn (phải) */}
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-6 flex-1 min-h-72.5">
+          <div className="sm:col-span-7 flex flex-col gap-3">
+            <div className="grid grid-cols-4 gap-2">
               {Array.from({ length: TOTAL_SLOTS }).map((_, index) => {
                 const item = items[index];
                 const isSelected = item && item.id === selectedId;
@@ -243,23 +283,26 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                       if (item) {
                         playClickSound();
                         setSelectedId(item.id);
+                        setKeyboardNav(false);
                       }
                     }}
-                    className={`aspect-square rounded border-2 flex flex-col items-center justify-center p-1 relative transition-all duration-150 ${
+                    className={`aspect-square border flex flex-col items-center justify-center p-1 relative transition-colors duration-150 ${
                       item
                         ? isSelected
-                          ? 'border-cyan-400 bg-cyan-950/60 shadow-[0_0_15px_rgba(6,182,212,0.6)] cursor-pointer scale-105 z-10'
-                          : 'border-zinc-700/80 bg-zinc-900/80 hover:border-cyan-500/60 hover:bg-zinc-800 cursor-pointer'
-                        : 'border-zinc-800/60 bg-zinc-950/40 opacity-40'
+                          ? `border-zinc-200 bg-zinc-900 cursor-pointer ${keyboardNav ? 'outline-2 outline-offset-2 outline-zinc-300' : ''}`
+                          : 'border-zinc-800 bg-zinc-950 hover:border-zinc-600 cursor-pointer'
+                        : 'border-zinc-900 bg-transparent'
                     }`}
                   >
-                    {item ? (
+                    {item && (
                       <>
-                        <span className="text-2xl sm:text-3xl filter drop-shadow">
-                          {item.icon}
-                        </span>
-                        <span className="text-[9px] text-center text-zinc-300 truncate w-full mt-1 leading-tight px-0.5">
-                          {tx(item.name).split(' ')[0]}
+                        <ItemSprite id={item.id} size={40} />
+                        <span
+                          className={`text-[9px] sm:text-[10px] text-center truncate w-full mt-0.5 leading-tight px-0.5 ${
+                            isSelected ? 'text-zinc-100' : 'text-zinc-500'
+                          }`}
+                        >
+                          {tx(item.shortName)}
                         </span>
                         {/* Chấm tròn biểu thị item có thể ghép */}
                         {item.canCombineWith && (
@@ -270,33 +313,28 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                           <span className="absolute top-1 left-1 w-1.5 h-1.5 rounded-full bg-emerald-400" title={tx('Có thể sử dụng (+Sanity)')} />
                         )}
                       </>
-                    ) : (
-                      <span className="text-zinc-700 text-xs font-mono">•</span>
                     )}
                   </div>
                 );
               })}
             </div>
-            <div className="text-[10px] text-zinc-500 italic mt-auto space-y-0.5">
+            <div className="text-[10px] text-zinc-600 space-y-0.5">
               <div>{tx('• Chấm vàng: Vật phẩm có thể ghép nối.')}</div>
               <div>{tx('• Chấm xanh lá: Vật phẩm có thể sử dụng trực tiếp để hồi Sanity.')}</div>
             </div>
           </div>
 
-          {/* CỘT PHẢI (5 Cột): Chi tiết món đồ được chọn */}
-          <div className="sm:col-span-5 bg-zinc-900/60 border border-zinc-800 rounded p-3.5 flex flex-col justify-between">
+          {/* Chi tiết món đồ được chọn */}
+          <div className="sm:col-span-5 flex flex-col">
             {currentItem ? (
               <div className="flex flex-col gap-3 h-full">
-                {/* Header item */}
-                <div className="flex items-center gap-3 border-b border-zinc-800 pb-2">
-                  <div className="w-12 h-12 rounded border border-cyan-500/60 bg-cyan-950/40 flex items-center justify-center text-2xl shadow-inner">
-                    {currentItem.icon}
-                  </div>
+                <div className="flex items-center gap-3 pb-3 border-b border-zinc-900">
+                  <ItemSprite id={currentItem.id} size={48} />
                   <div className="overflow-hidden">
-                    <h3 className="text-xs sm:text-sm font-bold text-cyan-300 truncate">
+                    <h3 className="text-xs sm:text-sm tracking-[0.15em] uppercase text-zinc-100 truncate">
                       {tx(currentItem.name)}
                     </h3>
-                    <span className="text-[10px] text-zinc-400 uppercase tracking-widest px-1.5 py-0.2 bg-black/60 rounded border border-zinc-700">
+                    <span className="text-[10px] text-zinc-500 uppercase tracking-[0.2em]">
                       {currentItem.category === 'memory'
                         ? tx('DỮ LIỆU KÝ ỨC')
                         : currentItem.category === 'medical'
@@ -308,66 +346,50 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                   </div>
                 </div>
 
-                {/* Mô tả chi tiết */}
-                <div className="flex-1 bg-black/50 p-2.5 rounded border border-zinc-800/80 text-[11px] sm:text-xs leading-relaxed text-zinc-300 overflow-y-auto text-justify">
+                {/* Mô tả ngắn */}
+                <p className="flex-1 text-[11px] sm:text-xs leading-relaxed text-zinc-400 overflow-y-auto">
                   {tx(currentItem.description)}
-                </div>
+                </p>
 
-                {/* Nút Sử Dụng (Consumable) */}
+                {/* Dùng (vật phẩm tiêu hao) */}
                 {currentItem.isConsumable && (
-                  <div className="pt-2 border-t border-zinc-800">
+                  <div className="flex justify-center">
                     {isCurrentItemConsumed ? (
-                      <div className="py-2 px-3 bg-zinc-950 border border-zinc-800 rounded text-center">
-                        <div className="text-zinc-400 font-bold text-xs flex items-center justify-center gap-1.5 font-mono">
-                          <span>✓</span>
-                          <span>{tx('ĐÃ SỬ DỤNG (CHỈ HỒI TỈNH TÁO 1 LẦN DUY NHẤT)')}</span>
-                        </div>
-                        <p className="text-[10px] text-zinc-500 mt-0.5 italic leading-tight">
-                          {tx('Vật phẩm này đã phát huy tác dụng giúp bạn lấy lại tỉnh táo.')}
-                        </p>
-                      </div>
+                      <span className="text-[11px] tracking-[0.2em] uppercase text-zinc-600">{tx('Đã sử dụng')}</span>
                     ) : (
-                      <button
+                      <MenuOption
+                        size="sm"
+                        selected
+                        label={tx(currentItem.consumeActionName || 'SỬ DỤNG VẬT PHẨM')}
                         onClick={handleUseItem}
-                        className="w-full py-2 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-black font-bold text-xs rounded border border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all flex items-center justify-center gap-1.5 cursor-pointer animate-pulse"
-                      >
-                        <span>⚡</span>
-                        <span>[{tx(currentItem.consumeActionName || 'SỬ DỤNG VẬT PHẨM')}]</span>
-                      </button>
+                      />
                     )}
                   </div>
                 )}
 
-                {/* Nút Kết Hợp (Combine) nếu tìm đủ 2 mảnh ghép */}
+                {/* Ghép khi đủ 2 mảnh (và có băng dính) */}
                 {currentItem.canCombineWith && (
-                  <div className="pt-2 border-t border-zinc-800 space-y-1.5">
+                  <div className="flex justify-center text-center">
                     {hasCombinablePartner ? (
                       hasRequiredTool ? (
-                        <button
-                          onClick={handleCombine}
-                          className="w-full py-2 px-3 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-black font-bold text-xs rounded border border-yellow-400 shadow-[0_0_15px_rgba(245,158,11,0.5)] transition-all flex items-center justify-center gap-2 cursor-pointer animate-pulse"
-                        >
-                          <span>✨</span>
-                          <span>{tx('[GHÉP DÙNG BĂNG DÍNH DÁN LẠI]')}</span>
-                        </button>
+                        <MenuOption size="sm" selected label={tx('Ghép bằng băng dính')} onClick={handleCombine} />
                       ) : (
-                        <div className="text-[10px] text-amber-300 bg-amber-950/60 border border-amber-800 p-2 rounded text-center leading-tight">
-                          {currentItem.requiredToolMsg ? tx(currentItem.requiredToolMsg) : tx('⚠️ Cần có {0} để dán khít 2 mảnh!', tx(requiredToolDef?.name || 'Băng Dính'))}
-                        </div>
+                        <p className="text-[10px] text-amber-400/80 leading-snug">
+                          {currentItem.requiredToolMsg ? tx(currentItem.requiredToolMsg) : tx('Cần có {0} để dán khít 2 mảnh!', tx(requiredToolDef?.name || 'Băng Dính'))}
+                        </p>
                       )
                     ) : (
-                      <div className="text-[10px] text-amber-400/80 bg-amber-950/30 border border-amber-900/60 p-2 rounded text-center">
-                        {tx('⚠️ Cần tìm thêm nửa mảnh còn lại để ghép hoàn chỉnh!')}
-                      </div>
+                      <p className="text-[10px] text-amber-400/80 leading-snug">
+                        {tx('Cần tìm thêm nửa mảnh còn lại để ghép hoàn chỉnh!')}
+                      </p>
                     )}
                   </div>
                 )}
               </div>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-center text-zinc-500 gap-2 p-4">
-                <span className="text-3xl opacity-30">🎒</span>
+              <div className="flex-1 flex flex-col items-center justify-center text-center text-zinc-600 gap-2 p-4">
                 <span className="text-xs">{tx('Chưa chọn vật phẩm nào.')}</span>
-                <span className="text-[10px] opacity-60">
+                <span className="text-[10px]">
                   {tx('Hãy khám phá căn phòng để thu thập thêm công cụ và mảnh ký ức!')}
                 </span>
               </div>
@@ -375,10 +397,9 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
           </div>
         </div>
 
-        {/* 3. Footer Hướng dẫn phím */}
-        <div className="flex justify-between items-center pt-2 border-t border-zinc-800 text-[10px] text-zinc-500 shrink-0">
-          <div>{tx('Nhấn [I] hoặc [ESC] để đóng túi đồ')}</div>
-          <div>ECHOES // INVENTORY PROTOCOL</div>
+        {/* 3. Gợi ý phím */}
+        <div className="text-center text-[10px] text-zinc-600 tracking-widest">
+          {tx('←↑↓→ / WASD chọn · Enter / Space dùng / ghép · Tab / Esc đóng')}
         </div>
       </div>
     </div>

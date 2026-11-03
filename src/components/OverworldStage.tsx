@@ -2,19 +2,25 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { InventoryModal } from './InventoryModal';
 import { DesktopScreen } from './DesktopScreen';
+import { useUiLayer } from '../services/uiLayers';
 import { InventoryItem, CHAPTER_1_ITEMS } from '../types/inventory';
+import { ItemSprite } from './pixel/ItemSprite';
 import {
   RoomRect, DORM_PAL, hash, px, block, dropShadow, outlinedText,
   drawWoodFloor, drawDormWalls, drawCalendar, drawPoster,
-  buildPostLayer, drawTargetMarker, drawVitals, drawHudSubtitle,
+  buildPostLayer,
   createFollowLight, updateFollowLight, drawFollowVignette,
 } from './pixel/pixelKit';
-import { drawSpriteFrame, getSpriteFrame, stepWalk, stopWalk, bodyBob, mienFloat, drawSwayingFigure, drawHoloShadow, drawHoloDust } from './pixel/spriteKit';
+import { drawSpriteFrame, stepWalk, stopWalk, bodyBob } from './pixel/spriteKit';
 import { useFrameScale } from './pixel/useFrameScale';
 import { useMouseParallax } from './pixel/useMouseParallax';
 import { useLanguage } from '../context/LanguageContext';
 import { EmoteDirector, createEmoteDirector, emoteNow, updateEmotes, drawEmotes } from './pixel/emote';
 import { tx } from '../locales/tx';
+import {
+  useCinematicSubtitle, CinematicSubtitle, StageClock, ClueFlash, useClueFlash,
+  InteractLabel, NearLabel, useAutoHideHints, HintBar, HintKey,
+} from './StageHud';
 
 // --- Kích thước và Tỉ lệ ---
 const CANVAS_WIDTH = 640;
@@ -46,7 +52,8 @@ interface OverworldStageProps {
   characterSprite: string;
   sanity: number;
   setSanity?: React.Dispatch<React.SetStateAction<number>>;
-  onTrigger: (nodeId: string) => void;
+  /** markId: vật thể được ghi "đã xong" khi hộp thoại được giải quyết (đóng ngang bằng Esc thì không) */
+  onTrigger: (nodeId: string, markId?: string) => void;
   onExitToHallway?: () => void;
   interactedIds?: string[];
   onMarkInteracted?: (id: string) => void;
@@ -90,10 +97,8 @@ const MIRROR = { x: 535, y: 92, w: 34, h: 62 };
 const BOX = { x: 425, y: 305, w: 46, h: 38 };
 const DOOR = { x: 35, y: 310, w: 35, h: 75 };
 const FLOOR_FAN = { x: 541, y: 404 };
-const MIEN = { x: 375, y: 120, w: 42, h: 63 };
 // Viền tối bám theo An (xanh đêm lạnh)
 const ROOM_VIGNETTE = { tint: [3, 5, 12], strength: 0.82, inner: 120, outer: 330 } as const;
-const MIEN_FLOOR_Y = 180; // Mặt sàn dưới chân Miên (bàn chân ở ~92% chiều cao sprite)
 
 // Vật cản không cho đi xuyên qua (Solid Bounding Boxes) — giữ nguyên toàn bộ + thêm quạt cóc
 const COLLIDERS: ReadonlyArray<{ x: number; y: number; w: number; h: number }> = [
@@ -193,7 +198,6 @@ interface RoomSim {
 
 interface RoomSprites {
   an: HTMLImageElement | null;
-  mien: HTMLImageElement | null;
 }
 
 const deriveFlags = (s: RoomSnapshot): RoomFlags => {
@@ -234,86 +238,26 @@ const isTargetDoneFor = (targetId: string, s: RoomSnapshot): boolean => {
   return ia.includes(targetId);
 };
 
-/** Nội dung thanh gợi ý [E] cho vật thể đang nhắm tới (giữ nguyên văn bản gốc) */
-const computePrompt = (
-  target: InteractableObject,
-  s: RoomSnapshot,
-  isKnockingNow: boolean,
-): { text: string; isDone: boolean } => {
-  const inv = s.inventory;
-  const ia = s.interacted;
-  switch (target.id) {
-    case 'pc': {
-      const isPowerRestored = ia.includes('hallway_power_on');
-      if (s.terminalUnlocked) return { text: 'Màn hình CRT (ĐÃ GIẢI MÃ) - Nhấn [E] để đọc log AURA', isDone: true };
-      if (!isPowerRestored) return { text: '⚠️ Màn hình CRT [MẤT ĐIỆN LƯỚI ⚡] - Ra Hành lang tầng 3 đóng Cầu Dao trước', isDone: false };
-      if (s.insertedDisk) return { text: 'Màn hình CRT [ĐÃ CẮM ĐĨA] - Nhấn [E] để GIẢI MÃ (Mã PIN 1705)', isDone: false };
-      if (inv.includes('aura_disk')) return { text: 'Màn hình CRT - Nhấn [E] để CẮM ĐĨA MỀM AURA [💽]', isDone: false };
-      return { text: 'Màn hình CRT [CẦN ĐĨA MỀM AURA] - Nhấn [E] kiểm tra', isDone: false };
-    }
-    case 'coffee_mug': {
-      const isDone = inv.includes('coffee') || ia.includes('coffee_used');
-      return {
-        text: isDone ? 'Vệt ố cà phê tròn - Nhấn [E] kiểm tra' : 'Cốc Cà Phê Đen Đặc [☕ HỒI +15 SANITY] - Nhấn [E] để nhặt',
-        isDone,
-      };
-    }
-    case 'tea_table': {
-      if (!inv.includes('box_cutter')) return { text: 'Bàn trà bệt [CÓ DAO RỌC GIẤY 🔪] - Nhấn [E] để nhặt', isDone: false };
-      if (!inv.includes('lighter')) return { text: 'Bàn trà bệt [CÓ BẬT LỬA ZIPPO 🔥] - Nhấn [E] để nhặt', isDone: false };
-      return { text: 'Bàn trà bệt sinh viên - Nhấn [E] để kiểm tra lại', isDone: true };
-    }
-    case 'cardboard_box': {
-      const hasOpened = inv.includes('electrical_tape') || ia.includes('cardboard_box');
-      if (hasOpened) return { text: 'Thùng carton của Miên [ĐÃ RẠCH MỞ] - Nhấn [E] kiểm tra lại', isDone: true };
-      if (inv.includes('box_cutter')) return { text: 'Thùng carton niêm phong [CÓ THỂ RẠCH BĂNG KEO 🔪] - Nhấn [E] để mở', isDone: false };
-      return { text: 'Thùng carton niêm phong [DÁN BĂNG KEO CHẶT] - Nhấn [E] kiểm tra', isDone: false };
-    }
-    case 'under_bed': {
-      const hasP1 = inv.includes('disk_part_1') || inv.includes('aura_disk') || s.insertedDisk;
-      if (hasP1) return { text: 'Gầm giường tối - Nhấn [E] để kiểm tra lại', isDone: true };
-      if (inv.includes('lighter')) return { text: 'Gầm giường tối [CÓ THỂ SOI BẬT LỬA 🔥] - Nhấn [E] để soi tìm', isDone: false };
-      return { text: 'Gầm giường tối [TỐI ĐEN NHƯ MỰC] - Nhấn [E] kiểm tra', isDone: false };
-    }
-    case 'pc_drawer': {
-      const hasP2 = inv.includes('disk_part_2') || inv.includes('aura_disk') || s.insertedDisk;
-      if (hasP2) return { text: 'Hộc bàn máy tính [ĐÃ CẠY KHÓA] - Nhấn [E] kiểm tra lại', isDone: true };
-      if (inv.includes('paperclip')) return { text: 'Hộc bàn máy tính [CÓ THỂ DÙNG KẸP GHIM 📎] - Nhấn [E] để cạy chốt', isDone: false };
-      return { text: 'Hộc bàn máy tính [KẸT KHÓA CƠ] - Nhấn [E] kiểm tra', isDone: false };
-    }
-    case 'bookshelf': {
-      const hasClip = inv.includes('paperclip');
-      return {
-        text: hasClip ? 'Kệ sách cũ - Nhấn [E] kiểm tra lại' : 'Kệ sách cũ [CÓ KẸP GHIM 📎] - Nhấn [E] để lục tìm',
-        isDone: hasClip,
-      };
-    }
-    case 'pills': {
-      const isDone = ia.includes('pills');
-      return {
-        text: isDone ? 'Bàn thuốc an thần - Nhấn [E] kiểm tra lại' : 'Bàn thuốc an thần [ĐƠN: 17/05] - Nhấn [E] để xem',
-        isDone,
-      };
-    }
-    case 'door':
-      return {
-        text: isKnockingNow
-          ? '⚠️ Cửa Phòng Trọ [CÓ TIẾNG GÕ CỘC CỘC] - Nhấn [E] mở cửa ra Hành lang tầng 3 [🚪]'
-          : 'Cửa Phòng Trọ #314 - Nhấn [E] bước ra Hành lang tầng 3 [🚪]',
-        isDone: false,
-      };
-    case 'mien':
-      return {
-        text: s.terminalUnlocked
-          ? '✨ Nắm tay Miên [KÝ ỨC THỨC TỈNH] - Bước qua cánh cửa bước sang Chương 2!'
-          : 'Miên (Hình bóng trong ký ức) - Nhấn [E] nói chuyện (Cần mở khóa máy tính trước)',
-        isDone: s.terminalUnlocked,
-      };
-    default: {
-      const isDone = ia.includes(target.id) && !target.canRepeat;
-      return { text: isDone ? tx('{0} - Nhấn [E] để kiểm tra lại', tx(target.name)) : target.actionText, isDone };
-    }
-  }
+/** Tên ngắn hiện cạnh [E] tại vật thể đang nhắm tới */
+const PROMPT_LABEL: Record<string, string> = {
+  pc: 'Máy tính',
+  coffee_mug: 'Cốc cà phê',
+  pc_drawer: 'Hộc bàn',
+  tea_table: 'Bàn trà',
+  cardboard_box: 'Thùng carton',
+  bookshelf: 'Kệ sách',
+  under_bed: 'Gầm giường',
+  pills: 'Thuốc',
+  phone: 'Điện thoại',
+  mirror: 'Gương',
+  window: 'Cửa sổ',
+  door: 'Cửa',
+};
+
+/** Nhãn [E] cho vật thể: vật đã xong thì không hiện gì (máy tính và cửa luôn còn việc để làm) */
+const promptLabelFor = (target: InteractableObject, s: RoomSnapshot): string | null => {
+  if (target.id !== 'pc' && target.id !== 'door' && isTargetDoneFor(target.id, s)) return null;
+  return PROMPT_LABEL[target.id] ?? null;
 };
 
 // =====================================================================
@@ -1120,59 +1064,6 @@ function drawFloorFan(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
   ctx.stroke();
 }
 
-/** Miên (AURA Hologram): lơ lửng, tóc & tà váy lay nhẹ, bóng ma toả tím, bụi sáng bay quanh */
-function drawMien(ctx: CanvasRenderingContext2D, fr: RoomFrame, sprites: RoomSprites) {
-  const img = sprites.mien;
-  if (!img) return;
-  const tk = fr.t * 60;
-  const floatOffset = mienFloat(fr.t);
-  const mx = MIEN.x;
-  const my = MIEN.y + floatOffset;
-  const mcx = mx + MIEN.w / 2;
-  // Bóng ma dẹt dưới chân + bụi sáng phía sau lưng
-  drawHoloShadow(ctx, mcx, MIEN_FLOOR_Y, floatOffset, fr.t);
-  drawHoloDust(ctx, mcx, my + MIEN.h / 2, MIEN.w, MIEN.h, fr.t, 'back');
-  ctx.save();
-  ctx.globalAlpha = 0.75 + Math.sin(tk * 0.2) * 0.15;
-  // Đứng thẳng ở frame 1, quay mặt xuống
-  drawSwayingFigure(ctx, getSpriteFrame(img, 1, 0, false, MIEN.w, MIEN.h), mx, my, fr.t);
-  ctx.globalAlpha = 1;
-  drawHoloDust(ctx, mcx, my + MIEN.h / 2, MIEN.w, MIEN.h, fr.t, 'front');
-  ctx.globalAlpha = 0.75 + Math.sin(tk * 0.2) * 0.15;
-  // Hạt pixel phát sáng bay quanh Miên ở Phase 3
-  if (fr.phase === 3) {
-    ctx.fillStyle = 'rgba(244, 114, 182, 0.8)';
-    for (let i = 0; i < 4; i++) {
-      ctx.fillRect(mx - 5 + ((tk * 1.5 + i * 20) % 55), my + 50 - ((tk + i * 15) % 45), 2, 2);
-    }
-  }
-  // Hào quang thức tỉnh khi máy tính đã được giải mã
-  if (fr.flags.terminalUnlocked) {
-    const r = 40 + Math.sin(tk * 0.1) * 6;
-    const cx = mx + MIEN.w / 2;
-    const cy = my + MIEN.h / 2;
-    const grad = ctx.createRadialGradient(cx, cy, 8, cx, cy, r);
-    grad.addColorStop(0, 'rgba(192, 132, 252, 0.45)');
-    grad.addColorStop(0.7, 'rgba(232, 121, 249, 0.2)');
-    grad.addColorStop(1, 'rgba(232, 121, 249, 0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-    // Ngôi sao pixel thức tỉnh lơ lửng trên đầu
-    const sy = my - 8 + Math.sin(tk * 0.15) * 3;
-    px(ctx, cx - 1, sy - 4, 2, 9, '#fef08a');
-    px(ctx, cx - 4, sy - 1, 9, 2, '#fef08a');
-    px(ctx, cx, sy, 1, 1, '#ffffff');
-  }
-  // Tia sáng glitch quét qua người Miên
-  if (tk % 60 < 6) {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.fillRect(mx, my + (tk % 50), MIEN.w, 3);
-  }
-  ctx.restore();
-}
-
 /** Nhân vật An: bóng elip mềm, bóng glitch thứ hai ở Phase 2-3 */
 function drawPlayer(ctx: CanvasRenderingContext2D, fr: RoomFrame, sprites: RoomSprites) {
   const p = fr.player;
@@ -1194,7 +1085,7 @@ function drawPlayer(ctx: CanvasRenderingContext2D, fr: RoomFrame, sprites: RoomS
   if (sprites.an) drawAnSprite(ctx, sprites.an, p, p.x - AN_DRAW_W / 2, p.y - AN_DRAW_H + 18, fr.t);
 }
 
-/** Vẽ đồ đạc + Miên + An theo thứ tự chiều sâu (y-sort theo chân vật thể) */
+/** Vẽ đồ đạc + An theo thứ tự chiều sâu (y-sort theo chân vật thể) */
 function drawRoomObjects(ctx: CanvasRenderingContext2D, fr: RoomFrame, sprites: RoomSprites) {
   const items: Array<{ y: number; draw: () => void }> = [
     { y: BED.y + BED.h, draw: () => drawBed(ctx, fr) },
@@ -1207,7 +1098,6 @@ function drawRoomObjects(ctx: CanvasRenderingContext2D, fr: RoomFrame, sprites: 
     { y: MIRROR.y + MIRROR.h, draw: () => drawMirror(ctx, fr, sprites) },
     { y: BOX.y + BOX.h, draw: () => drawCardboardBox(ctx, fr) },
     { y: FLOOR_FAN.y + 17, draw: () => drawFloorFan(ctx, fr) },
-    { y: 185, draw: () => drawMien(ctx, fr, sprites) },
     { y: fr.player.y + 16, draw: () => drawPlayer(ctx, fr, sprites) },
   ];
   items.sort((a, b) => a.y - b.y);
@@ -1244,7 +1134,6 @@ function drawLightingOverlay(ctx: CanvasRenderingContext2D, light: HTMLCanvasEle
   };
   punch(LAMP_LIGHT.x - 10, LAMP_LIGHT.y + 25, 175, 0.95 * fr.lamp);     // Đèn bàn sợi đốt
   punch(CRT_LIGHT.x, CRT_LIGHT.y + 10, 95, f.powerOn ? 0.6 : 0.15);       // Màn hình CRT
-  punch(396, 150, 75, 0.8);                                                // Hào quang Miên
   punch(p.x, p.y, 80, 0.72);                                               // Quanh An
   punch(DOOR.x + DOOR.w + 6, DOOR.y + DOOR.h / 2, 48, 0.4);               // Ánh hành lang lọt khe
   punch(215, 70, 55, 0.22 + fr.lightning * 0.6);                          // Cửa sổ
@@ -1390,7 +1279,7 @@ export function drawRoom314Ending(
   // Mưa ngừng: các vệt mưa trên kính đứng yên
   drawCurtainWindow(ctx, L.rainStopAt !== undefined && t > L.rainStopAt ? { ...fr, t: L.rainStopAt } : fr);
   drawDoor(ctx, fr);
-  drawRoomObjects(ctx, fr, { an, mien: null });
+  drawRoomObjects(ctx, fr, { an });
   extra.beforeLight?.(ctx);
 
   // Ánh sáng: bóng tối nền khoét lỗ theo từng nguồn còn sáng
@@ -1437,36 +1326,24 @@ export function drawRoom314Ending(
   ctx.restore();
 }
 
-/** HUD trên canvas: chấm lấp lánh vật chưa xong, khung ngắm, nhãn Miên, đồng hồ + Sanity + nhịp tim */
+/** HUD trên canvas: chấm lấp lánh vật chưa xong + vạch Sanity mảnh (đồng hồ, nhãn [E] vẽ bằng HTML) */
 function drawRoomHUD(ctx: CanvasRenderingContext2D, fr: RoomFrame, interactables: InteractableObject[]) {
   // Chấm lấp lánh nhẹ cho các vật phẩm chưa hoàn thành
   for (const item of interactables) {
-    if (item.id === 'mien' || (fr.nearest && fr.nearest.id === item.id)) continue;
+    if (fr.nearest && fr.nearest.id === item.id) continue;
     if (!isTargetDoneFor(item.id, fr.snap) && (fr.t * 60 + item.x) % 60 < 20) {
       px(ctx, item.x + item.w / 2 - 1, item.y + item.h / 2 - 1, 3, 3, 'rgba(250, 204, 21, 0.6)');
     }
   }
-  // Khung ngắm duy nhất cho vật thể đang nhắm tới
-  const n = fr.nearest;
-  if (n) {
-    if (n.id === 'mien') {
-      const ready = fr.flags.terminalUnlocked;
-      drawTargetMarker(ctx, n, ready ? '#ec4899' : '#a855f7', fr.t);
-      ctx.font = 'bold 9px monospace';
-      ctx.textAlign = 'center';
-      outlinedText(ctx, ready ? tx('[E] ✦ RỜI ĐI') : tx('[E] MIÊN'), n.x + n.w / 2, n.y - 16, ready ? '#f9a8d4' : '#d8b4fe');
-      ctx.textAlign = 'left';
-    } else {
-      const done = isTargetDoneFor(n.id, fr.snap);
-      drawTargetMarker(ctx, n, done ? 'rgba(161,161,170,0.75)' : '#fb923c', fr.t);
-    }
-  }
 
-  // Đồng hồ 03:14 AM + trái tim + thanh SANITY (dùng chung pixelKit)
-  drawVitals(ctx, fr.t, fr.sanity);
-  // Nhãn Phase
-  const phaseLabel = fr.phase === 3 ? tx('PHASE 3: MA TRẬN SỤP ĐỔ') : fr.phase === 2 ? tx('PHASE 2: RẠN NỨT') : tx('PHASE 1: BÌNH YÊN');
-  drawHudSubtitle(ctx, phaseLabel, fr.phase === 3 ? '#f87171' : fr.phase === 2 ? '#fbbf24' : '#6ee7b7');
+  // Vạch Sanity 2px dưới đồng hồ (đồng hồ vẽ bằng HTML cho sắc nét): ẩn khi An còn ổn (> 70%),
+  // đậm dần khi tâm lý rơi vào nguy hiểm
+  if (fr.sanity <= 70) {
+    const danger = (70 - fr.sanity) / 70;
+    const w = 66;
+    px(ctx, 10, 27, w, 2, `rgba(63, 63, 70, ${0.35 + danger * 0.4})`);
+    px(ctx, 10, 27, Math.max(1, Math.round((w * fr.sanity) / 100)), 2, `rgba(239, 68, 68, ${0.45 + danger * 0.5})`);
+  }
 }
 
 // =====================================================================
@@ -1547,8 +1424,15 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
   const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const anSpriteRef = useRef<HTMLImageElement | null>(null);
-  const mienSpriteRef = useRef<HTMLImageElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  // Rời màn / đóng khung thì đóng hẳn AudioContext riêng: không còn âm nào ngân sang cảnh sau
+  useEffect(() => {
+    const ctxRef = audioCtxRef;
+    return () => {
+      void ctxRef.current?.close().catch(() => {});
+      ctxRef.current = null;
+    };
+  }, []);
 
   // Vị trí nhân vật An (tọa độ pixel mượt mà)
   const playerRef = useRef({
@@ -1562,18 +1446,16 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
   });
 
   const [localInteractedIds, setLocalInteractedIds] = useState<string[]>(interactedIds);
-  const [activePrompt, setActivePrompt] = useState<{ text: string; isDone: boolean } | null>(null);
-  const [monologueWhisper, setMonologueWhisper] = useState<string | null>(null);
-  const whisperTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Phụ đề độc thoại kiểu điện ảnh (HUD dùng chung)
+  const { subtitle, show: showSubtitle, fadeOnMove: fadeSubtitleOnMove } = useCinematicSubtitle();
+  // Nhãn [E] nổi trên vật thể đang nhắm tới (vẽ bằng HTML để chữ sắc nét khi khung hình phóng to)
+  const [nearLabel, setNearLabel] = useState<NearLabel | null>(null);
+  const nearLabelKeyRef = useRef('');
   const keysHeld = useRef<Set<string>>(new Set());
 
   // State cho Terminal Mini-game giải mã mật khẩu máy tính
+  // Bật máy → màn hình desktop; hộp thoại nhập PIN của ALBUM_KỶ_NIỆM nằm ngay trong DesktopScreen
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
-  const [terminalPin, setTerminalPin] = useState('');
-  // Bật máy → màn hình desktop trước; bấm tệp ALBUM_KỶ_NIỆM_1705 mới vào khung nhập PIN
-  const [terminalView, setTerminalView] = useState<'desktop' | 'pin'>('desktop');
-  const [terminalError, setTerminalError] = useState<string | null>(null);
-  const [terminalSuccess, setTerminalSuccess] = useState(false);
   const [isTerminalUnlocked, setIsTerminalUnlocked] = useState(false);
 
   // State gõ cửa ma quái
@@ -1616,23 +1498,87 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     } catch {}
   }, [getAudioContext, volume]);
 
-  // Tiếng tạch tạch bàn phím Terminal
+  // Tiếng phím cơ đanh gọn: tiếng "tách" ồn trắng lọc dải 2.6kHz + tiếng "cộc" trầm của cán phím
   const playKeyClick = useCallback(() => {
     const ctx = getAudioContext();
     if (!ctx) return;
     try {
       const t = ctx.currentTime;
+      const len = Math.floor(ctx.sampleRate * 0.018);
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 2400 + Math.random() * 500;
+      bp.Q.value = 1.4;
+      const ng = ctx.createGain();
+      ng.gain.value = 0.09;
+      src.connect(bp).connect(ng).connect(ctx.destination);
+      src.start(t);
+
       const osc = ctx.createOscillator();
       const g = ctx.createGain();
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(1200 + Math.random() * 400, t);
-      osc.frequency.exponentialRampToValueAtTime(300, t + 0.02);
-      g.gain.setValueAtTime(0.04, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
+      osc.frequency.setValueAtTime(190, t);
+      osc.frequency.exponentialRampToValueAtTime(90, t + 0.03);
+      g.gain.setValueAtTime(0.05, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
       osc.connect(g);
       g.connect(ctx.destination);
       osc.start(t);
-      osc.stop(t + 0.02);
+      osc.stop(t + 0.04);
+    } catch {}
+  }, [getAudioContext]);
+
+  // Tiếng 'bíp' báo lỗi kiểu Windows cổ khi nhập sai PIN: hai nốt vuông lọc mềm, ngắn và trầm
+  const playErrorBeep = useCallback(() => {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    try {
+      const t = ctx.currentTime;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 1400;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.05, t + 0.01);
+      g.gain.setValueAtTime(0.05, t + 0.22);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+      lp.connect(g);
+      g.connect(ctx.destination);
+      [[523.25, 0], [392, 0.11]].forEach(([f, at]) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(f, t + at);
+        osc.connect(lp);
+        osc.start(t + at);
+        osc.stop(t + (at ? 0.34 : 0.11));
+      });
+    } catch {}
+  }, [getAudioContext]);
+
+  // Tiếng 'Ting' mở khoá: một tiếng chuông trong, ngân ngắn
+  const playUnlockTing = useCallback(() => {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    try {
+      const t = ctx.currentTime;
+      [[1318.5, 0.06, 0.9], [2637, 0.015, 0.5]].forEach(([f, gain, dur]) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, t);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(gain, t + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + dur + 0.02);
+      });
     } catch {}
   }, [getAudioContext]);
 
@@ -1653,27 +1599,6 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       g.connect(ctx.destination);
       osc.start(t);
       osc.stop(t + 0.28);
-    } catch {}
-  }, [getAudioContext]);
-
-  // Tiếng chime thành công khi giải mã đúng
-  const playChime = useCallback(() => {
-    const ctx = getAudioContext();
-    if (!ctx) return;
-    try {
-      const t = ctx.currentTime;
-      [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
-        const osc = ctx.createOscillator();
-        const g = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, t + i * 0.09);
-        g.gain.setValueAtTime(0.06, t + i * 0.09);
-        g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.09 + 0.25);
-        osc.connect(g);
-        g.connect(ctx.destination);
-        osc.start(t + i * 0.09);
-        osc.stop(t + i * 0.09 + 0.25);
-      });
     } catch {}
   }, [getAudioContext]);
 
@@ -1828,11 +1753,14 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     } catch {}
   }, [getAudioContext, volume]);
 
+  // Màn hình máy tính / khung PIN đang mở thì Esc đóng chúng trước, không mở Pause Menu
+  useUiLayer(isTerminalOpen);
+
   // State Túi đồ (Inventory)
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [localInventoryIds, setLocalInventoryIds] = useState<string[]>(inventoryIds);
   const [localInsertedDisk, setLocalInsertedDisk] = useState<boolean>(insertedDisk);
-  const [pickupAlert, setPickupAlert] = useState<{ name: string; icon: string; msg: string } | null>(null);
+  const [pickupAlert, setPickupAlert] = useState<{ name: string; msg: string; itemId?: string } | null>(null);
   const pickupAlertTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Đồng bộ khi prop từ cha thay đổi (điều chỉnh state ngay trong render thay vì effect)
@@ -1864,19 +1792,15 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
   // Hiển thị hộp thoại độc thoại cụt lủn lướt qua góc màn hình
   const showMonologueWhisper = useCallback((msg: string) => {
     emoteNow(emotes(), 'an', 'dots');
-    if (whisperTimerRef.current) clearTimeout(whisperTimerRef.current);
-    setMonologueWhisper(msg);
-    whisperTimerRef.current = setTimeout(() => {
-      setMonologueWhisper(null);
-    }, Math.max(4000, msg.length * 60)); // Câu dài hiện lâu hơn để kịp đọc
-  }, [emotes]);
+    showSubtitle(msg);
+  }, [emotes, showSubtitle]);
 
   // Hiển thị banner nhặt đồ
-  const showPickupAlert = useCallback((name: string, icon: string, msg: string) => {
+  const showPickupAlert = useCallback((name: string, msg: string, itemId?: string) => {
     playItemPickupSound();
     emoteNow(emotes(), 'an', 'exclaim');
     if (pickupAlertTimerRef.current) clearTimeout(pickupAlertTimerRef.current);
-    setPickupAlert({ name, icon, msg });
+    setPickupAlert({ name, msg, itemId });
     pickupAlertTimerRef.current = setTimeout(() => {
       setPickupAlert(null);
     }, Math.max(4500, msg.length * 55));
@@ -1900,7 +1824,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     (item: InventoryItem) => {
       if (item.id === 'coffee') {
         if (localInteractedIds.includes('coffee_used')) {
-          showMonologueWhisper('Hết sạch rồi. Liếm đáy cốc thì hơi mất giá quá.');
+          showMonologueWhisper('Hết sạch rồi. Liếm đáy cốc thì mất giá quá.');
           return;
         }
         if (setSanity) {
@@ -1911,10 +1835,10 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         onUpdateInventory?.(nextInv);
         setLocalInteractedIds(prev => (prev.includes('coffee_used') ? prev : [...prev, 'coffee_used']));
         onMarkInteracted?.('coffee_used');
-        showMonologueWhisper(item.consumeMonologue || 'Vị cà phê đắng ngắt giúp bạn tỉnh táo (+15 Sanity).');
+        showMonologueWhisper(item.consumeMonologue || 'Đắng ngắt. Nhưng đầu óc tỉnh hẳn ra.');
       } else if (item.id === 'faded_photo') {
         if (localInteractedIds.includes('faded_photo_used')) {
-          showMonologueWhisper('Bạn đã ngắm kỹ bức ảnh này rồi... Ký ức về ngày 17/05 vẫn còn đó, nhưng không thể xoa dịu tâm trí thêm lần nữa.');
+          showMonologueWhisper('Mình nhìn bức ảnh này đủ lâu rồi.');
           return;
         }
         if (setSanity) {
@@ -1922,7 +1846,17 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         }
         setLocalInteractedIds(prev => (prev.includes('faded_photo_used') ? prev : [...prev, 'faded_photo_used']));
         onMarkInteracted?.('faded_photo_used');
-        showMonologueWhisper(item.consumeMonologue || 'Bạn ngắm nhìn nụ cười của Miên trong bức ảnh (+20 Sanity).');
+        showMonologueWhisper(item.consumeMonologue || 'Miên cười trong ảnh. Lồng ngực bớt nặng một chút.');
+      } else if (item.isConsumable) {
+        // Vật phẩm dùng một lần khác (mặt dây chuyền...): hồi Sanity, vẫn giữ trong túi (còn là manh mối PIN)
+        const usedId = `${item.id}_used`;
+        if (localInteractedIds.includes(usedId)) return;
+        if (setSanity) {
+          setSanity((prev) => Math.min(100, prev + (item.consumeSanityGain || 0)));
+        }
+        setLocalInteractedIds(prev => (prev.includes(usedId) ? prev : [...prev, usedId]));
+        onMarkInteracted?.(usedId);
+        if (item.consumeMonologue) showMonologueWhisper(item.consumeMonologue);
       }
     },
     [localInteractedIds, localInventoryIds, onMarkInteracted, onUpdateInventory, setSanity, showMonologueWhisper]
@@ -1945,19 +1879,19 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       h: 50,
       triggerNodeId: 'node_pc_1',
       canRepeat: true,
-      checkedMonologue: 'Màn hình vi tính vẫn đang hiển thị các tập tin nhật ký cũ...',
+      checkedMonologue: 'Màn hình vẫn hiện mấy tệp nhật ký cũ.',
     },
     {
       id: 'coffee_mug',
       name: 'Cốc Cà Phê Đen Đặc',
-      actionText: '[E] Nhặt Cốc Cà Phê Đen [☕]',
+      actionText: '[E] Nhặt Cốc Cà Phê Đen',
       x: 245,
       y: 105,
       w: 25,
       h: 25,
       triggerNodeId: 'obj_coffee',
       canRepeat: false,
-      checkedMonologue: 'Chỉ còn vệt cà phê ố tròn trên mặt bàn gỗ.',
+      checkedMonologue: 'Chỉ còn vệt cà phê khô trên mặt bàn.',
     },
     {
       id: 'pc_drawer',
@@ -1969,7 +1903,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       h: 25,
       triggerNodeId: 'obj_pc_drawer',
       canRepeat: true,
-      checkedMonologue: 'Hộc bàn đã mở toang, bên trong trống rỗng.',
+      checkedMonologue: 'Hộc bàn trống rỗng.',
     },
     {
       id: 'tea_table',
@@ -1981,7 +1915,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       h: 42,
       triggerNodeId: 'obj_tea_table',
       canRepeat: true,
-      checkedMonologue: 'Bàn bệt chỉ còn lại bát mì tôm đã nguội ngắt và tàn thuốc lá...',
+      checkedMonologue: 'Chỉ còn bát mì nguội ngắt.',
     },
     {
       id: 'cardboard_box',
@@ -1993,12 +1927,12 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       h: 38,
       triggerNodeId: 'obj_cardboard_box',
       canRepeat: true,
-      checkedMonologue: 'Thùng carton đã rạch mở toang, chỉ còn lại những mảnh xốp vụn vỡ.',
+      checkedMonologue: 'Thùng trống trơn, chỉ còn xốp vụn.',
     },
     {
       id: 'bookshelf',
       name: 'Kệ Sách Cũ',
-      actionText: '[E] Lục tìm giữa những cuốn sách cũ [📎]',
+      actionText: '[E] Lục tìm giữa những cuốn sách cũ',
       x: 460,
       y: 95,
       w: 55,
@@ -2017,31 +1951,31 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       h: 25,
       triggerNodeId: 'obj_under_bed',
       canRepeat: true,
-      checkedMonologue: 'Chỉ còn hai chiếc tất lẻ. Chắc chúng sẽ chẳng bao giờ tìm lại được nhau.',
+      checkedMonologue: 'Chỉ còn hai chiếc tất lẻ. Chẳng bao giờ thành đôi.',
     },
     {
       id: 'pills',
       name: 'Bàn Thuốc An Thần',
-      actionText: '[E] Xem vỉ thuốc an thần [Đơn: 17/05]',
+      actionText: '[E] Xem lọ thuốc an thần',
       x: 130,
       y: 210,
       w: 40,
       h: 40,
       triggerNodeId: 'node_pills',
       canRepeat: false,
-      checkedMonologue: 'Chẳng còn viên nào nữa. Đừng tìm vô ích.',
+      checkedMonologue: 'Hết thuốc rồi.',
     },
     {
       id: 'phone',
       name: 'Điện Thoại Bàn Phím',
-      actionText: '[E] Nghe hộp thư thoại nhỡ (01:20 AM)',
+      actionText: '[E] Xem tin nhắn điện thoại',
       x: 445,
       y: 160,
       w: 42,
       h: 36,
       triggerNodeId: 'obj_phone',
       canRepeat: false,
-      checkedMonologue: 'Chỉ còn lại tiếng tút... tút... dài vô tận.',
+      checkedMonologue: 'Điện thoại sắp hết pin rồi.',
     },
     {
       id: 'mirror',
@@ -2053,7 +1987,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       h: 65,
       triggerNodeId: 'obj_mirror',
       canRepeat: false,
-      checkedMonologue: 'Bạn không muốn nhìn vào bản mặt đó lần thứ hai.',
+      checkedMonologue: 'Nhìn nữa chỉ thêm nản.',
     },
     {
       id: 'window',
@@ -2065,12 +1999,12 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       h: 40,
       triggerNodeId: 'obj_window',
       canRepeat: false,
-      checkedMonologue: 'Rèm đã kéo kín. Bên ngoài không có gì cho bạn đâu.',
+      checkedMonologue: 'Mưa vẫn chưa ngớt.',
     },
     {
       id: 'door',
       name: 'Cửa Phòng Trọ #314',
-      actionText: '[E] Mở cửa bước ra Hành lang tầng 3 [🚪]',
+      actionText: '[E] Mở cửa bước ra Hành lang tầng 3',
       x: 35,
       y: 310,
       w: 40,
@@ -2079,18 +2013,6 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       canRepeat: true,
       checkedMonologue: 'Cửa phòng trọ mở hé ánh sáng hành lang.',
     },
-    {
-      id: 'mien',
-      name: 'Miên (AURA Hologram)',
-      actionText: '[E] Giao tiếp với Miên',
-      x: 380,
-      y: 130,
-      w: 40,
-      h: 60,
-      triggerNodeId: 'node_mien_intro',
-      canRepeat: true,
-      checkedMonologue: 'Miên vẫn đang lơ lửng ở đó, chờ đợi bạn...',
-    },
   ]);
 
   // Load Sprites
@@ -2098,24 +2020,12 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     const anImg = new Image();
     anImg.src = characterSprite;
     anImg.onload = () => { anSpriteRef.current = anImg; };
-
-    const mienImg = new Image();
-    mienImg.src = '/assets/mien_spritesheet.png';
-    mienImg.onload = () => { mienSpriteRef.current = mienImg; };
   }, [characterSprite]);
 
-  // Kiểm tra mã PIN của Terminal
-  const handleVerifyPin = useCallback((customPin?: string) => {
-    const pinToTest = customPin !== undefined ? customPin : terminalPin;
-    if (pinToTest === '0314') {
-      playBuzzer();
-      setTerminalError('[TỪ CHỐI]: 03:14 KHÔNG PHẢI MỘT NGÀY, ĐÓ LÀ MỘT THỜI KHẮC... Gợi ý: Mật mã là ngày kỷ niệm của hai đứa — khắc sau mặt dây chuyền, hoặc ghi trên tấm thiệp ngoài bảng tin hành lang.');
-      return;
-    }
-    if (pinToTest === '1705') {
-      playChime();
-      setTerminalSuccess(true);
-      setTerminalError(null);
+  // Kiểm tra mã PIN của ALBUM_KỶ_NIỆM (gọi từ hộp thoại trong DesktopScreen): true = đúng
+  const handleVerifyPin = useCallback((pin: string) => {
+    if (pin === '1705') {
+      playUnlockTing();
       setTimeout(() => {
         setIsTerminalUnlocked(true);
         setIsTerminalOpen(false);
@@ -2123,42 +2033,21 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         onMarkInteracted?.('pc_terminal');
         onTrigger('node_terminal_unlocked');
       }, 700);
-      return;
+      return true;
     }
-    playBuzzer();
-    setTerminalError('MÃ PIN SAI! Đầu bạn nhức buốt vì cố nhớ sai ký ức (-5 Sanity).');
-    if (setSanity) {
+    // Gõ nhầm giờ 03:14 thành ngày thì không trừ Sanity (An chỉ lẩm bẩm), các mã sai khác thì nhức đầu
+    if (pin !== '0314' && setSanity) {
       setSanity((prev) => Math.max(5, prev - 5));
     }
-    setTerminalPin('');
-  }, [terminalPin, playBuzzer, playChime, onMarkInteracted, onTrigger, setSanity]);
+    return false;
+  }, [playUnlockTing, onMarkInteracted, onTrigger, setSanity]);
 
   // Xử lý bàn phím
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // Khi đang mở modal Terminal thì phím ưu tiên cho Terminal
+      // Máy đang bật: Esc tắt màn hình (hộp thoại PIN / Notepad bên trong tự bắt Esc của chúng trước)
       if (isTerminalOpen) {
-        if (terminalView === 'desktop') {
-          if (e.key === 'Escape') {
-            setIsTerminalOpen(false);
-            setTerminalError(null);
-          }
-          return;
-        }
-        if (e.key >= '0' && e.key <= '9') {
-          playKeyClick();
-          setTerminalPin((prev) => (prev.length < 4 ? prev + e.key : prev));
-        } else if (e.key === 'Backspace') {
-          playKeyClick();
-          setTerminalPin((prev) => prev.slice(0, -1));
-        } else if (e.key === 'Enter') {
-          handleVerifyPin();
-        } else if (e.key === 'Escape') {
-          // Thoát khung PIN → quay về desktop
-          setTerminalView('desktop');
-          setTerminalPin('');
-          setTerminalError(null);
-        }
+        if (e.key === 'Escape') setIsTerminalOpen(false);
         return;
       }
 
@@ -2167,8 +2056,8 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         return;
       }
 
-      // Phím [I] mở Túi đồ
-      if (e.key.toLowerCase() === 'i') {
+      // Phím [I] / [Tab] mở Túi đồ
+      if (e.key.toLowerCase() === 'i' || e.key === 'Tab') {
         e.preventDefault();
         setIsInventoryOpen(true);
         return;
@@ -2200,12 +2089,19 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
               return;
             }
 
+            // Lần đầu bật máy: màn hình đồ án AURA + album kỷ niệm khoá PIN, An tự nhắc mình cần tìm gì
+            // (save cũ ghi cờ 'mien_intro' cho cùng đoạn này)
+            if (!localInteractedIds.includes('pc_intro') && !localInteractedIds.includes('mien_intro')) {
+              onTrigger('node_pc_log', 'pc_intro');
+              return;
+            }
+
             // Kiểm tra nguồn điện hành lang đã được bật chưa
             const isPowerRestored = localInteractedIds.includes('hallway_power_on');
             if (!isPowerRestored) {
               playBuzzer();
               showMonologueWhisper(
-                '[LỖI ĐIỆN ÁP ⚡]: Màn CRT thanh lý chợ đồ cũ 300 nghìn, ông bán bảo "bền như tình đầu". Giờ nó chập chờn đúng như tình đầu thật. Điện yếu quá, máy không đọc nổi ổ đĩa. Hãy ra Hành lang tầng 3 (cửa bên trái) đóng Cầu Dao Tổng!'
+                'Điện áp yếu quá máy không tải nổi... Chắc cầu dao ngoài hành lang bị sập rồi.'
               );
               return;
             }
@@ -2222,16 +2118,12 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
                 onInsertDisk?.();
                 showPickupAlert(
                   'Đĩa Mềm Kỷ Niệm Hoàn Chỉnh',
-                  '💽',
-                  'Đã đưa Đĩa Mềm Kỷ Niệm vào máy tính! Màn hình bật sáng...'
+                  'Đã đưa Đĩa Mềm Kỷ Niệm vào máy tính! Màn hình bật sáng...',
+                  'aura_disk'
                 );
                 setTimeout(() => {
                   keysHeld.current.clear();
-                  setTerminalView('desktop');
                   setIsTerminalOpen(true);
-                  setTerminalPin('');
-                  setTerminalError(null);
-                  setTerminalSuccess(false);
                 }, 750);
                 return;
               } else {
@@ -2240,15 +2132,15 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
                 const hasPart2 = localInventoryIds.includes('disk_part_2');
                 if (hasPart1 && hasPart2) {
                   showMonologueWhisper(
-                    'Ổ đĩa máy tính đang trống! Bạn đã có đủ 2 mảnh đĩa mềm trong túi đồ. Hãy mở Túi Đồ [I] để GHÉP LẠI!'
+                    'Có đủ hai nửa đĩa rồi. Mở túi đồ [I] ghép lại đã.'
                   );
                 } else if (hasPart1 || hasPart2) {
                   showMonologueWhisper(
-                    'Ổ đĩa máy tính cần Đĩa Mềm Kỷ Niệm. Bạn mới chỉ có 1 nửa mảnh đĩa, cần tìm thêm nửa còn lại!'
+                    'Mới có một nửa đĩa. Nửa kia ở đâu đó trong phòng.'
                   );
                 } else {
                   showMonologueWhisper(
-                    'Ổ đĩa mềm của máy tính đang trống. Cần tìm Đĩa Mềm Kỷ Niệm trong phòng để xem dữ liệu!'
+                    'Ổ đĩa trống. Cái đĩa mềm kỷ niệm phải ở đâu đó quanh đây.'
                   );
                 }
                 return;
@@ -2257,20 +2149,16 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
 
             // Đã cắm đĩa mềm -> Bật màn hình desktop (từ đó mở tệp khoá để nhập PIN 1705)
             keysHeld.current.clear();
-            setTerminalView('desktop');
             setIsTerminalOpen(true);
-            setTerminalPin('');
-            setTerminalError(null);
-            setTerminalSuccess(false);
             return;
           }
 
-          // 2. Cốc cà phê đen đặc trên bàn PC -> Nhặt Cốc Cà Phê [☕]
+          // 2. Cốc cà phê đen đặc trên bàn PC -> Nhặt Cốc Cà Phê
           if (target.id === 'coffee_mug') {
             const hasCoffee = localInventoryIds.includes('coffee');
             const usedCoffee = localInteractedIds.includes('coffee_used');
             if (hasCoffee || usedCoffee) {
-              showMonologueWhisper('Chỉ còn vệt ố cà phê tròn khô khốc trên mặt bàn gỗ.');
+              showMonologueWhisper('Chỉ còn vệt cà phê khô trên mặt bàn.');
               return;
             }
             const nextInv = [...localInventoryIds, 'coffee'];
@@ -2278,13 +2166,13 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
             onUpdateInventory?.(nextInv);
             showPickupAlert(
               'Cốc Cà Phê Đen Đặc',
-              '☕',
-              'Cốc thứ ba trong đêm. Tim đập theo nhịp deadline rồi, thêm cốc nữa chắc đập theo nhịp EDM. Mở Túi Đồ [I] và bấm [SỬ DỤNG] để uống (+15 Sanity).'
+              'Cốc thứ ba trong đêm. Tim đập theo nhịp deadline rồi, thêm cốc nữa chắc đập theo nhịp EDM. Mở Túi Đồ [I] để uống.',
+              'coffee'
             );
             return;
           }
 
-          // 3. Bàn trà bệt sinh viên -> Nhặt Dao Rọc Giấy [🔪] và Bật Lửa Zippo [🔥], sau đó kiểm tra vị giác
+          // 3. Bàn trà bệt sinh viên -> Nhặt Dao Rọc Giấy và Bật Lửa Zippo, sau đó kiểm tra vị giác
           if (target.id === 'tea_table') {
             if (!localInventoryIds.includes('box_cutter')) {
               const nextInv = [...localInventoryIds, 'box_cutter'];
@@ -2292,8 +2180,8 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
               onUpdateInventory?.(nextInv);
               showPickupAlert(
                 'Dao Rọc Giấy Sắc Bén',
-                '🔪',
-                'Bát Hảo Hảo thứ tư trong tuần. Ăn kèm niềm tin thì chắc cũng đủ chất. Bên cạnh là con Dao Rọc Giấy còn rất bén, dùng để rạch đồ đóng gói.'
+                'Bát Hảo Hảo thứ tư trong tuần. Ăn kèm niềm tin thì chắc cũng đủ chất. Bên cạnh là con Dao Rọc Giấy còn rất bén, dùng để rạch đồ đóng gói.',
+                'box_cutter'
               );
               return;
             }
@@ -2303,31 +2191,30 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
               onUpdateInventory?.(nextInv);
               showPickupAlert(
                 'Bật Lửa Zippo Cũ',
-                '🔥',
-                'Cạnh gạt tàn thuốc lá có một chiếc Bật Lửa Zippo cũ vẫn còn ga! Dùng để soi sáng những góc tối.'
+                'Cạnh gạt tàn thuốc lá có một chiếc Bật Lửa Zippo cũ vẫn còn ga! Dùng để soi sáng những góc tối.',
+                'lighter'
               );
+              showMonologueWhisper('Bật lửa Zippo cũ vẫn còn xăng... Giờ có thể soi sáng những góc tối rồi.');
               return;
             }
             if (!localInteractedIds.includes('tea_table_taste')) {
-              setLocalInteractedIds(prev => [...prev, 'tea_table_taste']);
-              onMarkInteracted?.('tea_table_taste');
-              onTrigger('obj_tea_table');
+              onTrigger('obj_tea_table', 'tea_table_taste');
               return;
             }
-            showMonologueWhisper('Vị giác vẫn hoàn toàn trống rỗng... Bạn không muốn thử nếm bát mì mốc đó nữa.');
+            showMonologueWhisper('Bát mì mốc rồi. Thôi khỏi.');
             return;
           }
 
-          // 4. Thùng carton đồ kỷ niệm của Miên -> Cần Dao Rọc Giấy để mở -> Nhặt Băng Dính [🩹] và Bức Ảnh Polaroid [📷]
+          // 4. Thùng carton đồ kỷ niệm của Miên -> Cần Dao Rọc Giấy để mở -> Nhặt Băng Dính và Bức Ảnh Polaroid
           if (target.id === 'cardboard_box') {
             const hasOpened = localInventoryIds.includes('electrical_tape') || localInteractedIds.includes('cardboard_box');
             if (hasOpened) {
-              showMonologueWhisper('Thùng carton đã rạch mở toang, chỉ còn lại những mảnh xốp vụn vỡ.');
+              showMonologueWhisper('Thùng trống trơn, chỉ còn xốp vụn.');
               return;
             }
 
             if (!localInventoryIds.includes('box_cutter')) {
-              showMonologueWhisper('Thùng carton được dán băng keo chằng chịt rất chặt... Bạn cần một con dao rọc giấy hoặc vật sắc nhọn để rạch băng keo!');
+              showMonologueWhisper('Băng keo quấn chặt quá. Cần thứ gì sắc để rạch.');
               return;
             }
 
@@ -2339,8 +2226,8 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
             onMarkInteracted?.('cardboard_box');
             showPickupAlert(
               'Băng Dính & Ảnh Của Miên',
-              '📦',
-              'Bạn rạch băng keo mở thùng! Tìm thấy Cuộn Băng Dính [🩹] (dùng ghép đĩa) và Bức Ảnh Polaroid [📷] của Miên (mở Túi Đồ [I] để ngắm hồi Sanity)!'
+              'Bạn rạch băng keo mở thùng! Tìm thấy Cuộn Băng Dính (dùng ghép đĩa) và một tấm ảnh polaroid cũ của hai đứa.',
+              'electrical_tape'
             );
             return;
           }
@@ -2349,11 +2236,9 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
           if (target.id === 'pills') {
             const isDone = localInteractedIds.includes('pills');
             if (isDone) {
-              showMonologueWhisper('Chẳng còn viên thuốc nào nữa. Đừng tìm vô ích.');
+              showMonologueWhisper('Hết thuốc rồi.');
             } else {
-              setLocalInteractedIds(prev => (prev.includes('pills') ? prev : [...prev, 'pills']));
-              onMarkInteracted?.('pills');
-              onTrigger('node_pills');
+              onTrigger('node_pills', 'pills');
             }
             return;
           }
@@ -2366,8 +2251,8 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
               onUpdateInventory?.(nextInv);
               showPickupAlert(
                 'Kẹp Ghim Kim Loại',
-                '📎',
-                '"Lập trình C++ trong 21 ngày". Mua ba năm, đọc được 21 trang. Kẹp giữa trang 21 là một chiếc Kẹp Ghim Kim Loại dẻo dai.'
+                '"Lập trình C++ trong 21 ngày". Mua ba năm, đọc được 21 trang. Kẹp giữa trang 21 là một chiếc Kẹp Ghim Kim Loại dẻo dai.',
+                'paperclip'
               );
               if (!localInteractedIds.includes('bookshelf')) {
                 setLocalInteractedIds(prev => [...prev, 'bookshelf']);
@@ -2383,12 +2268,12 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
           if (target.id === 'under_bed') {
             const hasDiskPart1 = localInventoryIds.includes('disk_part_1') || localInventoryIds.includes('aura_disk') || localInsertedDisk;
             if (hasDiskPart1) {
-              showMonologueWhisper('Chỉ còn hai chiếc tất lẻ. Chắc chúng sẽ chẳng bao giờ tìm lại được nhau.');
+              showMonologueWhisper('Chỉ còn hai chiếc tất lẻ. Chẳng bao giờ thành đôi.');
               return;
             }
 
             if (!localInventoryIds.includes('lighter')) {
-              showMonologueWhisper('Gầm giường tối như tương lai sau khi ra trường. Cần một ngọn lửa hoặc ánh sáng để soi vào bên trong!');
+              showMonologueWhisper('Dưới gầm tối đen như mực... Cần một ngọn lửa hay nguồn sáng để soi vào.');
               return;
             }
 
@@ -2397,8 +2282,8 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
             onUpdateInventory?.(nextInv);
             showPickupAlert(
               'Mảnh Đĩa Mềm A (Header)',
-              '💾',
-              'Ngọn lửa soi ra hai chiếc tất lẻ, một gói bim bim từ năm ngoái, và Mảnh Đĩa Mềm A [💾] nằm ở góc khuất gầm giường!'
+              'Ngọn lửa soi ra hai chiếc tất lẻ, một gói bim bim từ năm ngoái, và Mảnh Đĩa Mềm A nằm ở góc khuất gầm giường!',
+              'disk_part_1'
             );
             if (!localInteractedIds.includes('under_bed')) {
               setLocalInteractedIds(prev => [...prev, 'under_bed']);
@@ -2411,12 +2296,12 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
           if (target.id === 'pc_drawer') {
             const hasDiskPart2 = localInventoryIds.includes('disk_part_2') || localInventoryIds.includes('aura_disk') || localInsertedDisk;
             if (hasDiskPart2) {
-              showMonologueWhisper('Hộc bàn đã được cạy mở toang, bên trong trống rỗng.');
+              showMonologueWhisper('Hộc bàn trống rỗng.');
               return;
             }
 
             if (!localInventoryIds.includes('paperclip')) {
-              showMonologueWhisper('Hộc bàn kẹt chốt. Chắc nó cũng không muốn làm việc lúc 3 giờ sáng. Cần một vật kim loại nhỏ và nhọn để cạy chốt.');
+              showMonologueWhisper('Then khóa cơ bị kẹt... Cần một thanh kim loại nhỏ cứng để cạy.');
               return;
             }
 
@@ -2425,8 +2310,8 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
             onUpdateInventory?.(nextInv);
             showPickupAlert(
               'Mảnh Đĩa Mềm B (Data)',
-              '💾',
-              'Kỹ năng cạy khoá học được từ hồi năm nhất mất chìa khoá phòng, cuối cùng cũng có ích! Ngăn kéo bật mở, bên trong là Mảnh Đĩa Mềm B [💾]!'
+              'Kỹ năng cạy khoá học được từ hồi năm nhất mất chìa khoá phòng, cuối cùng cũng có ích! Ngăn kéo bật mở, bên trong là Mảnh Đĩa Mềm B!',
+              'disk_part_2'
             );
             if (!localInteractedIds.includes('pc_drawer')) {
               setLocalInteractedIds(prev => [...prev, 'pc_drawer']);
@@ -2445,27 +2330,14 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
             return;
           }
 
-          // 10. Giao tiếp với Miên: Chỉ khi máy tính đã được giải mã thì Miên mới thức tỉnh để kết thúc Chương 1
-          if (target.id === 'mien') {
-            if (isTerminalUnlocked) {
-              onTrigger('node_dream_climax');
-            } else {
-              onTrigger('node_mien_intro');
-            }
-            return;
-          }
-
           // 8. Các đồ vật khác (cửa sổ, gương, điện thoại...)
           const isDone = localInteractedIds.includes(target.id) && !target.canRepeat;
           if (isDone) {
             const line = target.checkedMonologue || 'Chẳng còn gì ở đây nữa.';
             showMonologueWhisper(line);
           } else {
-            if (!target.canRepeat) {
-              setLocalInteractedIds(prev => (prev.includes(target.id) ? prev : [...prev, target.id]));
-              onMarkInteracted?.(target.id);
-            }
-            onTrigger(target.triggerNodeId);
+            // Chỉ ghi "đã xem" khi hộp thoại được giải quyết, Esc giữa chừng thì bấm [E] lại được
+            onTrigger(target.triggerNodeId, target.canRepeat ? undefined : target.id);
           }
         }
       }
@@ -2483,11 +2355,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     };
   }, [
     isTerminalOpen,
-    terminalView,
     isTerminalUnlocked,
-    terminalPin,
-    handleVerifyPin,
-    playKeyClick,
     onTrigger,
     localInteractedIds,
     onMarkInteracted,
@@ -2529,7 +2397,6 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     soundRef.current = { playKnockSound, playThunder, playStepSound };
   }, [playKnockSound, playThunder, playStepSound]);
 
-  const promptKeyRef = useRef('');
 
   // Game Loop: Cập nhật vị trí & Vẽ Canvas (chạy một lần, đọc state qua ref)
   useEffect(() => {
@@ -2637,24 +2504,27 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
           nearTarget = obj;
         }
       }
-      // Chỉ setState khi nội dung gợi ý thực sự thay đổi (tránh re-render 60 lần/giây)
-      const prompt = nearTarget ? computePrompt(nearTarget, snap, isKnockingNow) : null;
-      const promptKey = prompt ? `${prompt.isDone}|${prompt.text}` : '';
-      if (promptKey !== promptKeyRef.current) {
-        promptKeyRef.current = promptKey;
-        setActivePrompt(prompt);
+      // Nhãn [E] tại vật thể đang nhắm tới: chỉ setState khi đổi sang vật khác (tránh re-render 60 lần/giây)
+      const nearLabelText = nearTarget ? promptLabelFor(nearTarget, snap) : null;
+      const nearKey = nearTarget && nearLabelText ? `${nearTarget.id}|${nearLabelText}` : '';
+      if (nearKey !== nearLabelKeyRef.current) {
+        nearLabelKeyRef.current = nearKey;
+        setNearLabel(
+          nearTarget && nearLabelText
+            ? { x: nearTarget.x + nearTarget.w / 2, y: nearTarget.y, text: nearLabelText }
+            : null,
+        );
       }
-
-      // Bong bóng cảm xúc: Miên vui khi An lại gần lúc căn phòng còn yên, về sau chỉ còn im lặng
+      // An bước đi thì phụ đề độc thoại mờ sớm
+      if (p.isMoving) fadeSubtitleOnMove();
+      // Bong bóng cảm xúc của An khi lại gần đồ vật
       updateEmotes(em, {
         t,
         nearId: nearTarget ? nearTarget.id : null,
-        nearDone: !!prompt?.isDone,
+        nearDone: !!nearTarget && !nearLabelText,
         sanity: snap.sanity,
         moving: p.isMoving,
-        distToMien: Math.hypot(p.x - (MIEN.x + MIEN.w / 2), p.y - MIEN_FLOOR_Y),
-        mienGreet: phase === 1 ? 'heart' : 'dots',
-        mienIdle: phase === 1 ? 'note' : 'dots',
+        distToMien: null,
       });
 
       // 4. Vẽ
@@ -2680,7 +2550,6 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
 
       const sprites: RoomSprites = {
         an: anSpriteRef.current && anSpriteRef.current.complete ? anSpriteRef.current : null,
-        mien: mienSpriteRef.current && mienSpriteRef.current.complete ? mienSpriteRef.current : null,
       };
 
       ctx.imageSmoothingEnabled = false;
@@ -2710,12 +2579,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       if (shakeAmt > 0.05) {
         ctx.restore();
       }
-      drawEmotes(
-        ctx,
-        em,
-        { cx: p.x, headY: p.y - AN_DRAW_H + 20 },
-        { cx: MIEN.x + MIEN.w / 2, headY: MIEN.y + mienFloat(t) + 2 },
-      );
+      drawEmotes(ctx, em, { cx: p.x, headY: p.y - AN_DRAW_H + 20 });
       drawRoomHUD(ctx, fr, interactables.current);
 
       animId = requestAnimationFrame(gameLoop);
@@ -2723,19 +2587,25 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
 
     animId = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(animId);
-  }, [emotes]);
+  }, [emotes, fadeSubtitleOnMove]);
 
-  // Đếm manh mối cốt truyện đã khám phá (cho HUD đáy)
+  // Đếm manh mối cốt truyện đã khám phá (cho bộ đếm ký ức góc trên)
   const cluesCount = localInteractedIds.filter(id => STORY_CLUE_IDS.includes(id)).length;
 
   // Lớp giao diện HTML phóng to cùng tỉ lệ với khung canvas
   const { ref: frameRef, scale: uiScale } = useFrameScale(CANVAS_WIDTH);
   useMouseParallax(canvasRef, parallax);
 
+  // Thanh hướng dẫn phím: 3 giây đầu khi tỉnh dậy, rồi chỉ hiện lại khi đứng yên lâu / rê chuột xuống đáy
+  const hintsVisible = useAutoHideHints(frameRef, playerRef);
+
+  // Tìm thấy manh mối mới → bộ đếm ký ức sáng rực 3 giây rồi lùi về dạng biểu tượng mờ
+  const clueFlash = useClueFlash(cluesCount);
+
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center bg-black overflow-hidden select-none">
       {/* Khung Canvas hiển thị phòng trọ */}
-      <div className="relative border-4 border-zinc-800 shadow-[0_0_50px_rgba(0,0,0,0.9)] rounded-sm overflow-hidden" ref={frameRef} style={{ width: `min(96vw, calc((100vh - 60px) * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, marginTop: 44 }}>
+      <div className="relative border-4 border-zinc-800 rounded-sm overflow-hidden" ref={frameRef} style={{ width: `min(96vw, calc((100vh - 60px) * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, marginTop: 44 }}>
         <canvas
           ref={canvasRef}
           width={CANVAS_WIDTH}
@@ -2750,8 +2620,12 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         {pickupAlert && (
           <div className="absolute top-3 right-3 z-40 w-72 max-w-[60%]" style={{ animation: 'pickup-in 0.25s ease-out' }}>
             <style>{'@keyframes pickup-in { from { opacity: 0; transform: translateX(16px) } to { opacity: 1; transform: none } }'}</style>
-            <div className="bg-black/90 border border-yellow-500/80 px-2.5 py-2 rounded-md shadow-[0_0_10px_rgba(234,179,8,0.3)] flex items-start gap-2 backdrop-blur-md font-mono">
-              <div className="text-lg leading-none shrink-0 mt-0.5">{pickupAlert.icon}</div>
+            <div className="bg-black/90 border border-yellow-500/80 px-2.5 py-2 rounded-md flex items-start gap-2 backdrop-blur-md font-mono">
+              {pickupAlert.itemId && (
+                <div className="shrink-0 mt-0.5">
+                  <ItemSprite id={pickupAlert.itemId} size={28} />
+                </div>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-bold text-yellow-300 truncate">{tx(pickupAlert.name)}</span>
@@ -2771,52 +2645,16 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
           </div>
         )}
 
-        {/* Thanh gợi ý tương tác [E] dạng viên thuốc nổi đỉnh màn hình (chuẩn Màn 3) */}
-        {activePrompt && (
-          <div
-            className={`absolute bottom-12 left-3 z-20 max-w-[55%] px-2 py-1 font-mono text-[11px] rounded-md flex items-center gap-1.5 backdrop-blur-sm ${
-              activePrompt.isDone
-                ? 'bg-black/85 border border-zinc-700/80 text-zinc-400'
-                : 'bg-black/90 border border-orange-500 text-orange-100 shadow-[0_0_8px_rgba(249,115,22,0.35)]'
-            }`}
-          >
-            <span
-              className={`shrink-0 px-1 py-0.5 font-bold rounded text-[10px] leading-none ${
-                activePrompt.isDone
-                  ? 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-                  : 'bg-orange-500 text-black shadow-[0_0_8px_rgba(249,115,22,0.9)]'
-              }`}
-            >
-              {activePrompt.isDone ? '✓' : 'E'}
-            </span>
-            <span className="truncate">{tx(activePrompt.text).replace(/^\[E\]\s*/, '').replace(/\s*-?\s*(?:Nhấn|Press) \[E\]\s*(?:để\s*|to\s*)?/i, ' · ')}</span>
-          </div>
-        )}
-
-        {/* Hộp thoại độc thoại nội tâm cụt lủn lướt qua ở góc màn hình */}
-        {monologueWhisper && (
-          <div
-            onClick={() => setMonologueWhisper(null)}
-            className="absolute bottom-12 right-3 max-w-xs sm:max-w-sm bg-black/95 border-l-4 border-cyan-400 border-t border-r border-b border-zinc-800 p-3 rounded-r shadow-2xl animate-fade-in z-20 backdrop-blur-md cursor-pointer hover:border-cyan-300 transition-colors"
-            title={tx('Click để đóng nhanh')}
-          >
-            <div className="flex items-center gap-1.5 text-[10px] uppercase font-mono text-cyan-400 tracking-wider mb-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping inline-block" />
-              {tx('Độc thoại nội tâm')}
-            </div>
-            <p className="text-xs sm:text-sm font-sans text-zinc-300 italic leading-snug text-justify">
-              &ldquo;{tx(monologueWhisper)}&rdquo;
-            </p>
-          </div>
-        )}
+        {/* Phụ đề độc thoại kiểu điện ảnh: một dòng sát đáy khung hình, mờ dần sau 3 giây */}
+        <CinematicSubtitle subtitle={subtitle} />
 
         {/* =========================================================
-            MODAL TERMINAL MINI-GAME: GIẢI MÃ TỆP TIN PROJECT_AURA
+            MÁY TÍNH PHÒNG 314: DESKTOP + HỘP THOẠI PIN ALBUM_KỶ_NIỆM
            ========================================================= */}
-        {isTerminalOpen && terminalView === 'desktop' && (
+        {isTerminalOpen && (
           <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 animate-fade-in">
             {/* Viền màn hình CRT be cũ */}
-            <div className="w-full h-full max-w-[600px] max-h-[440px] p-2 bg-[#d6ccb4] border-2 border-[#9e9277] rounded-md shadow-[0_0_40px_rgba(16,185,129,0.25)]">
+            <div className="w-full h-full max-w-150 max-h-110 p-2 bg-[#d6ccb4] border-2 border-[#9e9277] rounded-md">
               <div className="w-full h-full border-2 border-black rounded-sm overflow-hidden">
                 <DesktopScreen
                   onClickSound={playKeyClick}
@@ -2824,171 +2662,34 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
                     // Đọc tài liệu thiết kế AURA → điều kiện mở Ending S "Người lạ" ở Màn 4
                     if (id === 'aura') onSetFlag?.('flag_read_aura_project');
                   }}
-                  onOpenPin={() => {
-                    setTerminalView('pin');
-                    setTerminalPin('');
-                    setTerminalError(null);
-                  }}
-                  onClose={() => {
-                    setIsTerminalOpen(false);
-                    setTerminalError(null);
-                  }}
+                  onErrorSound={playErrorBeep}
+                  onSubmitPin={handleVerifyPin}
+                  onClose={() => setIsTerminalOpen(false)}
                 />
               </div>
             </div>
           </div>
         )}
-        {isTerminalOpen && terminalView === 'pin' && (
-          <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-fade-in">
-            <div className="w-full max-w-sm sm:max-w-md max-h-[96vh] overflow-y-auto bg-zinc-950 border-2 border-emerald-500/80 rounded shadow-[0_0_40px_rgba(16,185,129,0.35)] p-3 sm:p-4 flex flex-col gap-2 font-mono text-emerald-400 relative">
-              {/* Scanline CRT overlay */}
-              <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.3)_50%)] bg-[length:100%_4px] opacity-40 rounded" />
+        {/* Nhãn [E] nổi ngay trên vật thể đang nhắm tới; vật đã xong thì không hiện */}
+        <InteractLabel label={nearLabel} />
 
-              {/* Header Terminal - Luôn cố định phía trên */}
-              <div className="flex justify-between items-center border-b border-emerald-900/80 pb-2 shrink-0">
-                <div className="flex items-center gap-2 text-xs font-bold tracking-wider">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping inline-block" />
-                  <span className="truncate">{tx('MÁY TÍNH CÁ NHÂN (PHÒNG 314)')}</span>
-                </div>
-                <button
-                  onClick={() => {
-                    setTerminalView('desktop');
-                    setTerminalPin('');
-                    setTerminalError(null);
-                  }}
-                  className="shrink-0 text-xs text-emerald-200 hover:text-white px-2.5 py-1 rounded border border-emerald-700/80 bg-emerald-950/60 hover:bg-emerald-900 transition-colors cursor-pointer font-bold flex items-center gap-1 shadow-sm"
-                  title={tx('Nhấn phím ESC để quay về desktop')}
-                >
-                  <span>←</span>
-                  <span>[ESC] DESKTOP</span>
-                </button>
-              </div>
+        {/* Đồng hồ 03:14 AM góc trên trái (HTML thay vì canvas để chữ không nhoè khi phóng to) */}
+        <StageClock />
 
-              {/* Thông tin tệp tin */}
-              <div className="text-[11px] leading-relaxed text-emerald-300/90 bg-emerald-950/40 p-2 sm:p-2.5 rounded border border-emerald-900/60 shrink-0">
-                <div className="text-emerald-400 font-bold mb-0.5">{tx('> TỆP TIN: ALBUM_KỶ_NIỆM_1705')}</div>
-                <div className="text-zinc-400">{tx('> TRẠNG THÁI:')} <span className="text-amber-400 font-bold">{tx('ĐÃ KHÓA BẰNG MẬT MÃ CÁ NHÂN')}</span></div>
-                <div className="text-zinc-300 italic mt-1 border-t border-emerald-900/40 pt-1 text-[10px] sm:text-[11px]">
-                  {tx('> [GHI CHÚ]: “Mã PIN là ngày kỷ niệm của hai đứa mình... Nếu anh lại quên, hãy tìm mặt dây chuyền em đánh rơi, hoặc tấm thiệp em ghim ngoài bảng tin hành lang.”')}
-                </div>
-              </div>
+        {/* Bộ đếm ký ức: chỉ hiện 3 giây cạnh đồng hồ mỗi khi tìm thấy manh mối mới */}
+        <ClueFlash visible={clueFlash}>
+          {tx('Ký ức')} {Math.min(cluesCount, HUD_CLUE_TARGET)}/{HUD_CLUE_TARGET}
+        </ClueFlash>
 
-              {/* Khung hiển thị 4 số PIN */}
-              <div className="flex flex-col items-center gap-1 my-0.5 shrink-0">
-                <div className="text-[10px] text-zinc-400 tracking-wider">{tx('NHẬP MÃ PIN 4 CHỮ SỐ ĐỂ MỞ KHÓA:')}</div>
-                <div className="flex gap-2 sm:gap-2.5">
-                  {[0, 1, 2, 3].map((index) => {
-                    const digit = terminalPin[index];
-                    return (
-                      <div
-                        key={index}
-                        className={`w-10 h-11 sm:w-11 sm:h-12 flex items-center justify-center text-lg sm:text-xl font-bold rounded border-2 transition-all ${
-                          digit
-                            ? 'border-emerald-400 bg-emerald-950/70 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.5)]'
-                            : 'border-zinc-700 bg-black/60 text-zinc-600'
-                        }`}
-                      >
-                        {digit || '_'}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Thông báo lỗi hoặc thành công */}
-              {terminalError && (
-                <div className="text-[11px] sm:text-xs text-center text-red-300 bg-red-950/70 p-1.5 sm:p-2 rounded border border-red-800 animate-pulse shrink-0">
-                  {tx(terminalError)}
-                </div>
-              )}
-              {terminalSuccess && (
-                <div className="text-[11px] sm:text-xs text-center text-emerald-300 bg-emerald-950/80 p-1.5 sm:p-2 rounded border border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)] font-bold shrink-0">
-                  {tx('✓ MỞ KHÓA THÀNH CÔNG! ĐANG MỞ KÝ ỨC...')}
-                </div>
-              )}
-
-              {/* Bàn phím số ảo Retro */}
-              <div className="grid grid-cols-3 gap-1.5 max-w-[260px] mx-auto w-full shrink-0">
-                {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((num) => (
-                  <button
-                    key={num}
-                    onClick={() => {
-                      playKeyClick();
-                      setTerminalPin((prev) => (prev.length < 4 ? prev + num : prev));
-                    }}
-                    className="py-1.5 sm:py-2 bg-zinc-900 hover:bg-zinc-800 active:bg-emerald-950 border border-zinc-700/80 text-emerald-300 font-bold rounded text-sm transition-all cursor-pointer"
-                  >
-                    {num}
-                  </button>
-                ))}
-                <button
-                  onClick={() => {
-                    playKeyClick();
-                    setTerminalPin((prev) => prev.slice(0, -1));
-                  }}
-                  className="py-1.5 sm:py-2 bg-amber-950/50 hover:bg-amber-900/60 active:bg-amber-900 border border-amber-800 text-amber-300 font-bold rounded text-xs transition-all cursor-pointer"
-                >
-                  {tx('XÓA')}
-                </button>
-                <button
-                  onClick={() => {
-                    playKeyClick();
-                    setTerminalPin((prev) => (prev.length < 4 ? prev + '0' : prev));
-                  }}
-                  className="py-1.5 sm:py-2 bg-zinc-900 hover:bg-zinc-800 active:bg-emerald-950 border border-zinc-700/80 text-emerald-300 font-bold rounded text-sm transition-all cursor-pointer"
-                >
-                  0
-                </button>
-                <button
-                  onClick={() => handleVerifyPin()}
-                  disabled={terminalPin.length !== 4}
-                  className={`py-1.5 sm:py-2 border font-bold rounded text-xs transition-all ${
-                    terminalPin.length === 4
-                      ? 'bg-emerald-600 hover:bg-emerald-500 text-black border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.5)] cursor-pointer'
-                      : 'bg-zinc-800 text-zinc-500 border-zinc-700 cursor-not-allowed opacity-60'
-                  }`}
-                >
-                  {tx('GIẢI MÃ')}
-                </button>
-              </div>
-
-              {/* Nút thoát phụ bổ sung phía dưới */}
-              <div className="flex items-center justify-between pt-1 border-t border-zinc-800/80 text-[10px] text-zinc-400 shrink-0">
-                <span>{tx('Phím số 0-9 & Enter')}</span>
-                <button
-                  onClick={() => {
-                    setIsTerminalOpen(false);
-                    setTerminalError(null);
-                  }}
-                  className="text-zinc-400 hover:text-white underline hover:no-underline cursor-pointer"
-                >
-                  {tx('[ Đóng cửa sổ này ]')}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* HUD cố định ở đáy: viền kép retro neon (chuẩn Màn 3) */}
-        <div className="absolute bottom-2 left-3 right-3 z-10 p-0.5 rounded border border-orange-500/70 bg-black/80 shadow-[0_0_14px_rgba(249,115,22,0.35)] backdrop-blur-sm">
-          {/* Một hàng gọn: phím điều khiển (trái) • tiến trình ký ức (phải) */}
-          <div className="flex justify-between items-center gap-3 px-3 py-1 rounded-sm border border-red-900/80 text-[11px] font-mono text-zinc-400 whitespace-nowrap">
-            <div className="flex items-center gap-3">
-              <span><span className="text-orange-400 font-bold">WASD</span> {t.hud.move}</span>
-              <button
-                onClick={() => setIsInventoryOpen(true)}
-                className="hover:text-zinc-200 cursor-pointer"
-                title={t.hud.inventoryTitle}
-              >
-                <span className="text-cyan-300 font-bold">I</span> {t.hud.inventory}
-              </button>
-              <span><span className="text-orange-400 font-bold">E</span> {t.hud.interact}</span>
-            </div>
-            <div className={isTerminalUnlocked ? 'text-pink-400 font-bold' : 'text-zinc-300'}>
-              {tx('Ký ức')} <span className="font-bold text-orange-300">{Math.min(cluesCount, HUD_CLUE_TARGET)}/{HUD_CLUE_TARGET}</span>
-            </div>
-          </div>
-        </div>
+        {/* Thanh hướng dẫn phím ở đáy: tự mờ đi khi đã di chuyển, hiện lại khi đứng yên / rê chuột xuống đáy;
+            nhường chỗ cho phụ đề khi An đang độc thoại */}
+        <HintBar visible={hintsVisible && !subtitle}>
+          <HintKey k="WASD">{t.hud.move}</HintKey>
+          <button onClick={() => setIsInventoryOpen(true)} className="hover:text-zinc-200 cursor-pointer" title={t.hud.inventoryTitle}>
+            <HintKey k="I">{t.hud.inventory}</HintKey>
+          </button>
+          <HintKey k="E">{t.hud.interact}</HintKey>
+        </HintBar>
         </div>
       </div>
 

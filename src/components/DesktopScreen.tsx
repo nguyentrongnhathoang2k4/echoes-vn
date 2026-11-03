@@ -1,12 +1,14 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { tx } from '../locales/tx';
 
 // =====================================================================
 // MÀN HÌNH DESKTOP MÁY TÍNH CỦA AN (Màn 1)
-// Hiện ra khi bật máy, trước khung nhập PIN. Bấm icon → An nói một câu;
-// bấm tệp khoá ALBUM_KỶ_NIỆM_1705 → mở khung nhập PIN.
+// Hiện ra khi bật máy. Bấm icon → An nói một câu;
+// bấm thư mục Đồ_án_AURA → mở cửa sổ Notepad đọc trích đoạn tài liệu (manh mối Ending S);
+// bấm tệp khoá ALBUM_KỶ_NIỆM → hộp thoại nhập PIN kiểu Windows cổ nổi ngay trên desktop
+// (không gợi ý đáp án: người chơi tự nhớ ra mặt dây chuyền / tấm thiệp ngoài hành lang).
 // Icon là pixel art tự vẽ (không dùng logo thật của hãng nào).
 // =====================================================================
 
@@ -30,11 +32,59 @@ const ICONS: DesktopIcon[] = [
   { id: 'photos', label: 'Ảnh_2_đứa', kind: 'folder', line: 'Ảnh hai đứa ở bến An Yên. Ảnh nào cũng nhoè đúng chỗ mặt mình, như bị ai xoá dở.' },
   { id: 'aura', label: 'Đồ_án_AURA', kind: 'folder', line: 'Tài liệu thiết kế AURA. Trang đầu có chữ Miên: "Mức đồng bộ 100% — KHÔNG BAO GIỜ DÙNG." Gạch chân hai lần.' },
   { id: 'backup', label: 'AURA_backup', kind: 'folderGray', line: 'Thư mục trống. Sửa đổi lần cuối: hôm nay, 03:14. Mình đâu có mở nó.' },
-  { id: 'album', label: 'ALBUM_KỶ_NIỆM_1705', kind: 'locked' },
+  { id: 'album', label: 'ALBUM_KỶ_NIỆM', kind: 'locked' },
 ];
 
 const START_LINE = 'Máy chậm như rùa. Ông bán ở chợ đồ cũ bảo "bền như tình đầu".';
+
+// Trích đoạn tài liệu thiết kế trong thư mục Đồ_án_AURA (cửa sổ Notepad giả lập)
+const AURA_DOC_FILE = 'AURA_thiet_ke_v3.14.txt';
+const AURA_DOC_GOALS = [
+  'Ghi lại sóng não trong lúc ngủ, dựng lại ký ức thành một nơi có thể bước vào.',
+  'Giữ lại giọng nói, thói quen, cách một người cười — đủ để trò chuyện như thật.',
+  'Để những người ở lại còn được gặp lại người đã đi.',
+];
+const AURA_DOC_DIAGRAM = [
+  '[ NÃO CHỦ THỂ ] ──EEG──▶ [ AURA_REC ] ──▶ [ AURA-NODE ]',
+  '       ▲                                       │',
+  '       └────────── phản hồi cảm giác ◀─────────┘',
+  '',
+  'MỨC ĐỒNG BỘ:  30% quan sát  •  70% nhập vai  •  100% ???',
+];
+const AURA_DOC_NOTE = 'Phiên ghi #211 — chủ thể: chính mình. Tối nay thử 4 tiếng, mai báo cáo cô hướng dẫn.';
+const AURA_DOC_WARNING = 'KHÔNG BAO GIỜ ĐƯỢC ĐỒNG BỘ 100%.';
+const AURA_DOC_WARNING_SUB = 'Ở 100%, hệ thống không còn phân biệt được bản sao với người thật. Không quay lại được đâu.';
+const AURA_TOAST_MS = 3200;
 const CLOCK_LINE = '03:14. Đồng hồ lại đứng rồi.';
+
+// Hộp thoại nhập PIN của ALBUM_KỶ_NIỆM
+const PIN_LEN = 4;
+const PIN_OPEN_LINE = 'Mật khẩu 4 số... Ngày gì quan trọng ấy nhỉ? Dạo này đãng trí quá.';
+const PIN_WRONG_LINE = 'Sai rồi... Đầu nhức buốt vì cố nhớ mãi không ra.';
+const PIN_TIME_LINE = '03:14 là giờ trên đồng hồ, đâu phải ngày. Ngày gì cơ chứ...';
+const PIN_OK_LINE = 'Mở được rồi...';
+const PIN_ERROR_MS = 520;          // Ô số chớp đỏ + rung rồi tự xoá
+const PIN_OK_MS = 420;             // Ô số xanh lại một nhịp rồi đóng hộp thoại
+const NUMPAD = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'back', '0', 'clear'] as const;
+// Viền nổi / lõm 3D kiểu Windows cổ
+const BEVEL_UP = 'border-2 border-t-white border-l-white border-b-zinc-700 border-r-zinc-700';
+const BEVEL_DOWN = 'border-2 border-t-zinc-700 border-l-zinc-700 border-b-white border-r-white';
+const KEY_3D = `${BEVEL_UP} bg-[#d4d0c8] active:border-t-zinc-700 active:border-l-zinc-700 active:border-b-white active:border-r-white cursor-pointer`;
+
+/** Ổ khoá vàng pixel 12x12 ở góc hộp thoại */
+function PixelLock() {
+  return (
+    <svg viewBox="0 0 12 12" width={24} height={24} shapeRendering="crispEdges" aria-hidden>
+      <rect x={3} y={1} width={6} height={1} fill="#57534e" />
+      <rect x={2} y={2} width={1} height={4} fill="#57534e" />
+      <rect x={9} y={2} width={1} height={4} fill="#57534e" />
+      <rect x={1} y={5} width={10} height={6} fill="#ca8a04" />
+      <rect x={1} y={5} width={10} height={1} fill="#fde047" />
+      <rect x={1} y={10} width={10} height={1} fill="#854d0e" />
+      <rect x={5} y={7} width={2} height={2} fill="#1c1917" />
+    </svg>
+  );
+}
 
 /** Icon pixel 16x16 vẽ bằng SVG, giữ nét sắc khi phóng to */
 function PixelIcon({ kind }: { kind: IconKind }) {
@@ -103,33 +153,130 @@ function PixelIcon({ kind }: { kind: IconKind }) {
 }
 
 interface DesktopScreenProps {
-  onOpenPin: () => void;
+  /** Kiểm tra mã PIN của ALBUM_KỶ_NIỆM: true = đúng (phòng 314 tự đóng máy và mở album) */
+  onSubmitPin: (pin: string) => boolean;
   onClose: () => void;
   onClickSound?: () => void;
+  /** Tiếng 'bíp' báo lỗi khi nhập sai PIN */
+  onErrorSound?: () => void;
   /** Báo icon vừa được mở (để ghi biến cốt truyện) */
   onOpenIcon?: (id: string) => void;
 }
 
-export const DesktopScreen: React.FC<DesktopScreenProps> = ({ onOpenPin, onClose, onClickSound, onOpenIcon }) => {
+export const DesktopScreen: React.FC<DesktopScreenProps> = ({ onSubmitPin, onClose, onClickSound, onErrorSound, onOpenIcon }) => {
   useLanguage(); // vẽ lại khi đổi ngôn ngữ
   const [selected, setSelected] = useState<string | null>(null);
   const [line, setLine] = useState<string>('Màn hình sáng lên. Desktop vẫn bừa bộn như mọi khi.');
   const [colon, setColon] = useState(true);
+  // Cửa sổ Notepad của thư mục Đồ_án_AURA + thông báo mở khoá manh mối
+  const [auraOpen, setAuraOpen] = useState(false);
+  const [auraToast, setAuraToast] = useState(false);
+  // Hộp thoại PIN: 'error' = ô số chớp đỏ + rung, 'ok' = ô số xanh rồi đóng (hai pha đều khoá phím)
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pin, setPin] = useState('');
+  const [pinState, setPinState] = useState<'idle' | 'error' | 'ok'>('idle');
+  const [shakeKey, setShakeKey] = useState(0);
+  const timersRef = useRef<number[]>([]);
+  useEffect(() => () => timersRef.current.forEach((id) => window.clearTimeout(id)), []);
+
+  const closePin = useCallback(() => {
+    setPinOpen(false);
+    setPin('');
+    setPinState('idle');
+  }, []);
+
+  const typeDigit = useCallback((d: string) => {
+    if (pinState !== 'idle') return;
+    onClickSound?.();
+    setPin((p) => (p.length < PIN_LEN ? p + d : p));
+  }, [pinState, onClickSound]);
+
+  const backspace = useCallback(() => {
+    if (pinState !== 'idle') return;
+    onClickSound?.();
+    setPin((p) => p.slice(0, -1));
+  }, [pinState, onClickSound]);
+
+  const submitPin = useCallback(() => {
+    if (pinState !== 'idle' || pin.length !== PIN_LEN) return;
+    if (onSubmitPin(pin)) {
+      setPinState('ok');
+      setLine(PIN_OK_LINE);
+      timersRef.current.push(window.setTimeout(closePin, PIN_OK_MS));
+      return;
+    }
+    onErrorSound?.();
+    setPinState('error');
+    setShakeKey((k) => k + 1);
+    setLine(pin === '0314' ? PIN_TIME_LINE : PIN_WRONG_LINE);
+    timersRef.current.push(
+      window.setTimeout(() => {
+        setPin('');
+        setPinState('idle');
+      }, PIN_ERROR_MS),
+    );
+  }, [pinState, pin, onSubmitPin, onErrorSound, closePin]);
+
+  // Phím thật khi hộp thoại PIN mở: 0-9, Backspace, Enter, Esc (đóng hộp thoại, chưa tắt màn hình).
+  // Pha capture + chặn lan truyền để phòng 314 / Pause Menu không nhận cùng lần bấm.
+  useEffect(() => {
+    if (!pinOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (/^[0-9]$/.test(e.key)) typeDigit(e.key);
+      else if (e.key === 'Backspace') backspace();
+      else if (e.key === 'Enter') submitPin();
+      else if (e.key === 'Escape') {
+        onClickSound?.();
+        closePin();
+      } else return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [pinOpen, typeDigit, backspace, submitPin, closePin, onClickSound]);
 
   useEffect(() => {
     const id = window.setInterval(() => setColon((c) => !c), 800);
     return () => window.clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (!auraToast) return;
+    const id = window.setTimeout(() => setAuraToast(false), AURA_TOAST_MS);
+    return () => window.clearTimeout(id);
+  }, [auraToast]);
+
+  // Esc đóng cửa sổ tài liệu trước, chưa tắt màn hình máy tính.
+  // Pha capture + chặn lan truyền để listener tắt màn hình của phòng 314 không nhận cùng lần bấm.
+  useEffect(() => {
+    if (!auraOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setAuraOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [auraOpen]);
+
   const press = (icon: DesktopIcon) => {
     onClickSound?.();
     setSelected(icon.id);
     onOpenIcon?.(icon.id);
     if (icon.kind === 'locked') {
-      onOpenPin();
+      setPin('');
+      setPinState('idle');
+      setPinOpen(true);
+      setLine(PIN_OPEN_LINE);
       return;
     }
     if (icon.line) setLine(icon.line);
+    if (icon.id === 'aura') {
+      setAuraOpen(true);
+      setAuraToast(true);
+    }
   };
 
   return (
@@ -143,7 +290,7 @@ export const DesktopScreen: React.FC<DesktopScreenProps> = ({ onOpenPin, onClose
       <div className="absolute left-0 right-0" style={{ top: '70%', height: 2, background: 'rgba(255,220,180,0.5)' }} />
 
       {/* Lưới icon */}
-      <div className="relative flex-1 p-2 grid grid-flow-col grid-rows-5 auto-cols-[78px] gap-x-1 gap-y-0.5 content-start">
+      <div className="relative flex-1 p-2 grid grid-flow-col grid-rows-5 auto-cols-19.5 gap-x-1 gap-y-0.5 content-start">
         {ICONS.map((icon) => (
           <button
             key={icon.id}
@@ -173,14 +320,172 @@ export const DesktopScreen: React.FC<DesktopScreenProps> = ({ onOpenPin, onClose
         ✕ [ESC]
       </button>
 
+      {/* Cửa sổ Notepad: trích đoạn tài liệu thiết kế AURA */}
+      {auraOpen && (
+        <div className="absolute inset-x-3 top-3 bottom-12 z-10 flex flex-col bg-[#f5f1e6] border-2 border-zinc-500 rounded-sm shadow-[4px_4px_0_rgba(0,0,0,0.6)] text-zinc-900">
+          <div className="flex items-center justify-between h-5 px-1.5 bg-linear-to-r from-sky-800 to-sky-600 text-[10px] text-white font-bold shrink-0">
+            <span className="truncate">{AURA_DOC_FILE} — Notepad</span>
+            <button
+              onClick={() => {
+                onClickSound?.();
+                setAuraOpen(false);
+              }}
+              className="px-1 leading-none bg-zinc-200 text-zinc-900 border border-zinc-500 hover:bg-red-600 hover:text-white cursor-pointer"
+              title={tx('Nhấn ESC để đóng tài liệu')}
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-2.5 py-2 text-[10px] leading-snug">
+            <div className="font-bold tracking-wide">{tx('ĐỒ ÁN TỐT NGHIỆP — DỰ ÁN AURA')}</div>
+            <div className="text-zinc-600 mb-1.5">{tx('Sinh viên thực hiện: Trần Hoàng An • Bản nháp v3.14')}</div>
+
+            <div className="font-bold">{tx('1. MỤC TIÊU HỆ THỐNG')}</div>
+            <ul className="mb-1.5 pl-3 list-disc">
+              {AURA_DOC_GOALS.map((g) => (
+                <li key={g}>{tx(g)}</li>
+              ))}
+            </ul>
+
+            <div className="font-bold">{tx('2. SƠ ĐỒ ĐỒNG BỘ NÃO BỘ')}</div>
+            <pre className="mb-1.5 px-1.5 py-1 bg-zinc-900 text-emerald-300 text-[9px] leading-tight overflow-x-auto whitespace-pre">
+              {AURA_DOC_DIAGRAM.map((l) => tx(l)).join('\n')}
+            </pre>
+
+            <div className="font-bold">{tx('3. GHI CHÚ')}</div>
+            <div className="mb-2 italic text-zinc-700">{tx(AURA_DOC_NOTE)}</div>
+
+            <div className="px-2 py-1.5 border-2 border-red-700 bg-red-100 text-red-800">
+              <div className="font-extrabold tracking-wider animate-pulse">{tx(AURA_DOC_WARNING)}</div>
+              <div className="mt-0.5">{tx(AURA_DOC_WARNING_SUB)}</div>
+              <div className="mt-0.5 text-right italic underline decoration-double">— M.</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mở thư mục AURA lần nào cũng báo rõ: manh mối đã được ghi nhận */}
+      {auraToast && (
+        <div className="absolute left-1/2 top-2 -translate-x-1/2 z-20 pointer-events-none px-2.5 py-1 bg-black/90 border border-amber-400/80 text-amber-200 text-[10px] font-bold tracking-widest whitespace-nowrap rounded-sm shadow-[0_0_16px_rgba(251,191,36,0.4)] animate-fade-in">
+          {tx('[ĐÃ MỞ KHÓA MANH MỐI: DỰ ÁN AURA]')}
+        </div>
+      )}
+
+      {/* Hộp thoại nhập PIN kiểu Windows cổ: nổi giữa desktop, hình nền và icon vẫn thấy xung quanh.
+          Lớp trong suốt phía sau chặn click xuống desktop như một hộp thoại modal thật. */}
+      {pinOpen && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center p-2">
+          <style>{`
+            @keyframes pin-shake {
+              0%, 100% { transform: translateX(0) }
+              15% { transform: translateX(-6px) } 30% { transform: translateX(5px) }
+              45% { transform: translateX(-4px) } 60% { transform: translateX(3px) } 75% { transform: translateX(-2px) }
+            }
+          `}</style>
+          <div
+            key={shakeKey}
+            role="dialog"
+            aria-label={tx('ALBUM_KỶ_NIỆM — Yêu cầu mã PIN')}
+            className={`w-[320px] max-w-full flex flex-col bg-[#d4d0c8] ${BEVEL_UP} shadow-[3px_3px_0_rgba(0,0,0,0.6)] text-zinc-900`}
+            style={pinState === 'error' ? { animation: 'pin-shake 0.4s linear' } : undefined}
+          >
+            {/* Thanh tiêu đề */}
+            <div className="flex items-center justify-between h-5 pl-1 pr-0.5 bg-linear-to-r from-blue-900 to-blue-700 text-[10px] text-white font-bold shrink-0">
+              <span className="flex items-center gap-1 truncate">
+                <svg viewBox="0 0 16 16" width={12} height={12} shapeRendering="crispEdges" aria-hidden>
+                  <rect x={1} y={3} width={6} height={2} fill="#eab308" />
+                  <rect x={1} y={4} width={14} height={10} fill="#eab308" />
+                  <rect x={1} y={6} width={14} height={8} fill="#facc15" />
+                </svg>
+                {tx('ALBUM_KỶ_NIỆM — Yêu cầu mã PIN')}
+              </span>
+              <button
+                onClick={() => {
+                  onClickSound?.();
+                  closePin();
+                }}
+                className={`w-4 h-3.5 flex items-center justify-center text-[9px] leading-none font-black ${KEY_3D}`}
+                title={tx('Nhấn ESC để đóng hộp thoại')}
+              >
+                X
+              </button>
+            </div>
+
+            {/* Thân hộp thoại: trái = hướng dẫn + 4 ô số + nút hành động, phải = numpad 3×4 */}
+            <div className="flex gap-3 p-2.5">
+              <div className="flex-1 flex flex-col gap-2 min-w-0">
+                <div className="flex items-start gap-2">
+                  <PixelLock />
+                  <p className="text-[10px] leading-snug">{tx('Thư mục được bảo vệ. Vui lòng nhập mã PIN (4 số):')}</p>
+                </div>
+                <div className="flex gap-1.5 justify-center">
+                  {Array.from({ length: PIN_LEN }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={`w-7 h-8 flex items-center justify-center text-base font-bold ${BEVEL_DOWN} ${
+                        pinState === 'error'
+                          ? 'bg-red-300 text-red-900'
+                          : pinState === 'ok'
+                          ? 'bg-emerald-200 text-emerald-900'
+                          : 'bg-white text-zinc-900'
+                      }`}
+                    >
+                      {pin[i] ?? ''}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-1 mt-auto">
+                  <button
+                    onClick={submitPin}
+                    disabled={pin.length !== PIN_LEN || pinState !== 'idle'}
+                    className={`h-5 text-[9px] font-bold ${KEY_3D} disabled:text-zinc-500 disabled:cursor-default`}
+                  >
+                    {tx('[ MỞ KHÓA / Enter ]')}
+                  </button>
+                  <button
+                    onClick={() => {
+                      onClickSound?.();
+                      closePin();
+                    }}
+                    className={`h-5 text-[9px] font-bold ${KEY_3D}`}
+                  >
+                    {tx('[ HỦY / Esc ]')}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-1 shrink-0 content-start">
+                {NUMPAD.map((k) => (
+                  <button
+                    key={k}
+                    onClick={() => {
+                      if (k === 'back') backspace();
+                      else if (k === 'clear') {
+                        if (pinState !== 'idle') return;
+                        onClickSound?.();
+                        setPin('');
+                      } else typeDigit(k);
+                    }}
+                    className={`w-8 h-7 text-xs font-bold ${KEY_3D}`}
+                    title={k === 'back' ? 'Backspace' : k === 'clear' ? tx('Xoá hết') : undefined}
+                  >
+                    {k === 'back' ? '←' : k === 'clear' ? 'C' : k}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Khung lời An */}
-      <div className="relative mx-2 mb-1 px-2.5 py-1.5 bg-black/80 border border-emerald-700/70 rounded-sm text-[10.5px] leading-snug text-zinc-100 min-h-[40px] text-justify">
+      <div className="relative mx-2 mb-1 px-2.5 py-1.5 bg-black/80 border border-emerald-700/70 rounded-sm text-[10.5px] leading-snug text-zinc-100 min-h-10 text-justify">
         <span className="text-emerald-400 font-bold">An: </span>
         <span className="italic">{tx(line)}</span>
       </div>
 
       {/* Taskbar */}
-      <div className="relative flex items-center justify-between h-7 px-1.5 bg-gradient-to-b from-zinc-700 to-zinc-800 border-t border-zinc-500 text-[10px] text-zinc-100">
+      <div className="relative flex items-center justify-between h-7 px-1.5 bg-linear-to-b from-zinc-700 to-zinc-800 border-t border-zinc-500 text-[10px] text-zinc-100">
         <button
           onClick={() => {
             onClickSound?.();
@@ -189,10 +494,10 @@ export const DesktopScreen: React.FC<DesktopScreenProps> = ({ onOpenPin, onClose
           }}
           className="flex items-center gap-1 px-2 h-5 bg-emerald-700 hover:bg-emerald-600 border border-emerald-400/60 rounded-sm font-bold cursor-pointer"
         >
-          ▣ {tx('Bắt đầu')}
+          {tx('Bắt đầu')}
         </button>
         <div className="flex items-center gap-2 text-zinc-300">
-          <span title={tx('Không có kết nối mạng')}>📶✕</span>
+          <span title={tx('Không có kết nối mạng')}>OFFLINE</span>
           <button
             onClick={() => {
               onClickSound?.();

@@ -30,9 +30,14 @@ class HybridAudioEngine {
   private ambientGain: GainNode | null = null;
 
   // Adaptive Sanity Nodes
-  private tinnitusOsc: OscillatorNode | null = null;
-  private tinnitusGain: GainNode | null = null;
+  // Ù tai trầm: tiếng ồn trắng lọc thấp như đang chìm dưới nước (thay cho tiếng rít 3.9kHz cũ, nghe chói tai)
+  private earRumbleSource: AudioBufferSourceNode | null = null;
+  private earRumbleFilter: BiquadFilterNode | null = null;
+  private earRumbleGain: GainNode | null = null;
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+  // Đếm nhịp để chen tiếng thở dốc giữa các nhịp tim
+  private heartbeatCount = 0;
+  private whiteNoise: AudioBuffer | null = null;
   // Nghẹt tai theo từng nhịp tim (nằm sau sanityFilter để hai bộ lọc không giành nhau)
   private beatFilter: BiquadFilterNode | null = null;
   private heartbeatListeners = new Set<(bpm: number) => void>();
@@ -40,14 +45,14 @@ class HybridAudioEngine {
   private silenceGain: GainNode | null = null;
   private silencedUntil = 0;
 
-  // Ambient Nodes
-  private rainSource: AudioBufferSourceNode | null = null;
-  private rainGain: GainNode | null = null;
-  private fanOsc: OscillatorNode | null = null;
-  private fanGain: GainNode | null = null;
-  private riverSource: AudioBufferSourceNode | null = null;
-  private riverGain: GainNode | null = null;
-  private riverLfo: OscillatorNode | null = null;
+  // Bus riêng của scene đang phát: nhạc (nối vào bgmGain) + môi trường (nối vào ambientGain).
+  // Đổi scene = hạ bus cũ về 0 trong 50ms rồi dừng & ngắt hết nguồn trên đó, kể cả nốt synth đang ngân dở,
+  // nên không âm nào của cảnh trước lọt sang cảnh sau. bgmGain / ambientGain chỉ giữ âm lượng người chơi chỉnh.
+  private sceneBgmBus: GainNode | null = null;
+  private sceneAmbientBus: GainNode | null = null;
+  private ambientSources: AudioScheduledSourceNode[] = [];
+  // Còi 115 vọng xa của Màn 3 (chuỗi setTimeout nhịp ngẫu nhiên)
+  private sirenTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Flatline & Defibrillator Nodes
   private flatlineOsc: OscillatorNode | null = null;
@@ -76,7 +81,12 @@ class HybridAudioEngine {
   }
 
   public init() {
-    if (this.isInitialized && this.ctx && this.ctx.state === 'running') return;
+    // Đã dựng chuỗi âm thanh rồi thì chỉ đánh thức lại AudioContext: dựng lại chuỗi + phát lại scene
+    // sẽ để nguồn cũ kêu tiếp trên chuỗi cũ, chồng lên nguồn mới
+    if (this.isInitialized && this.ctx) {
+      if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {});
+      return;
+    }
 
     try {
       const AudioContextClass =
@@ -142,15 +152,35 @@ class HybridAudioEngine {
     this.masterGain.connect(this.silenceGain);
     this.silenceGain.connect(ctx.destination);
 
-    // Tinnitus Generator (connects directly to master to bypass Sanity filter)
-    this.tinnitusOsc = ctx.createOscillator();
-    this.tinnitusGain = ctx.createGain();
-    this.tinnitusOsc.type = 'sine';
-    this.tinnitusOsc.frequency.setValueAtTime(3900, ctx.currentTime);
-    this.tinnitusGain.gain.setValueAtTime(0.00001, ctx.currentTime);
-    this.tinnitusOsc.connect(this.tinnitusGain);
-    this.tinnitusGain.connect(this.masterGain);
-    this.tinnitusOsc.start();
+    // Ù tai trầm (đi thẳng vào master, không qua Sanity filter): ồn trắng → lọc thấp ~420Hz, mặc định câm
+    const noise = this.getWhiteNoise();
+    if (noise) {
+      this.earRumbleSource = ctx.createBufferSource();
+      this.earRumbleSource.buffer = noise;
+      this.earRumbleSource.loop = true;
+      this.earRumbleFilter = ctx.createBiquadFilter();
+      this.earRumbleFilter.type = 'lowpass';
+      this.earRumbleFilter.frequency.setValueAtTime(420, ctx.currentTime);
+      this.earRumbleFilter.Q.setValueAtTime(0.7, ctx.currentTime);
+      this.earRumbleGain = ctx.createGain();
+      this.earRumbleGain.gain.setValueAtTime(0.00001, ctx.currentTime);
+      this.earRumbleSource.connect(this.earRumbleFilter);
+      this.earRumbleFilter.connect(this.earRumbleGain);
+      this.earRumbleGain.connect(this.masterGain);
+      this.earRumbleSource.start();
+    }
+  }
+
+  /** Bộ đệm ồn trắng 2 giây dùng chung (ù tai, thở dốc, thân nhịp tim) */
+  private getWhiteNoise(): AudioBuffer | null {
+    if (!this.ctx) return null;
+    if (this.whiteNoise && this.whiteNoise.sampleRate === this.ctx.sampleRate) return this.whiteNoise;
+    const len = this.ctx.sampleRate * 2;
+    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.whiteNoise = buf;
+    return buf;
   }
 
   // Cập nhật âm lượng tổng (0 - 100)
@@ -187,7 +217,7 @@ class HybridAudioEngine {
       clearTimeout(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
-    if (!this.ctx || !this.sanityFilter || !this.tinnitusGain) return;
+    if (!this.ctx || !this.sanityFilter) return;
     const t = this.ctx.currentTime;
 
     // 1. Lowpass Filter: Khi Sanity < 50%, tần số cắt giảm dần từ 20000Hz xuống 350Hz (ngạt thở)
@@ -197,12 +227,17 @@ class HybridAudioEngine {
     }
     this.sanityFilter.frequency.exponentialRampToValueAtTime(Math.max(150, cutoff), t + 0.3);
 
-    // 2. Tinnitus Gain (Tiếng ù tai 3.9kHz rè rè khi Sanity < 35%)
-    let tinVol = 0.00001;
-    if (sanity < 35) {
-      tinVol = 0.005 + ((35 - sanity) / 35) * 0.035;
+    // 2. Ù tai trầm khi Sanity < 35%: to dần và đục dần (420Hz → 180Hz), như tai bị nước tràn vào
+    if (this.earRumbleGain && this.earRumbleFilter) {
+      const depth = sanity < HEARTBEAT_SANITY ? (HEARTBEAT_SANITY - Math.max(0, sanity)) / HEARTBEAT_SANITY : 0;
+      const vol = depth > 0 ? 0.01 + depth * 0.05 : 0.00001;
+      this.earRumbleGain.gain.cancelScheduledValues(t);
+      this.earRumbleGain.gain.setValueAtTime(Math.max(0.00001, this.earRumbleGain.gain.value), t);
+      this.earRumbleGain.gain.linearRampToValueAtTime(vol, t + 0.6);
+      this.earRumbleFilter.frequency.cancelScheduledValues(t);
+      this.earRumbleFilter.frequency.setValueAtTime(this.earRumbleFilter.frequency.value, t);
+      this.earRumbleFilter.frequency.exponentialRampToValueAtTime(420 - depth * 240, t + 0.6);
     }
-    this.tinnitusGain.gain.linearRampToValueAtTime(tinVol, t + 0.25);
   }
 
   /** Đăng ký nhận từng nhịp tim (để lớp vignette co giật đúng nhịp); trả về hàm huỷ */
@@ -218,6 +253,11 @@ class HybridAudioEngine {
     const bpm = heartbeatBpm(this.currentSanity);
     this.triggerHeartbeat();
     this.heartbeatListeners.forEach((cb) => cb(bpm));
+    // Thở dốc nghẹt: 3 nhịp một hơi, dưới 15% dồn còn 2 nhịp một hơi
+    const beatsPerBreath = this.currentSanity <= 15 ? 2 : 3;
+    if (this.heartbeatCount++ % beatsPerBreath === 0) {
+      this.triggerBreath(Math.min(1.7, (60 / bpm) * beatsPerBreath * 0.85));
+    }
     this.heartbeatTimer = setTimeout(() => {
       this.heartbeatTimer = null;
       if (this.currentSanity <= HEARTBEAT_SANITY) this.scheduleHeartbeat();
@@ -234,32 +274,76 @@ class HybridAudioEngine {
       this.beatFilter.frequency.exponentialRampToValueAtTime(20000, t + 0.45);
     }
 
+    // Sanity càng thấp nhịp càng nặng (0 ở 35% → 1 ở 0%)
+    const depth = Math.min(1, Math.max(0, (HEARTBEAT_SANITY - this.currentSanity) / HEARTBEAT_SANITY));
     try {
-      // Pulse 1
-      const osc1 = this.ctx.createOscillator();
-      const g1 = this.ctx.createGain();
-      osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(68, t);
-      osc1.frequency.exponentialRampToValueAtTime(35, t + 0.12);
-      g1.gain.setValueAtTime(0.09, t);
-      g1.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-      osc1.connect(g1);
-      g1.connect(this.masterGain);
-      osc1.start(t);
-      osc1.stop(t + 0.12);
+      // "Thình" (80→55Hz) rồi "thịch" nhẹ hơn (70→55Hz) sau 170ms — chỉ dải trầm, không có tần số chói
+      this.heartPulse(t, 80, 0.12 + depth * 0.06, 0.2);
+      this.heartPulse(t + 0.17, 70, 0.08 + depth * 0.04, 0.18);
+    } catch {}
+  }
 
-      // Pulse 2 (160ms later)
-      const osc2 = this.ctx.createOscillator();
-      const g2 = this.ctx.createGain();
-      osc2.type = 'sine';
-      osc2.frequency.setValueAtTime(58, t + 0.16);
-      osc2.frequency.exponentialRampToValueAtTime(30, t + 0.28);
-      g2.gain.setValueAtTime(0.07, t + 0.16);
-      g2.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
-      osc2.connect(g2);
-      g2.connect(this.masterGain);
-      osc2.start(t + 0.16);
-      osc2.stop(t + 0.28);
+  /** Một nhịp đập bass: sine trượt từ `freq` xuống 55Hz + cú "bịch" ồn trắng lọc dưới 160Hz làm thân */
+  private heartPulse(at: number, freq: number, gain: number, dur: number) {
+    if (!this.ctx || !this.masterGain) return;
+    const ctx = this.ctx;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, at);
+    osc.frequency.exponentialRampToValueAtTime(55, at + dur);
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.linearRampToValueAtTime(gain, at + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    osc.connect(g).connect(this.masterGain);
+    osc.start(at);
+    osc.stop(at + dur + 0.02);
+
+    const noise = this.getWhiteNoise();
+    if (!noise) return;
+    const src = ctx.createBufferSource();
+    src.buffer = noise;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 160;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.0001, at);
+    ng.gain.linearRampToValueAtTime(gain * 0.9, at + 0.01);
+    ng.gain.exponentialRampToValueAtTime(0.0001, at + dur * 0.6);
+    src.connect(lp).connect(ng).connect(this.masterGain);
+    src.start(at, Math.random() * 1.5);
+    src.stop(at + dur);
+  }
+
+  /** Thở dốc nghẹt: hít vào gấp rồi thở ra, ồn trắng lọc thấp ~650Hz nên nghe đục như sau lớp vải */
+  private triggerBreath(dur: number) {
+    if (!this.ctx || !this.masterGain || this.masterVolume <= 0) return;
+    const noise = this.getWhiteNoise();
+    if (!noise) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.05;
+    const depth = Math.min(1, Math.max(0, (HEARTBEAT_SANITY - this.currentSanity) / HEARTBEAT_SANITY));
+    const peak = 0.015 + depth * 0.02;
+    const inhale = dur * 0.4;
+    try {
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      // Hít vào sáng hơn một chút, thở ra trầm xuống
+      lp.frequency.setValueAtTime(520, t);
+      lp.frequency.linearRampToValueAtTime(680, t + inhale);
+      lp.frequency.exponentialRampToValueAtTime(300, t + dur);
+      lp.Q.value = 0.9;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(peak * 0.8, t + inhale * 0.8);
+      g.gain.linearRampToValueAtTime(peak * 0.25, t + inhale);   // Nghẹn giữa hai hơi
+      g.gain.linearRampToValueAtTime(peak, t + inhale + 0.12);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      src.connect(lp).connect(g).connect(this.masterGain);
+      src.start(t, Math.random() * 0.3);
+      src.stop(t + dur + 0.05);
     } catch {}
   }
 
@@ -345,7 +429,8 @@ class HybridAudioEngine {
     setTimeout(() => out.disconnect(), 3500);
   }
 
-  // Khởi động tiếng tít Flatline liên tục khi Sanity = 0% (ECG Flatline 880Hz)
+  // Khởi động tiếng Flatline liên tục khi Sanity = 0%: không còn còi 880Hz nhói tai, mà là tiếng máy đo
+  // vọng xa qua lớp nước (440Hz bị lọc đục dưới 500Hz), nhỏ và trầm
   public startFlatline() {
     if (!this.ctx || !this.masterGain) return;
     this.stopFlatline();
@@ -354,15 +439,18 @@ class HybridAudioEngine {
       const ctx = this.ctx;
       this.flatlineOsc = ctx.createOscillator();
       this.flatlineGain = ctx.createGain();
+      const muffle = ctx.createBiquadFilter();
 
       this.flatlineOsc.type = 'sine';
-      // Tần số chuẩn của còi báo tử vong điện tâm đồ y tế là 880Hz (A5)
-      this.flatlineOsc.frequency.setValueAtTime(880, ctx.currentTime);
+      this.flatlineOsc.frequency.setValueAtTime(440, ctx.currentTime);
+      muffle.type = 'lowpass';
+      muffle.frequency.setValueAtTime(500, ctx.currentTime);
 
       this.flatlineGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      this.flatlineGain.gain.linearRampToValueAtTime(0.09, ctx.currentTime + 0.15);
+      this.flatlineGain.gain.linearRampToValueAtTime(0.03, ctx.currentTime + 0.6);
 
-      this.flatlineOsc.connect(this.flatlineGain);
+      this.flatlineOsc.connect(muffle);
+      muffle.connect(this.flatlineGain);
       this.flatlineGain.connect(this.masterGain);
 
       this.flatlineOsc.start();
@@ -477,7 +565,7 @@ class HybridAudioEngine {
     } catch {}
   }
 
-  // Chuyển Scene âm thanh (Cross-fade BGM & Ambient)
+  // Chuyển Scene âm thanh: cắt dứt khoát cảnh cũ (fade 50ms) rồi mới dựng cảnh mới
   public setScene(scene: AudioScene) {
     if (this.currentScene === scene) return;
     this.currentScene = scene;
@@ -490,17 +578,24 @@ class HybridAudioEngine {
     this.applyScene(scene);
   }
 
+  /**
+   * Mỗi scene độc quyền phần âm thanh của mình:
+   * MENU        : chỉ bản Piano Lo-Fi, không mưa, không quạt
+   * INTRO / VOID: im hoàn toàn — cutscene (Intro, kết cục, chuyển cảnh) và Màn 4 tự tổng hợp âm thanh riêng
+   * ROOM_314    : quạt tản nhiệt CRT + mưa rào + nhạc Màn 1
+   * HALLWAY     : gió lùa hành lang + mưa nhỏ (không quạt, không nhạc)
+   * SUNSET      : sóng nước bến sông + Valse hoàng hôn
+   * PIXEL_BLEED : âm hưởng phòng hồi sức, nhịp tim đứt quãng, còi 115 xa xăm
+   */
   private applyScene(scene: AudioScene) {
     this.stopCurrentAmbient();
     this.stopCurrentBgm();
+    if (scene === 'INTRO' || scene === 'VOID') return;
+    this.openSceneBuses();
 
     switch (scene) {
       case 'MENU':
         this.startMenuBgm();
-        break;
-      case 'INTRO':
-        this.startRainAmbient(0.35);
-        this.startIntroDrone();
         break;
       case 'ROOM_314':
         this.startRainAmbient(0.4);
@@ -508,17 +603,42 @@ class HybridAudioEngine {
         this.startRoom314Bgm();
         break;
       case 'HALLWAY':
-        this.startRainAmbient(0.25);
-        this.startHallwayDrone();
+        this.startRainAmbient(0.2);
+        this.startHallwayWind();
         break;
       case 'SUNSET':
         this.startSunsetRiverAmbient();
         this.startSunsetBgm();
         break;
       case 'PIXEL_BLEED':
+        this.startErAmbient();
         this.startBgmWithFileFallback('/assets/audio/bgm_ch3.mp3', () => this.startPixelBleedBgm());
         break;
     }
+  }
+
+  /** Bus nhạc + bus môi trường mới cho scene sắp phát */
+  private openSceneBuses() {
+    if (!this.ctx || !this.bgmGain || !this.ambientGain) return;
+    this.sceneBgmBus = this.ctx.createGain();
+    this.sceneBgmBus.connect(this.bgmGain);
+    this.sceneAmbientBus = this.ctx.createGain();
+    this.sceneAmbientBus.connect(this.ambientGain);
+  }
+
+  /** Hạ một bus về 0 trong 50ms; sau 60ms gọi `then` (dừng nguồn, ngắt bus) */
+  private quickFade(bus: GainNode | null, then: () => void) {
+    if (!this.ctx || !bus) {
+      then();
+      return;
+    }
+    const t = this.ctx.currentTime;
+    try {
+      bus.gain.cancelScheduledValues(t);
+      bus.gain.setValueAtTime(Math.max(0.0001, bus.gain.value), t);
+      bus.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    } catch {}
+    setTimeout(then, 60);
   }
 
   // ==========================================
@@ -548,7 +668,7 @@ class HybridAudioEngine {
 
   // 1. Tiếng Mưa Rào Ngoài Khung Kính
   private startRainAmbient(targetGain = 0.18) {
-    if (!this.ctx || !this.ambientGain) return;
+    if (!this.ctx || !this.sceneAmbientBus) return;
     const buffer = this.createPinkNoiseBuffer();
     if (!buffer) return;
 
@@ -567,16 +687,15 @@ class HybridAudioEngine {
 
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(this.ambientGain);
+    gain.connect(this.sceneAmbientBus);
 
     source.start();
-    this.rainSource = source;
-    this.rainGain = gain;
+    this.ambientSources.push(source);
   }
 
   // 2. Tiếng Quạt Tản Nhiệt Case Cũ & Máy Biến Áp 50Hz
   private startCrtFanDrone() {
-    if (!this.ctx || !this.ambientGain) return;
+    if (!this.ctx || !this.sceneAmbientBus) return;
 
     // 55Hz Transformer Hum
     const osc = this.ctx.createOscillator();
@@ -593,36 +712,57 @@ class HybridAudioEngine {
 
     osc.connect(filter);
     filter.connect(gain);
-    gain.connect(this.ambientGain);
+    gain.connect(this.sceneAmbientBus);
 
     osc.start();
-    this.fanOsc = osc;
-    this.fanGain = gain;
+    this.ambientSources.push(osc);
   }
 
-  // 3. Tiếng Gió Rít Lạnh Ở Hành Lang
-  private startHallwayDrone() {
-    if (!this.ctx || !this.ambientGain) return;
+  // 3. Gió lùa hành lang đêm: ồn hồng lọc dải, tần số và độ lớn trôi chậm theo từng cơn gió
+  private startHallwayWind() {
+    if (!this.ctx || !this.sceneAmbientBus) return;
+    const ctx = this.ctx;
+    const buffer = this.createPinkNoiseBuffer();
+    if (!buffer) return;
+    const t = ctx.currentTime;
 
-    const osc = this.ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(95, this.ctx.currentTime);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
 
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.001, this.ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.02, this.ctx.currentTime + 1.5);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(420, t);
+    filter.Q.setValueAtTime(0.9, t);
+    // Cơn gió: tâm lọc trôi 240–600Hz (~12 giây một vòng)
+    const sweep = ctx.createOscillator();
+    const sweepDepth = ctx.createGain();
+    sweep.frequency.setValueAtTime(0.083, t);
+    sweepDepth.gain.setValueAtTime(180, t);
+    sweep.connect(sweepDepth).connect(filter.frequency);
 
-    osc.connect(gain);
-    gain.connect(this.ambientGain);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(0.06, t + 2.0);
+    // Gió mạnh lên rồi lặng đi (lệch nhịp với vòng lọc cho đỡ đều)
+    const gust = ctx.createOscillator();
+    const gustDepth = ctx.createGain();
+    gust.frequency.setValueAtTime(0.13, t);
+    gustDepth.gain.setValueAtTime(0.025, t);
+    gust.connect(gustDepth).connect(gain.gain);
 
-    osc.start();
-    this.fanOsc = osc;
-    this.fanGain = gain;
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.sceneAmbientBus);
+    source.start();
+    sweep.start();
+    gust.start();
+    this.ambientSources.push(source, sweep, gust);
   }
 
   // 4. Tiếng Nước Sông Hoàng Hôn & Làn Gió Dịu Êm
   private startSunsetRiverAmbient() {
-    if (!this.ctx || !this.ambientGain) return;
+    if (!this.ctx || !this.sceneAmbientBus) return;
     const buffer = this.createPinkNoiseBuffer();
     if (!buffer) return;
 
@@ -651,45 +791,112 @@ class HybridAudioEngine {
 
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(this.ambientGain);
+    gain.connect(this.sceneAmbientBus);
 
     lfo.start();
     source.start();
-
-    this.riverSource = source;
-    this.riverGain = gain;
-    this.riverLfo = lfo;
+    this.ambientSources.push(source, lfo);
   }
 
+  // 5. Phòng hồi sức Màn 3: tiếng ù phòng bệnh + đèn tuýp 100Hz, nhịp bóp bóng thở 4 giây, còi 115 vọng xa
+  private startErAmbient() {
+    if (!this.ctx || !this.sceneAmbientBus) return;
+    const ctx = this.ctx;
+    const bus = this.sceneAmbientBus;
+    const buffer = this.createPinkNoiseBuffer();
+    if (!buffer) return;
+    const t = ctx.currentTime;
+
+    // Ù phòng: ồn hồng lọc thấp 300Hz
+    const room = ctx.createBufferSource();
+    room.buffer = buffer;
+    room.loop = true;
+    const roomLp = ctx.createBiquadFilter();
+    roomLp.type = 'lowpass';
+    roomLp.frequency.setValueAtTime(300, t);
+    const roomGain = ctx.createGain();
+    roomGain.gain.setValueAtTime(0.001, t);
+    roomGain.gain.linearRampToValueAtTime(0.05, t + 2.0);
+    room.connect(roomLp).connect(roomGain).connect(bus);
+
+    // Đèn tuýp rè 100Hz (điện lưới 50Hz)
+    const hum = ctx.createOscillator();
+    hum.frequency.setValueAtTime(100, t);
+    const humGain = ctx.createGain();
+    humGain.gain.setValueAtTime(0.006, t);
+    hum.connect(humGain).connect(bus);
+
+    // Bóp bóng thở: luồng hơi lọc dải 700Hz phồng lên xẹp xuống mỗi 4 giây
+    const air = ctx.createBufferSource();
+    air.buffer = buffer;
+    air.loop = true;
+    air.playbackRate.setValueAtTime(1.3, t);
+    const airBp = ctx.createBiquadFilter();
+    airBp.type = 'bandpass';
+    airBp.frequency.setValueAtTime(700, t);
+    airBp.Q.setValueAtTime(1.1, t);
+    const airGain = ctx.createGain();
+    airGain.gain.setValueAtTime(0.012, t);
+    const breath = ctx.createOscillator();
+    const breathDepth = ctx.createGain();
+    breath.frequency.setValueAtTime(0.25, t);
+    breathDepth.gain.setValueAtTime(0.012, t);
+    breath.connect(breathDepth).connect(airGain.gain);
+    air.connect(airBp).connect(airGain).connect(bus);
+
+    room.start();
+    hum.start();
+    air.start();
+    breath.start();
+    this.ambientSources.push(room, hum, air, breath);
+
+    // Còi 115 vọng xa: mỗi 25–45 giây một hồi "hi–lo" 6 giây, lọc đục, nhỏ và trôi cao độ như xe chạy ngang
+    const siren = () => {
+      if (!this.ctx || this.sceneAmbientBus !== bus) return;
+      const at = this.ctx.currentTime + 0.05;
+      const dur = 6;
+      try {
+        const osc = this.ctx.createOscillator();
+        osc.type = 'triangle';
+        for (let k = 0; k * 0.6 < dur; k++) {
+          osc.frequency.setValueAtTime(k % 2 === 0 ? 650 : 870, at + k * 0.6);
+        }
+        osc.detune.setValueAtTime(-60, at);
+        osc.detune.linearRampToValueAtTime(40, at + dur);
+        const lp = this.ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(900, at);
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.linearRampToValueAtTime(0.012, at + dur * 0.45);
+        g.gain.linearRampToValueAtTime(0.0001, at + dur);
+        osc.connect(lp).connect(g).connect(bus);
+        osc.start(at);
+        osc.stop(at + dur + 0.05);
+        this.ambientSources.push(osc);
+      } catch {}
+      this.sirenTimer = setTimeout(siren, 25000 + Math.random() * 20000);
+    };
+    this.sirenTimer = setTimeout(siren, 9000 + Math.random() * 6000);
+  }
+
+  /** Cắt môi trường của scene cũ: fade 50ms rồi dừng & ngắt mọi nguồn (giữ tham chiếu riêng, scene mới không bị đụng tới) */
   private stopCurrentAmbient() {
-    if (this.ctx) {
-      const t = this.ctx.currentTime;
-      if (this.rainGain) {
-        this.rainGain.gain.linearRampToValueAtTime(0.001, t + 1.0);
-        setTimeout(() => {
-          try { this.rainSource?.stop(); this.rainSource?.disconnect(); } catch {}
-          this.rainSource = null;
-          this.rainGain = null;
-        }, 1100);
-      }
-      if (this.fanGain) {
-        this.fanGain.gain.linearRampToValueAtTime(0.001, t + 1.0);
-        setTimeout(() => {
-          try { this.fanOsc?.stop(); this.fanOsc?.disconnect(); } catch {}
-          this.fanOsc = null;
-          this.fanGain = null;
-        }, 1100);
-      }
-      if (this.riverGain) {
-        this.riverGain.gain.linearRampToValueAtTime(0.001, t + 1.0);
-        setTimeout(() => {
-          try { this.riverLfo?.stop(); this.riverSource?.stop(); } catch {}
-          this.riverSource = null;
-          this.riverLfo = null;
-          this.riverGain = null;
-        }, 1100);
-      }
+    if (this.sirenTimer) {
+      clearTimeout(this.sirenTimer);
+      this.sirenTimer = null;
     }
+    const bus = this.sceneAmbientBus;
+    const sources = this.ambientSources;
+    this.sceneAmbientBus = null;
+    this.ambientSources = [];
+    this.quickFade(bus, () => {
+      sources.forEach((src) => {
+        try { src.stop(); } catch {}
+        try { src.disconnect(); } catch {}
+      });
+      try { bus?.disconnect(); } catch {}
+    });
   }
 
   // ==========================================
@@ -703,7 +910,7 @@ class HybridAudioEngine {
     type: OscillatorType = 'sine',
     detune = 0
   ) {
-    if (!this.ctx || !this.bgmGain || this.masterVolume <= 0) return;
+    if (!this.ctx || !this.sceneBgmBus || this.masterVolume <= 0) return;
     const t = this.ctx.currentTime;
 
     try {
@@ -720,7 +927,7 @@ class HybridAudioEngine {
       gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
 
       osc.connect(gain);
-      gain.connect(this.bgmGain);
+      gain.connect(this.sceneBgmBus);
 
       osc.start(t);
       osc.stop(t + duration);
@@ -763,21 +970,6 @@ class HybridAudioEngine {
 
     runStep();
     this.bgmSequencerTimer = setInterval(runStep, 800);
-  }
-
-  // 2. INTRO THEME: Drone u tối huyền bí
-  private startIntroDrone() {
-    this.bgmStep = 0;
-    const notes = [146.83, 220.0, 349.23]; // D3, A3, F4
-
-    const runStep = () => {
-      const n = notes[this.bgmStep % notes.length];
-      this.playSynthNote(n, 5.0, 0.09, 'triangle');
-      this.bgmStep++;
-    };
-
-    runStep();
-    this.bgmSequencerTimer = setInterval(runStep, 2400);
   }
 
   // 3. CHAPTER 1 THEME: Âm hưởng Suspense & Dark Ambient
@@ -849,8 +1041,9 @@ class HybridAudioEngine {
 
   /** Nốt băng từ nhão: triangle + sawtooth qua lowpass 550Hz, cao độ võng dần như băng bị kéo giãn */
   private playTapeNote(freq: number, duration: number, gainVal: number, detune: number, delay = 0) {
-    if (!this.ctx || !this.bgmGain || this.masterVolume <= 0) return;
+    if (!this.ctx || !this.sceneBgmBus || this.masterVolume <= 0) return;
     const ctx = this.ctx;
+    const bus = this.sceneBgmBus;
     const t = ctx.currentTime + delay;
     try {
       const lp = ctx.createBiquadFilter();
@@ -875,7 +1068,7 @@ class HybridAudioEngine {
       }
       tri.connect(lp);
       saw.connect(sawGain).connect(lp);
-      lp.connect(gain).connect(this.bgmGain);
+      lp.connect(gain).connect(bus);
       tri.start(t);
       saw.start(t);
       tri.stop(t + duration + 0.05);
@@ -888,7 +1081,7 @@ class HybridAudioEngine {
 
   /** Tiếng bíp điện tâm đồ: sine 880Hz đanh, 45ms */
   private playEcgPulse(gainVal: number) {
-    if (!this.ctx || !this.bgmGain || this.masterVolume <= 0) return;
+    if (!this.ctx || !this.sceneBgmBus || this.masterVolume <= 0) return;
     const ctx = this.ctx;
     const t = ctx.currentTime;
     try {
@@ -899,7 +1092,7 @@ class HybridAudioEngine {
       g.gain.setValueAtTime(0.0001, t);
       g.gain.linearRampToValueAtTime(gainVal, t + 0.003);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
-      o.connect(g).connect(this.bgmGain);
+      o.connect(g).connect(this.sceneBgmBus);
       o.start(t);
       o.stop(t + 0.05);
       o.onended = () => {
@@ -908,32 +1101,31 @@ class HybridAudioEngine {
     } catch {}
   }
 
-  // 5. CHAPTER 3 THEME: "Điện tâm đồ đứt đoạn" — điệu Valse Màn 2 trên cuộn băng nhão, xen nhịp tim loạn
+  // 5. CHAPTER 3 THEME: "Hồi sức" — nền trầm u uất trên cuộn băng nhão (không còn giai điệu Valse Màn 2),
+  //    xen nhịp điện tim đứt quãng
   private startPixelBleedBgm() {
     this.bgmStep = 0;
     this.ecgBeat = 0;
-    // Cmaj7 -> Am7 -> Dm7: vòng Valse bến sông bị cụt mất G7, không bao giờ về được chủ âm
-    const brokenWaltz = [
-      { bass: 130.81, arps: [261.63, 329.63, 392.00, 493.88] }, // Cmaj7
-      { bass: 110.00, arps: [220.00, 261.63, 329.63, 392.00] }, // Am7
-      { bass: 146.83, arps: [293.66, 349.23, 440.00, 523.25] }, // Dm7
+    // Am(add9) thấp → Fmaj7 thấp → Dm(add9) thấp: hợp âm dài, không có nhịp ba
+    const pads = [
+      [110.0, 164.81, 246.94],
+      [87.31, 130.81, 220.0],
+      [73.42, 146.83, 220.0],
     ];
 
     const runStep = () => {
-      const chord = brokenWaltz[Math.floor(this.bgmStep / 6) % brokenWaltz.length];
-      const beat = this.bgmStep % 6;
-      // Wow & flutter: lệch cao độ trôi chậm theo nhịp, kẹp trong [-50, +40] cents
-      const detune = Math.max(-50, Math.min(40, Math.sin(this.bgmStep * 0.7) * 45 + (Math.random() - 0.5) * 10));
-      // Thỉnh thoảng băng bị kẹt: nốt trễ 100ms
-      const lag = Math.random() < 0.14 ? 0.1 : 0;
-
-      if (beat === 0) {
-        this.playTapeNote(chord.bass, 3.0, 0.13, detune * 0.6, lag);
-      } else if (beat >= 1 && beat <= 4) {
-        // Băng rơi mất nốt: đôi khi một nốt rải biến mất hẳn
-        if (Math.random() > 0.12) this.playTapeNote(chord.arps[beat - 1], 1.9, 0.085, detune, lag);
+      const step = this.bgmStep % 6;
+      // Wow & flutter: lệch cao độ trôi chậm theo nhịp, kẹp trong [-40, +30] cents
+      const detune = Math.max(-40, Math.min(30, Math.sin(this.bgmStep * 0.4) * 35 + (Math.random() - 0.5) * 8));
+      if (step === 0) {
+        const pad = pads[Math.floor(this.bgmStep / 6) % pads.length];
+        this.playTapeNote(pad[0], 6.5, 0.1, detune * 0.5);
+        this.playTapeNote(pad[1], 6.0, 0.06, detune, 0.25);
+        this.playTapeNote(pad[2], 5.5, 0.045, detune, 0.5);
+      } else if (step === 3 && Math.random() < 0.5) {
+        // Một nốt cao lạc lõng như tiếng máy móc vọng lại
+        this.playTapeNote(pads[0][2] * 2, 2.4, 0.03, detune);
       }
-
       this.bgmStep++;
     };
 
@@ -958,25 +1150,26 @@ class HybridAudioEngine {
     };
 
     runStep();
-    this.bgmSequencerTimer = setInterval(runStep, 520); // Valse nhão, chậm hơn Màn 2
+    this.bgmSequencerTimer = setInterval(runStep, 1000);
     this.ecgTimer = setTimeout(ecgStep, 900);
   }
 
   /** Ưu tiên file nhạc ngoài nếu có; trong lúc tải (hoặc nếu không có file) phát nhạc tổng hợp */
   private startBgmWithFileFallback(url: string, startSynth: () => void) {
     startSynth();
-    if (!this.ctx || !this.bgmGain) return;
+    if (!this.ctx || !this.sceneBgmBus) return;
     const token = this.bgmToken;
+    const bus = this.sceneBgmBus;
     const el = new Audio();
     el.loop = true;
     el.preload = 'auto';
     el.addEventListener(
       'canplaythrough',
       () => {
-        if (token !== this.bgmToken || !this.ctx || !this.bgmGain) return;
+        if (token !== this.bgmToken || !this.ctx) return;
         try {
           const src = this.ctx.createMediaElementSource(el);
-          src.connect(this.bgmGain);
+          src.connect(bus);
           this.clearSynthTimers();
           this.customAudioElement = el;
           this.customAudioSource = src;
@@ -1001,16 +1194,24 @@ class HybridAudioEngine {
     }
   }
 
+  /** Cắt nhạc của scene cũ: dừng bộ đếm nhịp ngay, fade bus 50ms (nốt đang ngân tắt theo) rồi ngắt hẳn */
   private stopCurrentBgm() {
     this.bgmToken++;
     this.clearSynthTimers();
-    if (this.customAudioElement) {
-      this.customAudioElement.pause();
-      this.customAudioElement.removeAttribute('src');
-      this.customAudioElement = null;
-    }
-    try { this.customAudioSource?.disconnect(); } catch {}
+    const bus = this.sceneBgmBus;
+    const el = this.customAudioElement;
+    const src = this.customAudioSource;
+    this.sceneBgmBus = null;
+    this.customAudioElement = null;
     this.customAudioSource = null;
+    this.quickFade(bus, () => {
+      if (el) {
+        el.pause();
+        el.removeAttribute('src');
+      }
+      try { src?.disconnect(); } catch {}
+      try { bus?.disconnect(); } catch {}
+    });
   }
 
   public dispose() {

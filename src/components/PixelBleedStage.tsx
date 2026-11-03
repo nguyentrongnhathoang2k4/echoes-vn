@@ -2,9 +2,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { DefibrillatorMinigame } from './minigames/DefibrillatorMinigame';
 import {
-  hash, px, block, dropShadow, outlinedText,
+  hash, px, block, dropShadow,
   drawWoodFloor, drawDormWalls, drawCalendar, drawPoster,
-  buildPostLayer, drawTargetMarker, drawClock, drawHudSubtitle,
+  buildPostLayer,
   createFollowLight, updateFollowLight, drawFollowVignette,
 } from './pixel/pixelKit';
 import { drawSpriteFrame, getSpriteFrame, stepWalk, stopWalk, bodyBob, mienFloat, drawSwayingFigure, drawHoloShadow, drawHoloDust } from './pixel/spriteKit';
@@ -14,10 +14,16 @@ import { useLanguage } from '../context/LanguageContext';
 import { audioEngine } from '../services/audioEngine';
 import { EmoteDirector, createEmoteDirector, emoteNow, updateEmotes, drawEmotes } from './pixel/emote';
 import { tx } from '../locales/tx';
+import {
+  useCinematicSubtitle, CinematicSubtitle, SubtitleFrame, StageClock, ClueFlash, useClueFlash,
+  InteractLabel, NearLabel, useAutoHideHints, HintBar, HintKey,
+} from './StageHud';
 
 interface InteractableObject {
   id: string;
   name: string;
+  /** Tên ngắn trên nhãn [E] nổi trên đầu vật thể */
+  label: string;
   actionText: string;
   x: number;
   y: number;
@@ -32,7 +38,8 @@ interface PixelBleedStageProps {
   characterSprite: string;
   sanity: number;
   setSanity?: React.Dispatch<React.SetStateAction<number>>;
-  onTrigger: (nodeId: string) => void;
+  /** markId: vật thể được ghi "đã xong" khi hộp thoại được giải quyết (đóng ngang bằng Esc thì không) */
+  onTrigger: (nodeId: string, markId?: string) => void;
   interactedIds?: string[];
   /** Người chơi đang điều khiển An (không mở thoại / menu): chỉ khi đó mới tính thời gian đứng yên */
   active?: boolean;
@@ -86,6 +93,16 @@ const KEY_CLUE = 'ch3_bag';
 const PLEA_RADIUS = 90;
 const PLEA_IDS = ['ch3_mirror', 'ch3_chart'];
 type PleaKind = 'hide' | 'grieve';
+// Tiếng phòng cấp cứu vọng qua vết rách thực tại: thỉnh thoảng chạy thành phụ đề đỏ nhạt khi An đang khám phá
+const ER_VOICE_LINES = [
+  '200 Jun lần một. Tránh xa bệnh nhân. CLEAR!',
+  'Huyết áp tụt! Bóp bóng nhanh lên!',
+  'Vẫn rung thất... Nạp 300 Jun!',
+  'Đồng tử giãn rồi. Gọi bác sĩ trưởng khoa ngay!',
+];
+const ER_VOICE_GAP_MS = 22000;     // Khoảng lặng giữa hai câu (tính từ lúc phụ đề trước tắt)
+// Câu hoảng loạn của An nối tiếp lời tự sự mở màn
+const AN_DIZZY_LINE = 'Đầu mình... buốt quá... Đây rốt cuộc là đâu?';
 const PLEA_LINES: Record<PleaKind, string> = {
   hide: 'Miên run rẩy: "Đừng nhìn vào đó An ơi... em xin anh đấy..."',
   grieve: 'Miên thì thầm: "Anh thấy rồi mà... đừng nhìn thêm nữa, đau lắm..."',
@@ -205,7 +222,8 @@ const INTERACTABLES: InteractableObject[] = [
   {
     id: 'ch3_bed',
     name: 'Giường Bệnh Cấp Cứu',
-    actionText: '[E] Xem giường cấp cứu & Cọc truyền dịch [🩸]',
+    label: 'Giường bệnh',
+    actionText: '[E] Xem giường cấp cứu & Cọc truyền dịch',
     ...BED,
     triggerNodeId: 'obj_ch3_bed',
     canRepeat: true,
@@ -214,7 +232,8 @@ const INTERACTABLES: InteractableObject[] = [
   {
     id: 'ch3_chart',
     name: 'Bìa Bệnh Án Cấp Cứu Treo Đầu Giường',
-    actionText: '[E] Xem Bệnh án Trung Hoà & Chẩn đoán 17/05 [📋]',
+    label: 'Hồ sơ bệnh án',
+    actionText: '[E] Xem Bệnh án Trung Hoà & Chẩn đoán 17/05',
     x: 408,
     y: 260,
     w: 24,
@@ -226,7 +245,8 @@ const INTERACTABLES: InteractableObject[] = [
   {
     id: 'ch3_bag',
     name: 'Chiếc Balo Ướt Sũng Đêm 17/05',
-    actionText: '[E] Lục tìm Balo bùn đất & Hộp nhẫn cầu hôn [🎒]',
+    label: 'Balo ướt',
+    actionText: '[E] Lục tìm Balo bùn đất & Hộp nhẫn cầu hôn',
     ...BAG,
     triggerNodeId: 'obj_ch3_bag',
     canRepeat: true,
@@ -235,7 +255,8 @@ const INTERACTABLES: InteractableObject[] = [
   {
     id: 'ch3_monitor',
     name: 'Máy Đo Nhịp Tim & Sốc Điện 200J',
-    actionText: '[E] Bật máy đo nhịp tim & Thao tác máy sốc tim [⚡]',
+    label: 'Máy sốc tim',
+    actionText: '[E] Bật máy đo nhịp tim & Thao tác máy sốc tim',
     ...CART,
     triggerNodeId: 'obj_ch3_monitor',
     canRepeat: true,
@@ -244,7 +265,8 @@ const INTERACTABLES: InteractableObject[] = [
   {
     id: 'ch3_mirror',
     name: 'Mảnh Gương Vỡ Của Thực Tại',
-    actionText: '[E] Soi vào mảnh gương vỡ trên tường [🪞]',
+    label: 'Mảnh gương',
+    actionText: '[E] Soi vào mảnh gương vỡ trên tường',
     ...MIRROR,
     triggerNodeId: 'obj_ch3_mirror',
     canRepeat: true,
@@ -253,7 +275,8 @@ const INTERACTABLES: InteractableObject[] = [
   {
     id: 'ch3_window',
     name: 'Cửa Sổ Vỡ Toác • Đèn Xe 115',
-    actionText: '[E] Nhìn qua cửa sổ rực ánh đèn xe cấp cứu [🚨]',
+    label: 'Cửa sổ vỡ',
+    actionText: '[E] Nhìn qua cửa sổ rực ánh đèn xe cấp cứu',
     ...WINDOW_RECT,
     triggerNodeId: 'obj_ch3_window',
     canRepeat: true,
@@ -262,7 +285,8 @@ const INTERACTABLES: InteractableObject[] = [
   {
     id: 'ch3_door',
     name: 'Cửa Phòng #314 Bị Niêm Phong',
-    actionText: '[E] Xem dải băng niêm phong trên cánh cửa [🚪]',
+    label: 'Cửa phòng',
+    actionText: '[E] Xem dải băng niêm phong trên cánh cửa',
     ...DOOR,
     triggerNodeId: 'obj_ch3_door',
     canRepeat: true,
@@ -271,7 +295,8 @@ const INTERACTABLES: InteractableObject[] = [
   {
     id: 'ch3_pc',
     name: 'Màn Hình Máy Tính (C:/Memory_Dump/)',
-    actionText: '[E] Xem màn hình máy tính đang nhấp nháy đỏ [💻]',
+    label: 'Máy tính',
+    actionText: '[E] Xem màn hình máy tính đang nhấp nháy đỏ',
     ...DESK,
     triggerNodeId: 'obj_ch3_pc',
     canRepeat: true,
@@ -280,6 +305,7 @@ const INTERACTABLES: InteractableObject[] = [
   {
     id: 'ch3_mien',
     name: 'Bóng Hình Miên Rơi Lệ',
+    label: 'Miên',
     actionText: '[E] ĐỐI CHẤT VỚI MIÊN VỀ ĐÊM 17/05 [CỐT TRUYỆN CHÍNH]',
     x: 298,
     y: 160,
@@ -292,6 +318,7 @@ const INTERACTABLES: InteractableObject[] = [
 ];
 
 const PLEA_TARGETS = INTERACTABLES.filter((o) => PLEA_IDS.includes(o.id));
+const MIEN_OBJ = INTERACTABLES.find((o) => o.id === 'ch3_mien') ?? null;
 
 // Vật cản Solid Bounding Boxes (hằng số module → không tái tạo mỗi lần render)
 const COLLIDERS: ReadonlyArray<{ x: number; y: number; w: number; h: number }> = [
@@ -1467,42 +1494,6 @@ function drawPostFX(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, po
   ctx.drawImage(post, 0, 0);
 }
 
-/** HUD trong canvas: khung ngắm vật thể gần nhất, mũi tên nhấp nhô, lời mời đối chất */
-function drawHUD(ctx: CanvasRenderingContext2D, fs: FrameState) {
-  const n = fs.nearest;
-  if (n) {
-    const done = fs.interacted.has(n.id);
-    const color = done ? 'rgba(161,161,170,0.8)' : n.id === 'ch3_mien' ? '#fb7185' : '#f472b6';
-    drawTargetMarker(ctx, n, color, fs.t);
-  }
-
-  // Lời mời đối chất rõ nét phía trên Miên khi đủ manh mối
-  if (fs.ready) {
-    const lx = MIEN_ANCHOR.x + MIEN_DRAW_W / 2;
-    const ly = MIEN_ANCHOR.y - 12 + mienFloat(fs.t);
-    const label = tx('▶ ĐỐI CHẤT VỚI MIÊN [E] ◀');
-    ctx.font = 'bold 10px monospace';
-    ctx.textAlign = 'center';
-    const tw = ctx.measureText(label).width;
-    px(ctx, lx - tw / 2 - 6, ly - 10, tw + 12, 14, 'rgba(10,0,4,0.85)');
-    px(ctx, lx - tw / 2 - 6, ly - 10, tw + 12, 1, '#e11d48');
-    px(ctx, lx - tw / 2 - 6, ly + 3, tw + 12, 1, '#e11d48');
-    const jx = (Math.random() - 0.5) * 2;
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = 'rgba(255,0,60,0.7)';
-    ctx.fillText(label, lx - 2 + jx, ly);
-    ctx.fillStyle = 'rgba(0,220,255,0.6)';
-    ctx.fillText(label, lx + 2 + jx, ly);
-    ctx.globalCompositeOperation = 'source-over';
-    outlinedText(ctx, label, lx, ly, Math.sin(fs.t * 8) > 0 ? '#fff1f2' : '#fecdd3');
-    ctx.textAlign = 'left';
-  }
-
-  // Dấu thời gian góc màn hình
-  drawClock(ctx, fs.t);
-  drawHudSubtitle(ctx, `BLEED LV.${fs.phase}`, '#e879f9', 34);
-}
-
 // =====================================================================
 // CẬP NHẬT MÔ PHỎNG (hạt, giọt, đèn chớp) — tách biệt khỏi phần vẽ
 // =====================================================================
@@ -1638,6 +1629,14 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
   const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  // Rời màn / đóng khung thì đóng hẳn AudioContext riêng: không còn âm nào ngân sang cảnh sau
+  useEffect(() => {
+    const ctxRef = audioCtxRef;
+    return () => {
+      void ctxRef.current?.close().catch(() => {});
+      ctxRef.current = null;
+    };
+  }, []);
   const spritesRef = useRef<SpriteBank>({ an: null, mien: null });
 
   // Vị trí nhân vật An (tỉnh dậy trên chiếu ở nửa phòng trọ #314)
@@ -1653,9 +1652,9 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
 
   const [localInteractedIds, setLocalInteractedIds] = useState<string[]>(interactedIds);
   const [isDefibMinigameOpen, setIsDefibMinigameOpen] = useState(false);
-  const [activePrompt, setActivePrompt] = useState<{ text: string; isDone: boolean } | null>(null);
-  const [monologueWhisper, setMonologueWhisper] = useState<string | null>(null);
-  const whisperTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Nhãn [E] nổi trên vật thể đang nhắm tới + phụ đề kiểu điện ảnh (HUD dùng chung)
+  const [nearLabel, setNearLabel] = useState<NearLabel | null>(null);
+  const { subtitle, show: showSubtitle, fadeOnMove: fadeSubtitleOnMove } = useCinematicSubtitle();
   // Phụ đề Miên can ngăn (chỉ setState khi bật / tắt)
   const [mienPlea, setMienPlea] = useState<PleaKind | null>(null);
   const keysHeld = useRef<Set<string>>(new Set());
@@ -1765,21 +1764,22 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
 
   const showMonologueWhisper = useCallback((msg: string) => {
     emoteNow(emotes(), 'an', 'dots');
-    if (whisperTimerRef.current) clearTimeout(whisperTimerRef.current);
-    setMonologueWhisper(msg);
-    whisperTimerRef.current = setTimeout(() => {
-      setMonologueWhisper(null);
-    }, 4500);
-  }, [emotes]);
+    showSubtitle(msg);
+  }, [emotes, showSubtitle]);
 
-  // Lời tự sự mở màn khi bước vào căn phòng bị xâm thực
+  // Lời tự sự mở màn khi bước vào căn phòng bị xâm thực, rồi cơn choáng của An
+  const introDoneRef = useRef(false);
   useEffect(() => {
     const timer = setTimeout(() => {
       showMonologueWhisper('Mùi cồn sát trùng và máu tanh xộc vào sống mũi... Căn phòng này đang bị thực tại xé toạc!');
     }, 600);
+    const dizzy = setTimeout(() => {
+      introDoneRef.current = true;
+      showMonologueWhisper(AN_DIZZY_LINE);
+    }, 6800);
     return () => {
       clearTimeout(timer);
-      if (whisperTimerRef.current) clearTimeout(whisperTimerRef.current);
+      clearTimeout(dizzy);
     };
   }, [showMonologueWhisper]);
 
@@ -1851,12 +1851,8 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
           }
         }
 
-        if (!interactedRef.current.includes(target.id)) {
-          setLocalInteractedIds((prev) => (prev.includes(target.id) ? prev : [...prev, target.id]));
-          onMarkInteracted?.(target.id);
-        }
-
-        onTrigger(target.triggerNodeId);
+        // Manh mối chỉ được tính khi hộp thoại được giải quyết, Esc giữa chừng thì bấm [E] lại được
+        onTrigger(target.triggerNodeId, interactedRef.current.includes(target.id) ? undefined : target.id);
       }
     };
 
@@ -2017,13 +2013,20 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
       const ripping = Math.abs(bleedTarget - bleed);
 
       // 3. Prompt tương tác: chỉ setState khi thực sự thay đổi (tránh re-render 60 lần/giây)
+      // Vật đã xem thì không hiện nhãn; Miên luôn có nhãn, và khi đã đủ manh mối thì nhãn đối chất
+      // hiện thường trực trên đầu cô (kể cả khi An đứng xa) để người chơi biết bước tiếp theo
       const nearest = findNearest();
       const isDone = nearest ? interacted.includes(nearest.id) : false;
-      const promptKey = nearest ? `${nearest.id}:${isDone}` : '';
+      const ready = clues >= REQUIRED_CLUES && interacted.includes(KEY_CLUE);
+      const labelObj = nearest && (nearest.id === 'ch3_mien' || !isDone) ? nearest : ready ? MIEN_OBJ : null;
+      const labelText = labelObj ? (labelObj.id === 'ch3_mien' && ready ? 'Đối chất Miên' : labelObj.label) : null;
+      const promptKey = labelObj ? `${labelObj.id}:${labelText}` : '';
       if (promptKey !== promptKeyRef.current) {
         promptKeyRef.current = promptKey;
-        setActivePrompt(nearest ? { text: nearest.actionText, isDone } : null);
+        setNearLabel(labelObj && labelText ? { x: labelObj.x + labelObj.w / 2, y: labelObj.y, text: labelText } : null);
       }
+      // An bước đi thì phụ đề độc thoại mờ sớm
+      if (dx !== 0 || dy !== 0) fadeSubtitleOnMove();
 
       // Miên can ngăn: An lại gần mảnh gương / bệnh án → cô quay về phía An.
       // Chưa xem: giật mình, bong bóng "!"; đã xem: run khẽ, chỉ "..." (đồ chưa xem được ưu tiên)
@@ -2081,7 +2084,7 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
         glitch: Math.min(1, (100 - sanityRef.current) / 100 + (phase - 1) * 0.15),
         clues,
         bleed,
-        ready: clues >= REQUIRED_CLUES && interacted.includes(KEY_CLUE),
+        ready,
         mienAlarm,
         defibDone,
         bpm,
@@ -2118,14 +2121,13 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
         { cx: p.x, headY: p.y - AN_DRAW_H + 20 },
         { cx: MIEN_ANCHOR.x + AN_DRAW_W / 2, headY: MIEN_ANCHOR.y + mienFloat(t) + 2 },
       );
-      drawHUD(ctx, fs);
 
       animId = requestAnimationFrame(gameLoop);
     };
 
     animId = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(animId);
-  }, [findNearest, emotes]);
+  }, [findNearest, emotes, fadeSubtitleOnMove]);
 
   // Đếm manh mối đã khám phá
   const cluesCount = localInteractedIds.filter(id => CH3_CORE_ANOMALIES.includes(id)).length;
@@ -2144,6 +2146,19 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
   // Lớp giao diện HTML phóng to cùng tỉ lệ với khung canvas
   const { ref: frameRef, scale: uiScale } = useFrameScale(CANVAS_WIDTH);
   useMouseParallax(canvasRef, parallax);
+  const hintsVisible = useAutoHideHints(frameRef, playerRef);
+  const clueFlash = useClueFlash(cluesCount, active);
+
+  // Tiếng phòng cấp cứu: sau một quãng lặng không có phụ đề nào thì vọng lên một câu (đỏ nhạt)
+  const erLineRef = useRef(0);
+  useEffect(() => {
+    if (!active || subtitle || mienPlea || isDefibMinigameOpen || !introDoneRef.current) return;
+    const id = window.setTimeout(() => {
+      showSubtitle(ER_VOICE_LINES[erLineRef.current % ER_VOICE_LINES.length], 'alarm');
+      erLineRef.current += 1;
+    }, ER_VOICE_GAP_MS);
+    return () => window.clearTimeout(id);
+  }, [active, subtitle, mienPlea, isDefibMinigameOpen, showSubtitle]);
 
   return (
     <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden select-none">
@@ -2152,67 +2167,36 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
           ref={canvasRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
-          className="w-full h-full block bg-black border border-red-950/80 shadow-[0_0_50px_rgba(239,68,68,0.25)] [image-rendering:pixelated]"
+          className="w-full h-full block bg-black border border-red-950/80 [image-rendering:pixelated]"
         />
         <div className="absolute top-0 left-0" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${uiScale})`, transformOrigin: 'top left' }}>
 
-        {/* Nút gợi ý tương tác lơ lửng */}
-        {activePrompt && (
-          <div className="absolute bottom-12 left-3 z-20 max-w-[55%] px-2 py-1 bg-black/90 border border-red-500 text-red-100 font-mono text-[11px] rounded-md shadow-[0_0_8px_rgba(239,68,68,0.35)] flex items-center gap-1.5">
-            <span
-              className={`px-1.5 py-0.5 font-bold rounded text-[10px] ${
-                activePrompt.isDone ? 'bg-zinc-800 text-zinc-400 border border-zinc-700' : 'bg-red-600 text-white shadow-[0_0_8px_rgba(239,68,68,0.9)]'
-              }`}
-            >
-              {activePrompt.isDone ? '✓' : 'E'}
-            </span>
-            <span className="truncate">{tx(activePrompt.text).replace(/^\[E\]\s*/, '').replace(/\s*-?\s*(?:Nhấn|Press) \[E\]\s*(?:để\s*|to\s*)?/i, ' · ')}</span>
-          </div>
-        )}
+        {/* Nhãn [E] mini nổi ngay trên đầu vật thể, không khung hộp che góc màn hình */}
+        <InteractLabel label={nearLabel} />
 
-        {/* Hộp thoại Độc thoại nội tâm (nhường chỗ khi Miên đang can ngăn) */}
-        {monologueWhisper && !mienPlea && (
-          <div
-            onClick={() => setMonologueWhisper(null)}
-            className="absolute bottom-12 right-3 max-w-xs sm:max-w-sm bg-black/95 border-l-4 border-red-500 border-t border-r border-b border-red-950 p-3 rounded-r shadow-2xl animate-fade-in z-20 backdrop-blur-md cursor-pointer hover:border-red-400 transition-colors"
-            title={tx('Click để đóng nhanh')}
-          >
-            <div className="flex items-center gap-1.5 text-[10px] uppercase font-mono text-red-400 tracking-wider mb-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping inline-block" />
-              {tx('Độc thoại nội tâm')}
-            </div>
-            <p className="text-xs sm:text-sm font-sans text-zinc-300 italic leading-snug text-justify">
-              &ldquo;{tx(monologueWhisper)}&rdquo;
-            </p>
-          </div>
-        )}
+        {/* Phụ đề kiểu điện ảnh: độc thoại của An (trắng xám) / tiếng phòng cấp cứu (đỏ nhạt);
+            nhường chỗ khi Miên đang can ngăn */}
+        {!mienPlea && <CinematicSubtitle subtitle={subtitle} />}
 
         {/* Phụ đề: Miên can ngăn khi An lại gần mảnh gương / bệnh án (đổi key để chạy lại hiệu ứng khi đổi câu) */}
         {mienPlea && (
-          <div key={mienPlea} className="absolute bottom-[86px] left-1/2 -translate-x-1/2 z-20 w-max max-w-[80%] px-3 py-1 bg-black/80 border-b border-pink-500/70 text-center pointer-events-none" style={{ animation: 'mien-plea 0.25s ease-out' }}>
-            <style>{'@keyframes mien-plea { 0% { opacity: 0; transform: translate(calc(-50% - 3px), 2px) } 40% { transform: translate(calc(-50% + 3px), 0) } 100% { opacity: 1; transform: translate(-50%, 0) } }'}</style>
-            <span className={`text-[12px] italic font-sans ${mienPlea === 'hide' ? 'text-pink-200' : 'text-violet-200/90'}`}>{tx(PLEA_LINES[mienPlea])}</span>
-          </div>
+          <SubtitleFrame key={mienPlea} className={mienPlea === 'hide' ? 'text-pink-200' : 'text-violet-200/90'} style={{ animation: 'mien-plea 0.25s ease-out' }}>
+            <style>{'@keyframes mien-plea { 0% { opacity: 0; transform: translate(-3px, 2px) } 40% { transform: translate(3px, 0) } 100% { opacity: 1; transform: none } }'}</style>
+            <p>{tx(PLEA_LINES[mienPlea])}</p>
+          </SubtitleFrame>
         )}
 
-        {/* HUD cố định ở đáy: một hàng gọn, viền kép đỏ (đồng bộ Màn 1 / Hành lang / Màn 2) */}
-        <div className="absolute bottom-2 left-3 right-3 z-10 p-0.5 rounded border border-red-500/70 bg-black/80 shadow-[0_0_14px_rgba(239,68,68,0.35)] backdrop-blur-sm">
-          <div className="flex justify-between items-center gap-3 px-3 py-1 rounded-sm border border-red-900/80 text-[11px] font-mono text-zinc-400 whitespace-nowrap">
-            <div className="flex items-center gap-3">
-              <span><span className="text-red-400 font-bold">WASD</span> {t.hud.move}</span>
-              <span><span className="text-red-400 font-bold">E</span> {t.hud.interact}</span>
-            </div>
-            {cluesCount >= REQUIRED_CLUES && localInteractedIds.includes(KEY_CLUE) ? (
-              <div className="text-red-400 font-bold animate-pulse">{tx('Đủ manh mối • Hãy đối chất Miên')}</div>
-            ) : cluesCount >= REQUIRED_CLUES ? (
-              <div className="text-amber-300">{tx('Đủ manh mối • Nhưng Miên vẫn còn giấu một thứ...')}</div>
-            ) : (
-              <div className="text-zinc-300">
-                {tx('Ký ức bệnh viện')} <span className="font-bold text-red-300">{cluesCount}/{REQUIRED_CLUES}</span>
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Chỉ còn đồng hồ đỏ chập chờn góc trên trái: căn phòng vỡ nát và tiếng máy y tế là thước đo tâm lý của An */}
+        <StageClock tone="alarm" />
+        <ClueFlash visible={clueFlash}>
+          {tx('Ký ức')} {Math.min(cluesCount, REQUIRED_CLUES)}/{REQUIRED_CLUES}
+        </ClueFlash>
+
+        {/* Thanh phím tắt tự ẩn, nhường chỗ cho phụ đề */}
+        <HintBar visible={hintsVisible && !subtitle && !mienPlea}>
+          <HintKey k="WASD">{t.hud.move}</HintKey>
+          <HintKey k="E">{t.hud.interact}</HintKey>
+        </HintBar>
 
         {/* Modal Minigame Sốc Tim ICU (Defibrillator) */}
         {isDefibMinigameOpen && (

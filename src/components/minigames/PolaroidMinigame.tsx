@@ -63,6 +63,14 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
   const revealed = phase !== 'dust';
 
   const audioCtxRef = useRef<AudioContext | null>(null);
+  // Rời màn / đóng khung thì đóng hẳn AudioContext riêng: không còn âm nào ngân sang cảnh sau
+  useEffect(() => {
+    const ctxRef = audioCtxRef;
+    return () => {
+      void ctxRef.current?.close().catch(() => {});
+      ctxRef.current = null;
+    };
+  }, []);
   const lastSoundTimeRef = useRef<number>(0);
 
   const getAudioContext = useCallback(() => {
@@ -348,7 +356,7 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
       k.fillStyle = 'rgba(30,58,80,0.28)';
       k.fillRect(0, 0, PW, PH);
 
-      const sweetFramed = frame(sweet.c, tx('Bến An Yên cùng em ♡'), 'rgba(90,50,10,0.25)');
+      const sweetFramed = frame(sweet.c, tx('Bến An Yên cùng em'), 'rgba(90,50,10,0.25)');
       const hospitalFramed = frame(icu.c, tx('Bến An Yên cùng em... 17/05'), 'rgba(10,20,30,0.45)');
       // Nhãn vòng tay phóng to, đọc được: chú thích ngay cạnh cổ tay
       const hg = hospitalFramed.getContext('2d');
@@ -503,7 +511,7 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
     ctx.fillStyle = '#e2e8f0';
     ctx.font = 'bold 12px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(tx('✦ BỤI THỜI GIAN PHỦ KÍN ✦'), w / 2, h / 2 - 10);
+    ctx.fillText(tx('BỤI THỜI GIAN PHỦ KÍN'), w / 2, h / 2 - 10);
     ctx.font = '11px monospace';
     ctx.fillStyle = '#fbcfe8';
     ctx.fillText(tx('(Dùng chuột hoặc chạm tay để lau sạch)'), w / 2, h / 2 + 12);
@@ -594,11 +602,11 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md font-mono select-none animate-fade-in overflow-y-auto">
       <div
-        className={`relative w-full max-w-lg max-h-[94vh] overflow-y-auto bg-zinc-950 border-2 rounded-lg shadow-[0_0_50px_rgba(244,114,182,0.3)] p-4 sm:p-5 transition-all duration-300 ${
+        className={`relative w-full max-w-lg max-h-[94vh] overflow-y-auto bg-zinc-950 border-2 rounded-lg p-4 sm:p-5 transition-all duration-300 ${
           corrupting
-            ? 'border-red-500 shadow-[0_0_60px_rgba(239,68,68,0.8)] animate-pulse'
+            ? 'border-red-500 animate-pulse'
             : phase === 'clear' || phase === 'away'
-            ? 'border-amber-400/80 shadow-[0_0_50px_rgba(251,191,36,0.45)]'
+            ? 'border-amber-400/80'
             : 'border-fuchsia-800/80'
         }`}
       >
@@ -621,7 +629,7 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
         <p className="text-xs text-zinc-300 mb-3 leading-relaxed font-sans text-justify">
           {tx('Tấm ảnh Polaroid đặt trên ghế đá ven sông bị phủ một lớp bụi tro dày, như đã nằm đó rất lâu.')}
           <span className="text-fuchsia-300 font-semibold block mt-0.5">
-            {tx('👉 Lau sạch bề mặt bức ảnh để khôi phục lại khoảnh khắc ngày 17/05.')}
+            {tx('Lau sạch bề mặt bức ảnh để khôi phục lại khoảnh khắc ngày 17/05.')}
           </span>
         </p>
 
@@ -682,9 +690,8 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
         {phase === 'revealed' && (
           <button
             onClick={onComplete}
-            className="w-full mt-3.5 py-2.5 px-4 bg-gradient-to-r from-red-800 via-rose-900 to-zinc-900 hover:from-red-700 hover:to-rose-800 active:scale-98 text-white font-bold text-xs sm:text-sm rounded border border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.5)] animate-pulse transition-all cursor-pointer flex items-center justify-center gap-2 tracking-wider"
+            className="w-full mt-3.5 py-2.5 px-4 bg-red-800 hover:bg-red-700 active:scale-98 text-white font-bold text-xs sm:text-sm rounded border border-red-500 animate-pulse transition-all cursor-pointer flex items-center justify-center gap-2 tracking-wider"
           >
-            <span>📸</span>
             <span>{tx('[ CẤT BỨC ẢNH VÀO TÚI ]')}</span>
           </button>
         )}

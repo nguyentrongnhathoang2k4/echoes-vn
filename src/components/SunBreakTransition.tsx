@@ -6,10 +6,10 @@ import { drawBenAnYenSunset, BEN_AN_YEN } from './SunsetStage';
 import { tx } from '../locales/tx';
 
 // =====================================================================
-// CHUYỂN CẢNH MÀN 2 → MÀN 3: "MẶT TRỜI VỠ RA" (~9 giây, bỏ qua được)
+// CHUYỂN CẢNH MÀN 2 → MÀN 3: "MẶT TRỜI VỠ RA" (~6 giây, bỏ qua được)
 // Bến An Yên lúc hoàng hôn → Miên tan thành hạt sáng → mặt trời nứt →
 // vỡ thành mảnh kính rơi xuống sông, không một tiếng động → trời tắt màu,
-// cây cầu gỗ trôi đi → từ rất xa, tiếng còi xe cấp cứu.
+// cây cầu gỗ trôi đi → từ rất xa, tiếng còi xe cấp cứu → vào thẳng Màn 3 (không có thẻ chương).
 // =====================================================================
 
 const W = 640;
@@ -17,13 +17,16 @@ const H = 360;
 const LETTERBOX = 30;
 const CROP = { x: 80, y: 30 };          // Toàn cảnh 1:1, mặt trời ở giữa khung
 
-const T_MIEN_FADE = 0.5;                // Miên bắt đầu tan
-const T_CRACK = 1.6;                    // Mặt trời nứt
-const T_SHATTER = 3.0;                  // Vỡ — mọi âm thanh tắt phụt
-const T_BRIDGE = 4.0;                   // Cây cầu trôi đi
-const T_SIREN = 5.5;                    // Còi cấp cứu vọng lên
-const T_FADE = 7.8;
-const TOTAL = 9;
+// Nhịp dồn dập ~6 giây (bản cũ 9 giây): mọi mốc co lại theo cùng tỉ lệ
+const T_MIEN_FADE = 0.35;               // Miên bắt đầu tan
+const T_CRACK = 1.1;                    // Mặt trời nứt
+const T_SHATTER = 2.0;                  // Vỡ — mọi âm thanh tắt phụt
+const T_BRIDGE = 2.7;                   // Cây cầu trôi đi
+const T_SIREN = 3.5;                    // Còi cấp cứu vọng lên
+const T_FADE = 5.2;
+const TOTAL = 6;
+const MIEN_FADE_SEC = 1.1;              // Miên tan hết trong bao lâu
+const BRIDGE_DRIFT_SEC = 2.4;           // Cây cầu trôi khuất trong bao lâu
 
 const SPRITE_W = 42;
 const SPRITE_H = 63;
@@ -132,7 +135,7 @@ export const SunBreakTransition: React.FC<SunBreakTransitionProps> = ({ onComple
       water.stop(at(T_SHATTER));
       // Phong linh leng keng, lệch dần trong lúc mặt trời nứt
       for (let i = 0; i < 7; i++) {
-        const when = 0.2 + i * 0.4;
+        const when = 0.15 + i * 0.27;
         if (when >= T_SHATTER) break;
         const o = ctx.createOscillator();
         o.type = 'sine';
@@ -140,17 +143,17 @@ export const SunBreakTransition: React.FC<SunBreakTransitionProps> = ({ onComple
         const g = ctx.createGain();
         g.gain.setValueAtTime(0, at(when));
         g.gain.linearRampToValueAtTime(0.03, at(when) + 0.01);
-        g.gain.exponentialRampToValueAtTime(0.0001, Math.min(at(when) + 1.2, at(T_SHATTER)));
+        g.gain.exponentialRampToValueAtTime(0.0001, Math.min(at(when) + 0.9, at(T_SHATTER)));
         o.connect(g).connect(master);
         o.start(at(when));
-        o.stop(Math.min(at(when) + 1.25, at(T_SHATTER) + 0.01));
+        o.stop(Math.min(at(when) + 0.95, at(T_SHATTER) + 0.01));
       }
     }
     // Còi xe cấp cứu vọng lên từ rất xa
     if (t0 + TOTAL > ctx.currentTime) {
       const o = ctx.createOscillator();
       o.type = 'sine';
-      for (let i = 0; i < 8; i++) o.frequency.setValueAtTime(i % 2 === 0 ? 660 : 880, at(T_SIREN + i * 0.5));
+      for (let i = 0; i < 8; i++) o.frequency.setValueAtTime(i % 2 === 0 ? 660 : 880, at(T_SIREN + i * 0.42));
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass';
       lp.frequency.value = 900;
@@ -229,7 +232,7 @@ export const SunBreakTransition: React.FC<SunBreakTransitionProps> = ({ onComple
           bo.putImageData(withB, 0, 0);
           bridgeTaken = true;
         }
-        const drift = ease((t - T_BRIDGE) / 3.5);
+        const drift = ease((t - T_BRIDGE) / BRIDGE_DRIFT_SEC);
         // Chỗ cầu cũ lấp bằng chính bến không cầu (biển tên, bờ xa, mặt sông, kè đá còn nguyên)
         w.drawImage(noBridge, BR.x, BR.y, BR.w, BR.h, BR.x, BR.y, BR.w, BR.h);
         w.globalAlpha = 1 - drift;
@@ -239,15 +242,15 @@ export const SunBreakTransition: React.FC<SunBreakTransitionProps> = ({ onComple
 
       // An đứng quay lưng nhìn về phía mặt trời; Miên tan dần thành hạt sáng
       if (ready(an)) drawSpriteFrame(w, an, 1, 1, false, M.x - 70, M.y + 24, SPRITE_W, SPRITE_H);
-      const mienA = 1 - ease((t - T_MIEN_FADE) / 1.6);
+      const mienA = 1 - ease((t - T_MIEN_FADE) / MIEN_FADE_SEC);
       if (ready(mien) && mienA > 0) {
         w.globalAlpha = mienA;
         drawSpriteFrame(w, mien, 1, 0, false, M.x, M.y, SPRITE_W, SPRITE_H);
         w.globalAlpha = 1;
       }
-      if (t > T_MIEN_FADE && t < T_MIEN_FADE + 3) {
+      if (t > T_MIEN_FADE && t < T_MIEN_FADE + 2.2) {
         for (let i = 0; i < 30; i++) {
-          const p = (t - T_MIEN_FADE) * (0.5 + hash(i) * 0.6);
+          const p = (t - T_MIEN_FADE) * (0.7 + hash(i) * 0.8);
           const x = M.x + 6 + hash(i * 3) * 30 + Math.sin(t * 2 + i) * 4;
           const y = M.y + 10 + hash(i * 5) * 50 - p * 40;
           w.globalAlpha = Math.max(0, 1 - p / 1.6);
@@ -290,7 +293,7 @@ export const SunBreakTransition: React.FC<SunBreakTransitionProps> = ({ onComple
 
       // Vỡ: bầu trời tắt màu, chỗ mặt trời thành lỗ đen, mảnh kính rơi xuống sông không tiếng động
       if (t >= T_SHATTER) {
-        const dk = ease((t - T_SHATTER) / 2.2);
+        const dk = ease((t - T_SHATTER) / 1.5);
         w.fillStyle = `rgba(8,0,16,${0.88 * dk})`;
         w.fillRect(0, 0, BEN_AN_YEN.width, BEN_AN_YEN.horizon);
         // Chỗ mặt trời thành hố tối sâu, viền than hồng âm ỉ rồi tàn dần
@@ -302,7 +305,7 @@ export const SunBreakTransition: React.FC<SunBreakTransitionProps> = ({ onComple
         w.beginPath();
         w.arc(sun.x, sun.y, sun.r * 0.92, Math.PI, 0);
         w.fill();
-        const ember = 1 - ease((t - T_SHATTER) / 3.5);
+        const ember = 1 - ease((t - T_SHATTER) / 2.4);
         if (ember > 0) {
           for (let i = 0; i < 40; i++) {
             const a = Math.PI + (i / 39) * Math.PI;
@@ -369,7 +372,7 @@ export const SunBreakTransition: React.FC<SunBreakTransitionProps> = ({ onComple
         ctx.fillStyle = `rgba(255,248,235,${0.85 * flash})`;
         ctx.fillRect(0, 0, W, H);
       }
-      // Tối hẳn ở cuối, chuyển sang card Chương III
+      // Tối hẳn ở cuối, vào thẳng phòng cấp cứu Màn 3
       const fade = ease((t - T_FADE) / (TOTAL - T_FADE));
       if (fade > 0) {
         ctx.fillStyle = `rgba(0,0,0,${fade})`;
