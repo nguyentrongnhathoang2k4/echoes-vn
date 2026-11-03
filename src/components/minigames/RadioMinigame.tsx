@@ -20,6 +20,14 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
   const [isRevealed, setIsRevealed] = useState(false);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
+  // Rời màn / đóng khung thì đóng hẳn AudioContext riêng: không còn âm nào ngân sang cảnh sau
+  useEffect(() => {
+    const ctxRef = audioCtxRef;
+    return () => {
+      void ctxRef.current?.close().catch(() => {});
+      ctxRef.current = null;
+    };
+  }, []);
   const sirenOscRef = useRef<OscillatorNode | null>(null);
   const sirenGainRef = useRef<GainNode | null>(null);
   const sirenTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -153,9 +161,9 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md font-mono select-none animate-fade-in">
       <div
-        className={`relative w-full max-w-lg bg-zinc-950 border-2 rounded-lg shadow-[0_0_50px_rgba(244,114,182,0.3)] p-5 transition-all duration-300 ${
+        className={`relative w-full max-w-lg bg-zinc-950 border-2 rounded-lg p-5 transition-all duration-300 ${
           isLocked
-            ? 'border-red-500 shadow-[0_0_60px_rgba(239,68,68,0.8)]'
+            ? 'border-red-500'
             : 'border-cyan-800/80'
         }`}
       >
@@ -187,12 +195,12 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
             <p className="text-xs text-zinc-300 mb-3 leading-relaxed text-justify">
               {tx('Chiếc đài bán dẫn gác cạnh chiếc ô ướt sũng dưới chân cột đèn. Nước mưa đọng trên mặt kính thang đo tần số.')}
               <span className="text-cyan-300 font-semibold block mt-0.5">
-                {tx('👉 Xoay núm dò sóng từ 88 đến 108 MHz để bắt sóng bản tin thời tiết đêm 17/05.')}
+                {tx('Xoay núm dò sóng từ 88 đến 108 MHz để bắt sóng bản tin thời tiết đêm 17/05.')}
               </span>
             </p>
 
             {/* Mô phỏng Thân Đài Bán Dẫn (Transistor Radio Chassis) */}
-            <div className="bg-gradient-to-b from-zinc-900 to-zinc-950 border-2 border-zinc-700 rounded-lg p-4 mb-4 shadow-inner relative">
+            <div className="bg-zinc-900 border-2 border-zinc-700 rounded-lg p-4 mb-4 shadow-inner relative">
               {/* Thước đo kim tần số Analog */}
               <div className="bg-black/80 border border-zinc-600 rounded p-3 mb-4 relative overflow-hidden">
                 <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
@@ -219,7 +227,7 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
 
                   {/* Kim đỏ di chuyển theo tần số */}
                   <div
-                    className="absolute top-0 bottom-0 w-0.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)] transition-all duration-75"
+                    className="absolute top-0 bottom-0 w-0.5 bg-red-500 transition-all duration-75"
                     style={{
                       left: `${((frequency - 88) / (108 - 88)) * 100}%`,
                     }}
@@ -270,7 +278,7 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
               <div
                 className={`p-3 rounded border text-xs min-h-[75px] flex items-center justify-center text-center transition-all ${
                   activeStation === 'EMERGENCY'
-                    ? 'bg-red-950/70 border-red-500 text-red-200 shadow-[0_0_20px_rgba(239,68,68,0.5)]'
+                    ? 'bg-red-950/70 border-red-500 text-red-200'
                     : activeStation === 'WHISPER'
                     ? 'bg-pink-950/40 border-pink-700 text-pink-200'
                     : activeStation === 'CAFE'
@@ -283,7 +291,7 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
                 )}
                 {activeStation === 'CAFE' && (
                   <p>
-                    {tx('🎵 [FM 92.5 - Quán Cà Phê Sinh Viên]: Bản nhạc Jazz nhẹ nhàng vang lên mờ ảo giữa tiếng cười nói của các bạn trẻ...')}
+                    {tx('[FM 92.5 - Quán Cà Phê Sinh Viên]: Bản nhạc Jazz nhẹ nhàng vang lên mờ ảo giữa tiếng cười nói của các bạn trẻ...')}
                   </p>
                 )}
                 {activeStation === 'WHISPER' && (
@@ -294,7 +302,7 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
                 {activeStation === 'EMERGENCY' && (
                   <div className="text-left font-mono">
                     <div className="font-bold text-red-400 flex items-center gap-1.5 mb-1">
-                      <span>🚨</span> {tx('[ĐÀI GIAO THÔNG 00:41 - RẠNG SÁNG 17/05]')}
+                      {tx('[ĐÀI GIAO THÔNG 00:41 - RẠNG SÁNG 17/05]')}
                     </div>
                     <p className="text-[11px] leading-snug">
                       {tx('“Khẩn cấp: Tai nạn trên cầu vượt trong cơn mưa giông lớn... Xe máy chở 2 người trượt bánh va chạm dải phân cách...”')}
@@ -311,7 +319,7 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
             {isLocked ? (
               <button
                 onClick={handleConfirmSignal}
-                className="w-full py-2.5 bg-red-700 hover:bg-red-600 active:scale-98 text-white font-bold text-xs sm:text-sm tracking-wide rounded shadow-[0_0_20px_rgba(239,68,68,0.7)] transition-all cursor-pointer animate-pulse"
+                className="w-full py-2.5 bg-red-700 hover:bg-red-600 active:scale-98 text-white font-bold text-xs sm:text-sm tracking-wide rounded transition-all cursor-pointer animate-pulse"
               >
                 {tx('[GIỮ SÓNG 104.5 MHz]')}
               </button>
@@ -330,9 +338,9 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
         ) : (
           /* MÀN HÌNH TWIST CHIẾC Ô ƯỚT */
           <div className="animate-fade-in flex flex-col items-center text-center">
-            <div className="w-full bg-red-950/40 border-2 border-red-500/80 rounded-lg p-4 mb-4 shadow-[0_0_30px_rgba(239,68,68,0.4)] text-left">
+            <div className="w-full bg-red-950/40 border-2 border-red-500/80 rounded-lg p-4 mb-4 text-left">
               <div className="flex items-center gap-2 text-red-400 text-xs font-bold uppercase mb-2">
-                <span>⚠️</span> {tx('KÝ ỨC ĐÊM MƯA 17/05 BỊ GIẢI MÃ')}
+                {tx('KÝ ỨC ĐÊM MƯA 17/05 BỊ GIẢI MÃ')}
               </div>
               <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed italic mb-3 text-justify">
                 {tx('Tiếng còi xe cấp cứu và tiếng bộ đàm 115 dội thẳng vào màng nhĩ... Chiếc ô trong suốt này ướt sũng không phải vì cơn mưa chiều nay. Nó đã rơi xuống mặt đường lạnh ngắt vào đêm 17/05, bên cạnh chiếc xe máy biến dạng sau cú va chạm định mệnh.')}
@@ -347,7 +355,7 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({
                 stopSirenSound();
                 onComplete();
               }}
-              className="w-full py-2.5 bg-red-700 hover:bg-red-600 active:scale-98 text-white font-bold text-sm tracking-wide rounded shadow-[0_0_20px_rgba(239,68,68,0.6)] transition-all cursor-pointer"
+              className="w-full py-2.5 bg-red-700 hover:bg-red-600 active:scale-98 text-white font-bold text-sm tracking-wide rounded transition-all cursor-pointer"
             >
               {tx('[TẮT ĐÀI]')}
             </button>

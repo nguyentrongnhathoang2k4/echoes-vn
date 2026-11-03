@@ -4,9 +4,10 @@ import { MusicBoxMinigame } from './minigames/MusicBoxMinigame';
 import { PolaroidMinigame } from './minigames/PolaroidMinigame';
 import { RadioMinigame } from './minigames/RadioMinigame';
 import { FlashbackCutscene } from './FlashbackCutscene';
+import { useUiLayer } from '../services/uiLayers';
 import {
   DORM_PAL, hash, px, block, outlinedText,
-  buildPostLayer, drawTargetMarker, drawVitals, drawHudSubtitle,
+  buildPostLayer,
   createFollowLight, updateFollowLight, drawFollowVignette,
 } from './pixel/pixelKit';
 import { drawSpriteFrame, getSpriteFrame, stepWalk, stopWalk, bodyBob, mienFloat, drawSwayingFigure, drawHoloShadow, drawHoloDust } from './pixel/spriteKit';
@@ -15,10 +16,16 @@ import { useMouseParallax } from './pixel/useMouseParallax';
 import { useLanguage } from '../context/LanguageContext';
 import { EmoteDirector, createEmoteDirector, emoteNow, updateEmotes, drawEmotes } from './pixel/emote';
 import { tx } from '../locales/tx';
+import {
+  useCinematicSubtitle, CinematicSubtitle, StageClock, ClueFlash, useClueFlash,
+  InteractLabel, NearLabel, useAutoHideHints, HintBar, HintKey,
+} from './StageHud';
 
 interface InteractableObject {
   id: string;
   name: string;
+  /** Tên ngắn trên nhãn [E] nổi trên đầu vật thể */
+  label: string;
   actionText: string;
   x: number;
   y: number;
@@ -33,7 +40,8 @@ interface SunsetStageProps {
   characterSprite: string;
   sanity: number;
   setSanity?: React.Dispatch<React.SetStateAction<number>>;
-  onTrigger: (nodeId: string) => void;
+  /** markId: vật thể được ghi "đã xong" khi hộp thoại được giải quyết (đóng ngang bằng Esc thì không) */
+  onTrigger: (nodeId: string, markId?: string) => void;
   interactedIds?: string[];
   onMarkInteracted?: (id: string) => void;
   volume?: number;
@@ -41,6 +49,8 @@ interface SunsetStageProps {
   parallax?: boolean;
   /** Báo cho trang khi Màn 2 bắt đầu / kết thúc một cutscene riêng (tắt nhạc nền, chặn phím tắt) */
   onCutsceneChange?: (active: boolean) => void;
+  /** Người chơi đang điều khiển An (không mở thoại / menu): bộ đếm ký ức chờ tới lúc này mới sáng */
+  active?: boolean;
 }
 
 type Direction = 'down' | 'left' | 'right' | 'up';
@@ -160,20 +170,12 @@ interface SunsetSprites {
   mien: HTMLImageElement | null;
 }
 
-/** Nội dung thanh gợi ý [E] (giữ nguyên văn bản gốc) */
-const computePrompt = (target: InteractableObject, interacted: string[]): { text: string; isDone: boolean } => {
+/** Nhãn [E] ngắn trên đầu vật thể; manh mối đã xem xong (không lặp lại) thì không hiện gì */
+const promptLabelFor = (target: InteractableObject, interacted: string[]): string | null => {
   if (target.id === 'ch2_mien') {
-    const anomaliesFound = interacted.filter(id => CORE_ANOMALY_IDS.includes(id)).length;
-    const isReady = anomaliesFound >= 5;
-    return {
-      text: isReady
-        ? tx('✨ Quyết định số phận cùng Miên (Đã tìm đủ 5/5 manh mối)')
-        : tx('Tâm sự với Miên (Cần tìm đủ 5 manh mối: hiện có {0}/5)', anomaliesFound),
-      isDone: false,
-    };
+    return interacted.filter(id => CORE_ANOMALY_IDS.includes(id)).length >= 5 ? 'Số phận' : 'Miên';
   }
-  const isDone = interacted.includes(target.id) && !target.canRepeat;
-  return { text: isDone ? tx('{0} - Nhấn [E] để xem lại', tx(target.name)) : target.actionText, isDone };
+  return interacted.includes(target.id) && !target.canRepeat ? null : target.label;
 };
 
 // =====================================================================
@@ -480,7 +482,7 @@ function drawSkyCracks(ctx: CanvasRenderingContext2D, fr: SunsetFrame) {
   if (full) {
     if (Math.sin(fr.t * 9) > 0.2) px(ctx, 0, (fr.t * 240) % SKY_BOTTOM, CANVAS_WIDTH, 4, 'rgba(244,63,94,0.15)');
     ctx.font = 'bold 9px monospace';
-    outlinedText(ctx, 'CRITICAL: MEMORY_LIMIT_EXCEEDED [5/5]', 130, 24, Math.sin(fr.t * 6) > 0 ? '#f43f5e' : '#fbbf24');
+    outlinedText(ctx, 'CRITICAL: MEMORY_LIMIT_EXCEEDED', 130, 24, Math.sin(fr.t * 6) > 0 ? '#f43f5e' : '#fbbf24');
   }
 }
 
@@ -1220,7 +1222,7 @@ export function drawBenAnYenMorning(ctx: CanvasRenderingContext2D, t: number) {
   ctx.drawImage(morningLayers.front, 0, 0);
 }
 
-/** HUD canvas: chấm lấp lánh manh mối chưa xem, khung ngắm, nhãn Miên, đồng hồ/SANITY tông hồng tím */
+/** HUD canvas: chỉ còn chấm lấp lánh trên manh mối chưa xem (đồng hồ, nhãn [E] vẽ bằng HTML) */
 function drawSunsetHUD(ctx: CanvasRenderingContext2D, fr: SunsetFrame, interactables: InteractableObject[]) {
   for (const item of interactables) {
     if (item.id === 'ch2_mien' || item === fr.nearest) continue;
@@ -1228,23 +1230,6 @@ function drawSunsetHUD(ctx: CanvasRenderingContext2D, fr: SunsetFrame, interacta
       px(ctx, item.x + item.w / 2 - 1, item.y + item.h / 2 - 1, 3, 3, 'rgba(251,191,36,0.75)');
     }
   }
-  const n = fr.nearest;
-  if (n) {
-    if (n.id === 'ch2_mien') {
-      const ready = fr.anomalies >= 5;
-      drawTargetMarker(ctx, n, ready ? '#f472b6' : '#fda4af', fr.t);
-      ctx.font = 'bold 9px monospace';
-      ctx.textAlign = 'center';
-      outlinedText(ctx, ready ? tx('[E] ✦ SỐ PHẬN') : `[E] (${fr.anomalies}/5)`, n.x + n.w / 2, n.y - 16, ready ? '#f9a8d4' : '#fecdd3');
-      ctx.textAlign = 'left';
-    } else {
-      const done = fr.interacted.has(n.id) && !n.canRepeat;
-      drawTargetMarker(ctx, n, done ? 'rgba(161,161,170,0.75)' : '#f9a8d4', fr.t);
-    }
-  }
-  drawVitals(ctx, fr.t, fr.sanity, { clock: '#f9a8d4', heart: '#f472b6', label: '#fdba74', bar: '#f0abfc' });
-  const label = fr.phase === 2 ? tx('ẢO ẢNH: SỤP ĐỔ') : fr.phase === 1 ? tx('ẢO ẢNH: RẠN NỨT') : tx('ẢO ẢNH: BÌNH YÊN');
-  drawHudSubtitle(ctx, label, fr.phase === 2 ? '#f87171' : fr.phase === 1 ? '#f0abfc' : '#fdba74');
 }
 
 // =====================================================================
@@ -1318,10 +1303,19 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
   volume = 80,
   parallax = true,
   onCutsceneChange,
+  active = true,
 }) => {
   const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  // Rời màn / đóng khung thì đóng hẳn AudioContext riêng: không còn âm nào ngân sang cảnh sau
+  useEffect(() => {
+    const ctxRef = audioCtxRef;
+    return () => {
+      void ctxRef.current?.close().catch(() => {});
+      ctxRef.current = null;
+    };
+  }, []);
   const anSpriteRef = useRef<HTMLImageElement | null>(null);
   const mienSpriteRef = useRef<HTMLImageElement | null>(null);
 
@@ -1443,11 +1437,14 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
   });
 
   const [localInteractedIds, setLocalInteractedIds] = useState<string[]>(interactedIds);
-  const [activePrompt, setActivePrompt] = useState<{ text: string; isDone: boolean } | null>(null);
-  const [monologueWhisper, setMonologueWhisper] = useState<string | null>(null);
+  // Nhãn [E] nổi trên vật thể đang nhắm tới + phụ đề độc thoại kiểu điện ảnh (HUD dùng chung)
+  const [nearLabel, setNearLabel] = useState<NearLabel | null>(null);
+  const { subtitle, show: showSubtitle, fadeOnMove: fadeSubtitleOnMove } = useCinematicSubtitle();
   const [activeMinigame, setActiveMinigame] = useState<'MUSIC_BOX' | 'POLAROID' | 'RADIO' | null>(null);
   const activeMinigameRef = useRef<'MUSIC_BOX' | 'POLAROID' | 'RADIO' | null>(null);
   useEffect(() => { activeMinigameRef.current = activeMinigame; }, [activeMinigame]);
+  // Minigame manh mối đang mở thì Esc đóng minigame trước, không mở Pause Menu
+  useUiLayer(activeMinigame !== null);
   // Hồi tưởng chiếu đè lên minigame Polaroid (minigame vẫn mở bên dưới, giữ nguyên trạng thái)
   const [showFlashback, setShowFlashback] = useState(false);
   const [flashbackDone, setFlashbackDone] = useState(false);
@@ -1462,7 +1459,6 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     setFlashbackDone(true);
     onCutsceneChange?.(false);
   }, [onCutsceneChange]);
-  const whisperTimerRef = useRef<NodeJS.Timeout | null>(null);
   const keysHeld = useRef<Set<string>>(new Set());
 
   // Đồng bộ khi prop từ cha thay đổi (điều chỉnh state ngay trong render thay vì effect)
@@ -1478,12 +1474,8 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
 
   const showMonologueWhisper = useCallback((msg: string) => {
     emoteNow(emotes(), 'an', 'dots');
-    if (whisperTimerRef.current) clearTimeout(whisperTimerRef.current);
-    setMonologueWhisper(msg);
-    whisperTimerRef.current = setTimeout(() => {
-      setMonologueWhisper(null);
-    }, 4500);
-  }, [emotes]);
+    showSubtitle(msg);
+  }, [emotes, showSubtitle]);
 
   // Lời tự sự mở màn khi bước vào Thị Trấn Hoàng Hôn
   useEffect(() => {
@@ -1498,6 +1490,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     {
       id: 'ch2_river',
       name: 'Dòng Sông Mã Nhị Phân',
+      label: 'Bến sông',
       actionText: '[E] Nhìn kỹ dòng nước nhị phân bên bến đá',
       x: 180,
       y: 200,
@@ -1510,6 +1503,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     {
       id: 'ch2_pigeon',
       name: 'Đàn Bồ Câu Bất Động',
+      label: 'Bồ câu',
       actionText: '[E] Chạm vào đôi bồ câu trên lan can cầu',
       x: 285,
       y: 135,
@@ -1522,6 +1516,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     {
       id: 'ch2_coffee',
       name: 'Tách Cà Phê Bất Tử',
+      label: 'Ly cà phê',
       actionText: '[E] Ngồi xuống bàn cà phê ven đường',
       x: 120,
       y: 295,
@@ -1534,6 +1529,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     {
       id: 'ch2_bench',
       name: 'Băng Ghế Hoàng Hôn',
+      label: 'Ghế đá',
       actionText: '[E] Ngắm hoàng hôn dưới tán hoa tím',
       x: 630,
       y: 310,
@@ -1546,7 +1542,8 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     {
       id: 'ch2_music_box',
       name: 'Hộp Âm Nhạc Bị Kẹt Cót',
-      actionText: '[E] Lên dây cót chiếc hộp âm nhạc [🎶]',
+      label: 'Hộp nhạc',
+      actionText: '[E] Lên dây cót chiếc hộp âm nhạc',
       x: 395,
       y: 135,
       w: 30,
@@ -1558,6 +1555,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     {
       id: 'ch2_bicycle',
       name: 'Chiếc Xe Đạp Sinh Viên Cũ',
+      label: 'Xe đạp',
       actionText: '[E] Nhìn ngắm chiếc xe đạp cũ dựng bên cây',
       x: 700,
       y: 295,
@@ -1570,6 +1568,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     {
       id: 'ch2_umbrella',
       name: 'Chiếc Ô Trong Suốt Đêm Mưa',
+      label: 'Chiếc ô',
       actionText: '[E] Chạm vào chiếc ô ướt đẫm nước mưa',
       x: 75,
       y: 295,
@@ -1582,6 +1581,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     {
       id: 'ch2_mien',
       name: 'Miên (Người Tạo Tác)',
+      label: 'Miên',
       actionText: '[E] Tâm sự cùng Miên bên cầu hoàng hôn',
       x: 390,
       y: 275,
@@ -1644,13 +1644,10 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
       const line = target.checkedMonologue || 'Chẳng còn điều gì bất thường ở đây nữa.';
       showMonologueWhisper(line);
     } else {
-      if (!localInteractedIds.includes(target.id)) {
-        setLocalInteractedIds(prev => [...prev, target.id]);
-        onMarkInteracted?.(target.id);
-      }
-      onTrigger(target.triggerNodeId);
+      // Manh mối chỉ được tính khi hộp thoại được giải quyết, Esc giữa chừng thì bấm [E] lại được
+      onTrigger(target.triggerNodeId, localInteractedIds.includes(target.id) ? undefined : target.id);
     }
-  }, [localInteractedIds, onTrigger, onMarkInteracted, playGlitchSound, playMusicBoxSound, showMonologueWhisper]);
+  }, [localInteractedIds, onTrigger, playGlitchSound, playMusicBoxSound, showMonologueWhisper]);
 
   // Xử lý bàn phím
   useEffect(() => {
@@ -1782,17 +1779,19 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
         const cy = obj.y + obj.h / 2;
         return Math.hypot(p.x - cx, p.y - cy) < INTERACT_RADIUS;
       }) ?? null;
-      const prompt = nearTarget ? computePrompt(nearTarget, snap.interacted) : null;
-      const promptKey = prompt ? `${prompt.isDone}|${prompt.text}` : '';
+      const labelText = nearTarget ? promptLabelFor(nearTarget, snap.interacted) : null;
+      const promptKey = nearTarget && labelText ? `${nearTarget.id}|${labelText}` : '';
       if (promptKey !== promptKeyRef.current) {
         promptKeyRef.current = promptKey;
-        setActivePrompt(prompt);
+        setNearLabel(nearTarget && labelText ? { x: nearTarget.x + nearTarget.w / 2, y: nearTarget.y, text: labelText } : null);
       }
+      // An bước đi thì phụ đề độc thoại mờ sớm
+      if (p.isMoving) fadeSubtitleOnMove();
       // Miên ngân nga khi bến sông còn bình yên; An phát hiện càng nhiều dị tượng, cô càng lặng đi
       updateEmotes(em, {
         t,
         nearId: nearTarget ? nearTarget.id : null,
-        nearDone: !!prompt?.isDone,
+        nearDone: !!nearTarget && !labelText,
         sanity: snap.sanity,
         moving: p.isMoving,
         distToMien: Math.hypot(p.x - (MIEN.x + SPRITE_W / 2), p.y - (MIEN.y + SPRITE_H - 4)),
@@ -1850,18 +1849,20 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
 
     animId = requestAnimationFrame(gameLoop);
     return () => cancelAnimationFrame(animId);
-  }, [emotes]);
+  }, [emotes, fadeSubtitleOnMove]);
 
   const anomaliesCount = localInteractedIds.filter(id => CORE_ANOMALY_IDS.includes(id)).length;
 
   // Lớp giao diện HTML phóng to cùng tỉ lệ với khung canvas
   const { ref: frameRef, scale: uiScale } = useFrameScale(CANVAS_WIDTH);
   useMouseParallax(canvasRef, parallax);
+  const hintsVisible = useAutoHideHints(frameRef, playerRef);
+  const clueFlash = useClueFlash(anomaliesCount, active);
 
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center bg-black overflow-hidden select-none">
       {/* Khung Canvas hiển thị Thị Trấn Hoàng Hôn */}
-      <div className="relative border-4 border-fuchsia-950/80 shadow-[0_0_60px_rgba(217,70,239,0.35)] rounded-sm overflow-hidden" ref={frameRef} style={{ width: `min(96vw, calc((100vh - 60px) * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, marginTop: 44 }}>
+      <div className="relative border-4 border-fuchsia-950/80 rounded-sm overflow-hidden" ref={frameRef} style={{ width: `min(96vw, calc((100vh - 60px) * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, marginTop: 44 }}>
         <canvas
           ref={canvasRef}
           width={CANVAS_WIDTH}
@@ -1871,73 +1872,23 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
         />
         <div className="absolute top-0 left-0" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${uiScale})`, transformOrigin: 'top left' }}>
 
-        {/* Thông báo tương tác [E] nổi phía trên */}
-        {activePrompt && (
-          <div
-            onClick={() => {
-              const p = playerRef.current;
-              const target = interactables.current.find(obj => {
-                const cx = obj.x + obj.w / 2;
-                const cy = obj.y + obj.h / 2;
-                return Math.hypot(p.x - cx, p.y - cy) < 65;
-              });
-              if (target) handleInteractWith(target);
-            }}
-            className={`absolute bottom-12 left-3 z-30 max-w-[55%] px-2 py-1 font-mono text-[11px] rounded-md flex items-center gap-1.5 backdrop-blur-sm cursor-pointer ${
-              activePrompt.isDone
-                ? 'bg-black/85 border border-zinc-700/80 text-zinc-400'
-                : 'bg-black/90 border border-pink-500 text-pink-100 shadow-[0_0_8px_rgba(236,72,153,0.35)]'
-            }`}
-          >
-            <span
-              className={`shrink-0 px-1 py-0.5 font-bold rounded text-[10px] leading-none ${
-                activePrompt.isDone
-                  ? 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-                  : 'bg-pink-500 text-black shadow-[0_0_8px_rgba(236,72,153,0.9)]'
-              }`}
-            >
-              {activePrompt.isDone ? '✓' : 'E'}
-            </span>
-            <span className="truncate">{tx(activePrompt.text).replace(/^\[E\]\s*/, '').replace(/\s*-?\s*(?:Nhấn|Press) \[E\]\s*(?:để\s*|to\s*)?/i, ' · ')}</span>
-          </div>
-        )}
+        {/* Nhãn [E] mini nổi ngay trên đầu vật thể (kèm bong bóng thoại pixel); manh mối đã xem thì không hiện */}
+        <InteractLabel label={nearLabel} bubble />
 
-        {/* Hộp thoại độc thoại nội tâm lướt qua góc màn hình */}
-        {monologueWhisper && (
-          <div
-            onClick={() => setMonologueWhisper(null)}
-            className="absolute bottom-12 right-3 max-w-xs sm:max-w-sm bg-black/95 border-l-4 border-pink-400 border-t border-r border-b border-zinc-800 p-3 rounded-r shadow-2xl animate-fade-in z-20 backdrop-blur-md cursor-pointer hover:border-pink-300 transition-colors"
-            title={tx('Click để đóng nhanh')}
-          >
-            <div className="flex items-center gap-1.5 text-[10px] uppercase font-mono text-pink-400 tracking-wider mb-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-ping inline-block" />
-              {tx('Độc thoại nội tâm')}
-            </div>
-            <p className="text-xs sm:text-sm font-sans text-zinc-300 italic leading-snug text-justify">
-              &ldquo;{tx(monologueWhisper)}&rdquo;
-            </p>
-          </div>
-        )}
+        {/* Phụ đề độc thoại kiểu điện ảnh sát đáy khung hình: tự mờ sau vài giây hoặc khi An bước đi */}
+        <CinematicSubtitle subtitle={subtitle} />
 
-        {/* HUD gợi ý điều khiển & Tiến trình Ký ức Chương 2 */}
-        <div className="absolute bottom-2 left-3 right-3 z-10 p-0.5 rounded border border-pink-500/70 bg-black/80 shadow-[0_0_14px_rgba(236,72,153,0.35)] backdrop-blur-sm">
-          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-3 py-1 rounded-sm border border-fuchsia-900/80 text-[10px] font-mono text-zinc-400 whitespace-nowrap">
-            <div className="flex items-center gap-2.5">
-              <span><span className="text-pink-300 font-bold">WASD</span> {t.hud.explore}</span>
-              <span><span className="text-pink-300 font-bold">E</span> {t.hud.interact}</span>
-            </div>
-            <div className="text-center truncate">
-              {anomaliesCount >= 5 ? (
-                <span className="text-pink-300 font-bold animate-pulse">{tx('[ĐÃ TÌM ĐỦ 5 MANH MỐI • HÃY TỚI GẶP MIÊN TRÊN CẦU]')}</span>
-              ) : (
-                <>
-                  {tx('Ký ức bất thường:')} <span className="text-pink-300 font-bold">{anomaliesCount}/5</span> {tx('manh mối')}
-                </>
-              )}
-            </div>
-            <div className="text-pink-400/80 font-bold truncate">{tx('MÀN 2: THỊ TRẤN HOÀNG HÔN • BẾN AN YÊN')}</div>
-          </div>
-        </div>
+        {/* Đồng hồ góc trên trái + bộ đếm ký ức chỉ sáng 3 giây mỗi khi tìm thấy manh mối mới */}
+        <StageClock />
+        <ClueFlash visible={clueFlash}>
+          {tx('Ký ức')} {Math.min(anomaliesCount, CORE_ANOMALY_IDS.length)}/{CORE_ANOMALY_IDS.length}
+        </ClueFlash>
+
+        {/* Thanh phím tắt tự ẩn (3 giây đầu / đứng yên lâu / rê chuột xuống đáy), nhường chỗ cho phụ đề */}
+        <HintBar visible={hintsVisible && !subtitle}>
+          <HintKey k="WASD">{t.hud.explore}</HintKey>
+          <HintKey k="E">{t.hud.interact}</HintKey>
+        </HintBar>
         </div>
       </div>
 
@@ -1993,7 +1944,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
       )}
 
       {showFlashback && (
-        <div className="fixed inset-0 z-[60]">
+        <div className="fixed inset-0 z-60">
           <FlashbackCutscene volume={volume} onComplete={endFlashback} />
         </div>
       )}

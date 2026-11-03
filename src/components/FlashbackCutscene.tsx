@@ -769,16 +769,13 @@ export const FlashbackCutscene: React.FC<FlashbackCutsceneProps> = ({ onComplete
   }, []);
 
   const scene = cur.scene;
-  const inMemory = scene !== 'snap';
   const closeUp = scene === 'an' || scene === 'lean';
   const portraitFilter = 'saturate(1.05) drop-shadow(0 0 18px rgba(251,191,36,0.35))';
   const nameColor = cur.speaker === 'Miên' ? 'text-pink-300' : 'text-amber-200';
 
   return (
     <div
-      className={`absolute inset-0 flex items-center justify-center overflow-hidden select-none cursor-pointer ${
-        inMemory ? 'bg-gradient-to-b from-amber-950/80 via-black to-black' : 'bg-black'
-      }`}
+      className="absolute inset-0 flex items-center justify-center overflow-hidden select-none cursor-pointer bg-black"
       onClick={advance}
     >
       <style>{`
@@ -818,7 +815,7 @@ export const FlashbackCutscene: React.FC<FlashbackCutsceneProps> = ({ onComplete
         {cur.title && (
           // Dải nền tối mờ phía sau chữ, đặt ở vùng trời cho khỏi che xe đạp
           <div className="absolute inset-x-0 top-[9%] flex justify-center pointer-events-none" style={{ animation: 'fb-title 3.2s ease-in-out forwards' }}>
-            <div className="flex flex-col items-center px-8 sm:px-12 py-2.5 sm:py-3.5 bg-gradient-to-r from-transparent via-black/55 to-transparent backdrop-blur-[2px]">
+            <div className="flex flex-col items-center px-8 sm:px-12 py-2.5 sm:py-3.5 bg-black/55 backdrop-blur-[2px]">
               <div className="text-[10px] sm:text-xs tracking-[0.4em] text-amber-100 font-mono mb-1.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">{tx('BẾN AN YÊN')}</div>
               <div className="text-lg sm:text-2xl italic font-serif text-amber-50 drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">
                 {tx('Một chiều hè, năm hai mươi hai tuổi')}
@@ -831,7 +828,7 @@ export const FlashbackCutscene: React.FC<FlashbackCutsceneProps> = ({ onComplete
         {scene === 'photo' && (
           <>
             <div
-              className="absolute top-[10%] right-[14%] text-3xl sm:text-5xl font-black font-mono text-white drop-shadow-[0_0_12px_rgba(255,236,190,0.9)] pointer-events-none"
+              className="absolute top-[10%] right-[14%] text-3xl sm:text-5xl font-black font-mono text-white pointer-events-none"
               style={{ animation: 'fb-click 1s ease-out forwards' }}
             >
               {tx('TÁCH!')}
@@ -848,7 +845,7 @@ export const FlashbackCutscene: React.FC<FlashbackCutsceneProps> = ({ onComplete
                 style={{ imageRendering: 'pixelated', animation: 'fb-develop 2.6s 0.5s ease-out both' }}
               />
               <div className="absolute bottom-[1.5%] left-0 right-0 text-center font-serif italic text-[10px] sm:text-sm text-stone-600">
-                {tx('Bến An Yên, một chiều hè ♡')}
+                {tx('Bến An Yên, một chiều hè')}
               </div>
             </div>
           </>
@@ -858,7 +855,7 @@ export const FlashbackCutscene: React.FC<FlashbackCutsceneProps> = ({ onComplete
         {cur.text && (
           <div
             key={step}
-            className="absolute bottom-[4%] left-1/2 -translate-x-1/2 w-[88%] rounded-lg border border-amber-200/25 bg-gradient-to-t from-black/75 to-amber-950/45 backdrop-blur-sm px-4 py-2 sm:px-5 sm:py-3"
+            className="absolute bottom-[4%] left-1/2 -translate-x-1/2 w-[88%] rounded-lg border border-amber-200/25 bg-black/75 backdrop-blur-sm px-4 py-2 sm:px-5 sm:py-3"
             style={{ animation: 'fb-fade 0.4s ease-out' }}
           >
             <div className={`text-[11px] sm:text-xs tracking-[0.2em] font-mono mb-1 ${nameColor}`}>{tx(cur.speaker ?? '').toUpperCase()}</div>

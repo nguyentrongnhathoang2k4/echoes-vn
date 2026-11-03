@@ -1,5 +1,6 @@
 'use client';
 import React, { useEffect, useState } from 'react';
+import { MenuOption } from './MenuOption';
 
 // =====================================================================
 // MÀN KẾT LẶNG — dùng cho Ending S "Người lạ" và Ending M "Không ai ở lại".
@@ -58,23 +59,17 @@ export const QuietEnding: React.FC<QuietEndingProps> = ({ lines, title, buttonLa
       `}</style>
       <div className="w-full max-w-2xl px-6">
         <div
-          className="whitespace-pre-wrap text-cyan-200 text-[clamp(13px,1.6vw,19px)] leading-loose"
-          style={{ textShadow: '0 0 6px rgba(103,232,249,.55)' }}
+          className="whitespace-pre-wrap text-zinc-200 text-[clamp(13px,1.6vw,19px)] leading-loose"
         >
           {shown.join('\n')}
           {!done && (
-            <span className="inline-block w-[0.6em] h-[1.1em] bg-cyan-300 align-middle ml-1" style={{ animation: 'qe-blink 1s steps(1) infinite' }} />
+            <span className="inline-block w-[0.6em] h-[1.1em] bg-zinc-300 align-middle ml-1" style={{ animation: 'qe-blink 1s steps(1) infinite' }} />
           )}
         </div>
         {done && (
           <div className="mt-12 flex flex-col items-center gap-6" style={{ animation: 'qe-in 2.4s ease-out' }}>
             {title && <div className="text-zinc-400 text-xs sm:text-sm tracking-[0.4em] text-center">{title}</div>}
-            <button
-              onClick={onDone}
-              className="px-5 py-2 border border-cyan-800 text-cyan-300 hover:bg-cyan-950/60 hover:text-cyan-100 text-xs sm:text-sm tracking-[0.3em] transition-colors cursor-pointer"
-            >
-              {buttonLabel}
-            </button>
+            <MenuOption label={buttonLabel} selected onClick={onDone} />
           </div>
         )}
       </div>

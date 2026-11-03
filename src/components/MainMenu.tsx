@@ -1,6 +1,7 @@
 "use client";
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLanguage } from '../context/LanguageContext';
+import { MenuOption } from './MenuOption';
 
 
 interface MainMenuProps {
@@ -13,12 +14,12 @@ interface MainMenuProps {
   hasSaveData: boolean;
 }
 
+type MenuId = 'new_game' | 'continue_game' | 'achievements' | 'settings' | 'shutdown';
+
 interface MenuItem {
-  id: string;
+  id: MenuId;
   label: string;
-  desc: string;
   disabled?: boolean;
-  action: () => void;
 }
 
 export const MainMenu: React.FC<MainMenuProps> = ({
@@ -34,6 +35,14 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [shutdownTriggered, setShutdownTriggered] = useState<boolean>(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  // Rời màn / đóng khung thì đóng hẳn AudioContext riêng: không còn âm nào ngân sang cảnh sau
+  useEffect(() => {
+    const ctxRef = audioCtxRef;
+    return () => {
+      void ctxRef.current?.close().catch(() => {});
+      ctxRef.current = null;
+    };
+  }, []);
 
   // Khởi tạo & khôi phục AudioContext an toàn
   const getAudioContext = useCallback(() => {
@@ -149,59 +158,44 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     }
   }, [getAudioContext]);
 
-  // Danh sách nút menu
-  const menuItems: MenuItem[] = [
-    {
-      id: 'new_game',
-      label: t.menu.newGame,
-      desc: t.menu.newGameDesc,
-      action: () => {
+  // Danh sách nút menu (chỉ dữ liệu hiển thị; hành động nằm ở activate)
+  const menuItems = useMemo<MenuItem[]>(() => [
+    { id: 'new_game', label: t.menu.newGame },
+    { id: 'continue_game', label: t.menu.continue, disabled: !hasSaveData },
+    { id: 'achievements', label: t.menu.achievements(unlockedEndingsCount, totalEndingsCount) },
+    { id: 'settings', label: t.menu.settings },
+    { id: 'shutdown', label: t.menu.shutdown },
+  ], [t, hasSaveData, unlockedEndingsCount, totalEndingsCount]);
+
+  // Chạy lựa chọn: mục bị khoá (chưa có điểm lưu) chỉ kêu tiếng từ chối
+  const activate = useCallback((item: MenuItem | undefined) => {
+    if (!item || item.disabled) {
+      playTerminalDeny();
+      return;
+    }
+    switch (item.id) {
+      case 'new_game':
         playTerminalConfirm();
         onStartNewGame();
-      },
-    },
-    {
-      id: 'continue_game',
-      label: t.menu.continue,
-      desc: hasSaveData ? t.menu.continueDesc : t.menu.continueNoSave,
-      disabled: !hasSaveData,
-      action: () => {
-        if (!hasSaveData) {
-          playTerminalDeny();
-          return;
-        }
+        break;
+      case 'continue_game':
         playTerminalConfirm();
         onContinueGame();
-      },
-    },
-    {
-      id: 'achievements',
-      label: t.menu.achievements(unlockedEndingsCount, totalEndingsCount),
-      desc: t.menu.achievementsDesc,
-      action: () => {
+        break;
+      case 'achievements':
         playTerminalConfirm();
         onOpenAchievements?.();
-      },
-    },
-    {
-      id: 'settings',
-      label: t.menu.settings,
-      desc: t.menu.settingsDesc,
-      action: () => {
+        break;
+      case 'settings':
         playTerminalConfirm();
         onOpenSettings();
-      },
-    },
-    {
-      id: 'shutdown',
-      label: t.menu.shutdown,
-      desc: t.menu.shutdownDesc,
-      action: () => {
+        break;
+      case 'shutdown':
         playTerminalDeny();
         setShutdownTriggered(true);
-      },
-    },
-  ];
+        break;
+    }
+  }, [onStartNewGame, onContinueGame, onOpenAchievements, onOpenSettings, playTerminalConfirm, playTerminalDeny]);
 
   // Xử lý phím điều hướng W/S, Mũi tên và Enter
   useEffect(() => {
@@ -220,152 +214,61 @@ export const MainMenu: React.FC<MainMenuProps> = ({
         setSelectedIndex((prev) => (prev < menuItems.length - 1 ? prev + 1 : 0));
       } else if (key === 'enter' || key === ' ') {
         e.preventDefault();
-        const currentItem = menuItems[selectedIndex];
-        if (currentItem && !currentItem.disabled) {
-          currentItem.action();
-        } else {
-          playTerminalDeny();
-        }
+        activate(menuItems[selectedIndex]);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIndex, menuItems, shutdownTriggered, playTerminalBlip, playTerminalDeny]);
+  }, [selectedIndex, menuItems, shutdownTriggered, playTerminalBlip, activate]);
 
   return (
-    <div className="relative w-full h-full flex flex-col justify-between items-center p-6 sm:p-10 select-none font-mono text-zinc-300 overflow-hidden bg-black/95">
-      {/* Background Grid Pattern Cyberpunk */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#0c0c16_1px,transparent_1px),linear-gradient(to_bottom,#0c0c16_1px,transparent_1px)] bg-[size:32px_32px] opacity-40 pointer-events-none" />
+    <div className="relative w-full h-full flex flex-col items-center justify-center p-6 select-none font-mono text-zinc-300 overflow-hidden bg-black">
+      {/* Viền tối quanh màn hình, không lưới, không khung */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse at center, rgba(24,24,27,0.35) 0%, transparent 45%, rgba(0,0,0,0.9) 100%)' }}
+      />
 
-      {/* Header Info */}
-      <div className="z-10 w-full max-w-4xl flex justify-between items-center text-[10px] sm:text-xs text-zinc-500 border-b border-zinc-800/80 pb-2">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
-          <span>{t.menu.roomTag}</span>
-        </div>
-        <div className="tracking-widest">
-          {t.menu.statusLabel} <span className="text-red-400 font-bold">{t.menu.statusValue}</span>
-        </div>
-      </div>
+      <div className="z-10 flex flex-col items-center w-full max-w-md">
+        {/* Tiêu đề */}
+        <h1 className="text-5xl sm:text-7xl font-bold tracking-[0.3em] pl-[0.3em] text-zinc-100">
+          ECHOES
+        </h1>
+        <div className="mt-3 text-xs sm:text-sm tracking-[0.5em] pl-[0.5em] text-red-400/80">03:14 AM</div>
 
-      {/* Main Logo & Menu Section (Tăng max-w-2xl để thoáng đãng hơn) */}
-      <div className="z-10 flex flex-col items-center my-auto w-full max-w-2xl px-2">
-        {/* LOGO: ECHOES */}
-        <div className="relative mb-4 text-center">
-          <h1
-            className="text-5xl sm:text-7xl font-extrabold tracking-[0.25em] text-white font-mono drop-shadow-[0_0_25px_rgba(255,255,255,0.4)]"
-            style={{
-              textShadow:
-                '-3px -1px 0px rgba(255, 0, 80, 0.85), 3px 1px 0px rgba(0, 240, 255, 0.85)',
-            }}
-          >
-            ECHOES
-          </h1>
-
-          {/* Sub-logo: PROJECT 03:14 AM */}
-          <div className="mt-2 text-xs sm:text-sm tracking-[0.35em] text-cyan-300/90 font-bold flex items-center justify-center gap-1">
-            <span>PROJECT 03</span>
-            <span className="text-pink-500 animate-ping inline-block mx-0.5">:</span>
-            <span>14 AM</span>
-          </div>
-
-          <div className="mt-1 text-[10px] tracking-widest text-zinc-500 uppercase">
-            {t.menu.tagline}
-          </div>
-        </div>
-
-        {/* Menu Items (CLI Terminal List) */}
-        <div className="w-full mt-6 sm:mt-10 space-y-3">
+        {/* Danh sách lựa chọn: chữ căn giữa, mục đang chọn sáng lên kèm vạch đỏ mảnh bên dưới */}
+        <nav className="mt-14 sm:mt-16 flex flex-col items-center gap-2">
           {menuItems.map((item, idx) => {
             const isSelected = selectedIndex === idx;
             return (
-              <div
+              <MenuOption
                 key={item.id}
-                onMouseEnter={() => {
+                label={item.label}
+                selected={isSelected}
+                disabled={item.disabled}
+                onHover={() => {
                   if (selectedIndex !== idx) {
                     playTerminalBlip();
                     setSelectedIndex(idx);
                   }
                 }}
-                onClick={() => {
-                  if (!item.disabled) {
-                    item.action();
-                  } else {
-                    playTerminalDeny();
-                  }
-                }}
-                className={`relative px-4 py-3 sm:py-3.5 border transition-all duration-150 cursor-pointer rounded flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-                  item.disabled
-                    ? 'border-zinc-800/60 bg-zinc-950/40 text-zinc-600 cursor-not-allowed opacity-50'
-                    : isSelected
-                    ? 'border-cyan-400 bg-cyan-950/40 text-cyan-200 shadow-[0_0_20px_rgba(6,182,212,0.35)] translate-x-1.5'
-                    : 'border-zinc-800/90 bg-zinc-950/70 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
-                }`}
-              >
-                {/* Tên Nút - Khóa min-w-[270px] và whitespace-nowrap chống rớt dấu ngoặc ']' */}
-                <div className="flex items-center gap-3 min-w-[270px] shrink-0 whitespace-nowrap">
-                  <span
-                    className={`text-xs sm:text-sm font-bold tracking-wider transition-opacity ${
-                      isSelected && !item.disabled ? 'text-cyan-400 opacity-100' : 'opacity-0'
-                    }`}
-                  >
-                    ▶
-                  </span>
-                  <span
-                    className={`text-xs sm:text-sm font-bold tracking-widest whitespace-nowrap ${
-                      isSelected && !item.disabled ? 'text-white' : ''
-                    }`}
-                  >
-                    {item.label}
-                  </span>
-                </div>
-
-                {/* Mô tả phụ bên phải */}
-                <span className="text-[10px] sm:text-xs font-sans opacity-70 sm:text-right leading-tight">
-                  {item.desc}
-                </span>
-
-                {/* Vạch sáng bên mép khi active */}
-                {isSelected && !item.disabled && (
-                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-400 shadow-[0_0_8px_#06b6d4]" />
-                )}
-              </div>
+                onClick={() => activate(item)}
+              />
             );
           })}
-        </div>
+        </nav>
 
-        {/* Hotkey hint */}
-        <div className="mt-8 text-[11px] text-zinc-500 tracking-wider flex items-center gap-3">
-          <span className="bg-zinc-800 px-1.5 py-0.5 rounded text-[10px] text-zinc-300 font-bold">[W / S / ↑ / ↓]</span>
-          <span>{t.menu.hintSelect}</span>
-          <span className="text-zinc-700">·</span>
-          <span className="bg-zinc-800 px-1.5 py-0.5 rounded text-[10px] text-zinc-300 font-bold">[ENTER]</span>
-          <span>{t.menu.hintConfirm}</span>
-        </div>
-      </div>
-
-      {/* Footer Info */}
-      <div className="z-10 w-full max-w-4xl flex flex-col sm:flex-row justify-between items-center text-[10px] sm:text-[11px] text-zinc-500 border-t border-zinc-800/80 pt-3 gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-zinc-400 font-semibold">BUILD:</span>
-          <span className="text-cyan-400 font-mono">v0.3.14-ALPHA</span>
-          <span className="text-zinc-700">|</span>
-          <span className="text-zinc-400 font-semibold">{t.menu.statusLabel}</span>
-          <span className="text-red-400 font-bold animate-pulse">{t.menu.footerStatus}</span>
-        </div>
-        <div className="text-zinc-600 text-center sm:text-right">
-          PSYCHOLOGICAL HORROR VISUAL NOVEL &copy; 2026
+        {/* Gợi ý phím */}
+        <div className="mt-14 text-[10px] sm:text-[11px] text-zinc-600 tracking-widest">
+          W / S {t.menu.hintSelect} <span className="mx-2 text-zinc-700">·</span> ENTER {t.menu.hintConfirm}
         </div>
       </div>
 
       {/* Shutdown Modal Effect khi người dùng bấm Thoát trò chơi */}
       {shutdownTriggered && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-6 text-center animate-fade-in font-mono">
-          <div className="w-16 h-16 border-2 border-red-500 rounded-full flex items-center justify-center text-red-500 text-2xl mb-4 animate-ping">
-            !
-          </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-red-400 tracking-widest uppercase mb-2">
+          <h2 className="text-xl sm:text-2xl text-zinc-100 tracking-[0.3em] uppercase mb-3">
             {t.menu.goodbyeTitle}
           </h2>
           <p className="text-xs sm:text-sm text-zinc-400 max-w-md leading-relaxed mb-6">
@@ -374,13 +277,13 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           <div className="flex gap-4">
             <button
               onClick={() => window.location.reload()}
-              className="px-5 py-2 border border-red-500 bg-red-950/60 hover:bg-red-900 text-red-200 text-xs font-bold rounded tracking-wider transition-all"
+              className="px-4 py-2 text-xs tracking-[0.25em] uppercase text-zinc-300 hover:text-white transition-colors"
             >
               {t.menu.restart}
             </button>
             <button
               onClick={() => setShutdownTriggered(false)}
-              className="px-5 py-2 border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold rounded tracking-wider transition-all"
+              className="px-4 py-2 text-xs tracking-[0.25em] uppercase text-zinc-500 hover:text-white transition-colors"
             >
               {t.menu.cancel}
             </button>

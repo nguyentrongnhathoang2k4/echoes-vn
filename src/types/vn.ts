@@ -63,4 +63,11 @@ export interface StoryNode {
   timeoutNodeId?: string;
   anEmotion?: AnEmotion;
   mienEmotion?: MienEmotion;
+  /**
+   * Ảnh minh hoạ sự kiện hiện giữa màn hình khi đọc node này:
+   * 'cg:<khoá>' = tranh pixel vẽ sẵn (EventIllustration.tsx), hoặc đường dẫn file trong public/ (vd '/assets/cg/ring.png')
+   */
+  illustration?: string;
+  /** Khung cho ảnh dạng file: 'pixel' (mặc định) | 'polaroid' | 'viewer' (cửa sổ xem ảnh máy tính) */
+  illustrationFrame?: 'pixel' | 'polaroid' | 'viewer';
 }

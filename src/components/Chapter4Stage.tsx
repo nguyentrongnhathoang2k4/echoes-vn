@@ -2,11 +2,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { getStory, getBaseStory } from '../data/storyLoader';
 import { useLanguage, getStoredLanguage } from '../context/LanguageContext';
-import type { Dictionary } from '../locales/vi';
-import { stripBeats } from './VNStage';
+import { stripBeats, lockReason } from './VNStage';
 import { StoryNode, Choice } from '../types/vn';
 import { audioEngine, DEAD_SILENCE_EVENT, DeadSilenceDetail } from '../services/audioEngine';
 import { tx } from '../locales/tx';
+import { SubtitleFrame } from './StageHud';
 
 // =====================================================================
 // MÀN 4 — HƯ VÔ KỸ THUẬT SỐ (THE TERMINAL VOID)
@@ -33,7 +33,7 @@ const LOG_FILES = [
 const MOM_NODE = 'ch4_log_mom';
 const MOM_FLAG = 'flag_heard_mom';
 const MOM_INDEX = LOG_FILES.length;
-const MOM_FILE = '[⭐ BẢN NHÁP] TIN_NHAN_ME.SMS';
+const MOM_FILE = '[BẢN NHÁP] TIN_NHAN_ME.SMS';
 const CALM_TOAST_MS = 3800;
 
 // An trả lời Miên qua micro (lựa chọn của ch4_video_call) → Miên đáp lại trên webcam → bảng quyết định
@@ -41,15 +41,18 @@ type CamMood = 'sob' | 'cover' | 'shake';
 const REPLY_MOOD: Record<string, CamMood> = { ch4_call_gentle: 'cover', ch4_call_grief: 'shake' };
 const CAM_RESYNC_MS = 700;
 
-// Rời tab quá lâu khi Miên đang gọi → Ending M "Không ai ở lại"
+// Rời tab quá lâu (hoặc buông tay quá lâu) trong Màn 4 → Ending M "Không ai ở lại"
 const ABANDON_NODE = 'end_game_abandoned';
 const ABANDON_MS = 20000;
+const IDLE_ABANDON_MS = 90000;
 
 // Giờ máy chủ 03:27:45 → cắt điện lúc 03:30:00 (Log #03)
 const COUNTDOWN_START = 135;
 const SERVER_CUT_SECONDS = 3 * 3600 + 30 * 60;
 // Chưa tới bảng lựa chọn thì đồng hồ không trôi xuống dưới mốc này (người đọc chậm vẫn kịp quyết định)
 const DECISION_GRACE = 30;
+// Lúc đồng hồ bị giữ ở mốc trên: cứ mỗi khoảng này lại rè một nhịp "kim đồng hồ nghẽn"
+const STALL_SOUND_MS = 2200;
 const TYPE_INTERVAL_MS = 18;
 const TYPE_CHARS_PER_TICK = 2;
 const ENDING_DELAY_MS = 2600;
@@ -136,13 +139,6 @@ const fmtClock = (total: number) => {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 };
 const fmtMMSS = (sec: number) => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
-
-/** Nhãn khoá lựa chọn theo ngưỡng Sanity */
-const lockLabel = (c: Choice, t: Dictionary) =>
-  c.minSanity !== undefined && c.maxSanity !== undefined ? `🔒 ${t.vn.lockRange(c.minSanity, c.maxSanity)}`
-  : c.minSanity !== undefined ? `🔒 ${t.vn.lockMin(c.minSanity)}`
-  : c.maxSanity !== undefined ? `🔒 ${t.vn.lockMax(c.maxSanity)}`
-  : '';
 
 /** Tách "[TIÊU ĐỀ] • mô tả" thành hai phần */
 const splitChoice = (text: string) => {
@@ -409,13 +405,14 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
   const [openedFirst, setOpenedFirst] = useState(false);
   const [ending, setEnding] = useState<EndingKind | null>(null);
   const [remaining, setRemaining] = useState(COUNTDOWN_START);
+  // Đồng hồ đang bị giữ ở DECISION_GRACE chờ người chơi đọc xong (ý thức đình trệ có chủ đích)
+  const [timeFrozen, setTimeFrozen] = useState(false);
   const [momRead, setMomRead] = useState(false);
   const [calmToast, setCalmToast] = useState<number | null>(null);
   const [typed, setTyped] = useState({ key: '', text: '', done: false });
   // Lời An nói qua micro (null = chưa trả lời) + node phản ứng của Miên
   const [reply, setReply] = useState<{ node: string; line: string } | null>(null);
   const camMoodRef = useRef<{ mood: CamMood; since: number }>({ mood: 'sob', since: -10000 });
-  const miePanelRef = useRef<HTMLDivElement>(null);
   // Bảng quyết định: lựa chọn đang nhắm (bàn phím) + trạng thái giữ nút (chỉ sống trong ref, không re-render)
   const [focusPick, setFocusPick] = useState<number | null>(null);
   const focusRef = useRef(0);
@@ -920,6 +917,48 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
     }
   }, [getAudio]);
 
+  /** Thời gian ngưng đọng: tiếng rè sóng não + kim giây giật cục rồi kẹt lại */
+  const playStall = useCallback(() => {
+    const a = getAudio();
+    if (!a?.ctx || !a.master || !a.noiseBuf) return;
+    const { ctx, master } = a;
+    const t = ctx.currentTime;
+    // Rè sóng não: nhiễu băng hẹp bị điều biến chậm, quét từ cao xuống trầm
+    const src = ctx.createBufferSource();
+    src.buffer = a.noiseBuf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 9;
+    bp.frequency.setValueAtTime(1400, t);
+    bp.frequency.exponentialRampToValueAtTime(320, t + 0.9);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.09, t + 0.08);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1);
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 7;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 0.05;
+    lfo.connect(lfoGain).connect(g.gain);
+    src.connect(bp).connect(g).connect(master);
+    src.start(t, Math.random());
+    src.stop(t + 1.05);
+    lfo.start(t);
+    lfo.stop(t + 1.05);
+    // Kim giây cố nhích hai lần rồi kẹt: hai tiếng tách khô, tiếng sau trầm và nghẹn
+    [0, 0.16].forEach((dt, i) => {
+      const o = ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.value = i === 0 ? 1150 : 420;
+      const cg = ctx.createGain();
+      cg.gain.setValueAtTime(i === 0 ? 0.04 : 0.06, t + dt);
+      cg.gain.exponentialRampToValueAtTime(0.001, t + dt + (i === 0 ? 0.04 : 0.12));
+      o.connect(cg).connect(master);
+      o.start(t + dt);
+      o.stop(t + dt + 0.13);
+    });
+  }, [getAudio]);
+
   /** Hiệu ứng âm thanh riêng cho từng kết cục */
   const playEndingSound = useCallback((kind: EndingKind) => {
     const a = getAudio();
@@ -1006,10 +1045,10 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
     }
   }, [getAudio]);
 
-  const soundRef = useRef({ playKey, playTick, playSiren, playBang, playWindChime, playRelay, playHeart, playBreaker });
+  const soundRef = useRef({ playKey, playTick, playSiren, playBang, playWindChime, playRelay, playHeart, playBreaker, playStall });
   useEffect(() => {
-    soundRef.current = { playKey, playTick, playSiren, playBang, playWindChime, playRelay, playHeart, playBreaker };
-  }, [playKey, playTick, playSiren, playBang, playWindChime, playRelay, playHeart, playBreaker]);
+    soundRef.current = { playKey, playTick, playSiren, playBang, playWindChime, playRelay, playHeart, playBreaker, playStall };
+  }, [playKey, playTick, playSiren, playBang, playWindChime, playRelay, playHeart, playBreaker, playStall]);
 
   // Bật tiếng quạt khi vào màn, tắt hẳn AudioContext khi rời màn
   useEffect(() => {
@@ -1329,17 +1368,32 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
     let endAt = performance.now() + COUNTDOWN_START * 1000;
     let last = performance.now();
     let lastSec = COUNTDOWN_START;
+    let frozen = false;
+    let nextStallAt = 0;
+    const setFrozen = (v: boolean) => {
+      if (frozen === v) return;
+      frozen = v;
+      setTimeFrozen(v);
+    };
     const id = window.setInterval(() => {
       const now = performance.now();
       const dt = now - last;
       last = now;
       const ph = phaseRef.current;
-      if (ph === 'ending') return;
+      if (ph === 'ending') { setFrozen(false); return; }
       if (pausedRef.current || document.hidden) { endAt += dt; return; }
       let rem = (endAt - now) / 1000;
       if (ph !== 'decide' && rem < DECISION_GRACE) {
         endAt = now + DECISION_GRACE * 1000;
         rem = DECISION_GRACE;
+        // Báo cho người chơi biết đồng hồ đứng là có chủ đích: chữ đỏ nhấp nháy + tiếng kim kẹt
+        setFrozen(true);
+        if (now >= nextStallAt) {
+          nextStallAt = now + STALL_SOUND_MS;
+          soundRef.current.playStall();
+        }
+      } else if (ph === 'decide') {
+        setFrozen(false);
       }
       const sec = Math.max(0, Math.ceil(rem));
       if (sec !== lastSec) {
@@ -1354,7 +1408,8 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
   }, []);
 
   // ===================================================================
-  // ENDING M — "KHÔNG AI Ở LẠI": rời tab quá 20 giây khi Miên đang gọi / lúc quyết định.
+  // ENDING M — "KHÔNG AI Ở LẠI": rời tab quá 20 giây ở bất kỳ lúc nào của Màn 4
+  // (đọc log, hồi tưởng, Miên gọi, quyết định), hoặc buông tay quá 90 giây.
   // Đồng hồ đã dừng khi tab ẩn, nên giờ rời đi chính là giờ trên màn hình lúc đó.
   // Hết 20 giây thì tiếng quạt tắt ngay cả khi tab còn ẩn; kết cục chỉ hiện khi quay lại.
   // ===================================================================
@@ -1367,7 +1422,7 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
     const onVisibility = () => {
       const ph = phaseRef.current;
       if (document.hidden) {
-        if (endedRef.current || pausedRef.current || (ph !== 'call' && ph !== 'decide')) return;
+        if (endedRef.current || pausedRef.current || ph === 'ending') return;
         leftAt = Date.now();
         leftClock = fmtClock(SERVER_CUT_SECONDS - remainingRef.current);
         silenceTimer = window.setTimeout(() => {
@@ -1389,6 +1444,30 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
       if (silenceTimer) window.clearTimeout(silenceTimer);
+    };
+  }, [finishTyping]);
+
+  // Buông tay: không chạm chuột / phím quá 90 giây khi tab vẫn mở → An bị bỏ lại một mình.
+  // Lúc tạm dừng hoặc tab ẩn không tính là buông tay (tab ẩn đã có luật 20 giây riêng ở trên).
+  useEffect(() => {
+    let lastActive = Date.now();
+    const onActivity = () => { lastActive = Date.now(); };
+    const events = ['mousemove', 'mousedown', 'keydown', 'wheel', 'touchstart'] as const;
+    events.forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      if (endedRef.current || pausedRef.current || document.hidden || phaseRef.current === 'ending') {
+        lastActive = now;
+        return;
+      }
+      if (now - lastActive < IDLE_ABANDON_MS) return;
+      endedRef.current = true;
+      finishTyping();
+      triggerRef.current(ABANDON_NODE, fmtClock(SERVER_CUT_SECONDS - remainingRef.current));
+    }, 1000);
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, onActivity));
+      window.clearInterval(id);
     };
   }, [finishTyping]);
 
@@ -1503,13 +1582,6 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
   const shownText = (key: string) => (typed.key === key ? typed.text : '');
   const doneFor = (key: string) => typed.key === key && typed.done;
 
-  // Khung lời Miên luôn cuộn theo dòng đang gõ
-  useEffect(() => {
-    const el = miePanelRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [typed.text, reply]);
-
-  const serverClock = fmtClock(SERVER_CUT_SECONDS - remaining);
   const urgent = remaining <= 30;
   const camLarge = phase === 'call' || phase === 'decide' || phase === 'ending';
   const termKey = phase === 'files' ? (viewing === null ? 'boot' : `log${viewing}`) : phase === 'reflect' ? 'reflect' : phase === 'call' ? 'call' : 'decide';
@@ -1528,8 +1600,6 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
       ? readCount < LOG_FILES.length ? tx('Mở tệp [{0}]', readCount + 1)
         : momRead ? tx('Đóng thư mục') : tx('Mở tệp [{0}]', MOM_INDEX + 1)
       : tx('Tiếp tục');
-  // Nhiệt độ CPU leo dần theo đồng hồ, chạm ngưỡng thì báo quá nhiệt
-  const cpuTemp = 62 + Math.round(Math.min(1, (COUNTDOWN_START - remaining) / (COUNTDOWN_START - OVERHEAT_SEC)) * 17);
   const glitching = glitchSeed > 0 && overheat && phase !== 'ending';
   const termText = phase === 'call'
     ? tx('> ĐANG NHẬN TÍN HIỆU HÌNH ẢNH TỪ THẾ GIỚI THỰC...\n> NGUỒN: CAM_02 • PHÒNG MÁY 312\n> ĐỘ TRỄ: 0.314s')
@@ -1564,37 +1634,46 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
       >
         <canvas ref={voidCanvasRef} className="absolute inset-0 w-full h-full" style={{ imageRendering: 'pixelated' }} />
 
-        {/* Thanh tiêu đề hệ thống */}
-        <div className="absolute left-[4%] top-[4%] text-[clamp(9px,0.95vw,13px)] text-amber-300/80 tracking-widest">
-          {tx('AURA OS v3.14 // NODE-314 • PHÒNG MÁY 312 — VIỆN NGHIÊN CỨU')}
-          <div className="text-zinc-500 mt-0.5">
-            SANITY: <span className={sanity <= 35 ? 'text-red-400' : 'text-cyan-300'}>{Math.round(sanity)}%</span>
-            <span className="ml-5">CPU: </span>
-            {overheat ? (
-              <span className="text-red-500 font-bold" style={{ animation: 'c4-blink .5s steps(1) infinite', textShadow: '0 0 8px rgba(239,68,68,.8)' }}>91°C - OVERHEAT</span>
-            ) : (
-              <span className={cpuTemp >= 75 ? 'text-amber-300' : 'text-cyan-300'}>{cpuTemp}°C</span>
-            )}
-          </div>
+        {/* Góc trên trái: đồng hồ + một dòng đếm ngược kiểu BIOS (thay cho thanh bar đỏ dày ở đáy) */}
+        <div className="absolute left-[4%] top-[4%] text-[clamp(10px,1vw,14px)] tracking-widest whitespace-nowrap">
+          <span className="text-zinc-200 font-bold">
+            03<span style={{ animation: 'c4-blink 1s steps(1) infinite' }}>:</span>14 AM
+          </span>
+          <span className="mx-3 text-zinc-600">•</span>
+          {timeFrozen ? (
+            // Đồng hồ bị giữ ở mốc ân hạn trong lúc người chơi còn đọc: báo rõ đây là ý thức đình trệ, không phải treo
+            <span className="text-red-500 font-bold" style={{ animation: 'c4-blink 0.9s steps(2, start) infinite' }}>
+              {tx('[THỜI GIAN NGƯNG ĐỌNG: {0}]', fmtMMSS(remaining))}
+            </span>
+          ) : (
+            <span className={urgent ? 'text-red-400 font-bold animate-pulse' : 'text-red-300/80'}>
+              {tx('NGẮT ĐIỆN VĨNH VIỄN TRONG: [{0}]', fmtMMSS(remaining))}
+            </span>
+          )}
+          {overheat && (
+            <span className="ml-3 text-red-500 font-bold" style={{ animation: 'c4-blink .5s steps(1) infinite' }}>
+              {tx('• CPU QUÁ NHIỆT')}
+            </span>
+          )}
         </div>
 
         {/* ===== TERMINAL CRT CHÍNH ===== */}
         <div
-          className="absolute left-[4%] top-[13%] bottom-[17%] w-[58%] flex flex-col bg-[#020b10]/90 border border-cyan-800/70 rounded-md shadow-[0_0_40px_rgba(34,211,238,0.15),inset_0_0_30px_rgba(34,211,238,0.06)]"
+          className="absolute left-[4%] top-[11%] bottom-[22%] w-[60%] flex flex-col bg-black/45"
           onClick={() => { if (phase !== 'decide' && phase !== 'ending') advance(); }}
         >
           {/* Đang đọc tin nhắn mẹ: thanh tiêu đề chuyển sang vàng hổ phách dịu */}
-          <div className={`flex justify-between items-center px-3 py-1.5 border-b text-[clamp(9px,0.9vw,12px)] transition-colors duration-700 ${
-            phase === 'files' && viewing === MOM_INDEX ? 'border-amber-700/70 bg-amber-950/30 text-amber-300' : 'border-cyan-900/70 text-cyan-500/90'
+          <div className={`flex justify-between items-center px-3 py-1.5 text-[clamp(9px,0.9vw,12px)] transition-colors duration-700 ${
+            phase === 'files' && viewing === MOM_INDEX ? 'text-amber-300/80' : 'text-cyan-600'
           }`}>
             <span>{phase === 'files' && viewing === MOM_INDEX ? 'C:\\USERS\\AN\\DRAFTS\\>' : 'C:\\MEMORY_DUMP\\SECTOR_1705\\>'}</span>
-            <span className="text-amber-300/90 truncate ml-3">{termTitle}</span>
+            <span className="text-zinc-500 truncate ml-3">{termTitle}</span>
           </div>
 
           <div className="flex flex-1 min-h-0">
-            {/* Danh sách tệp (mở khoá tuần tự) */}
+            {/* Danh sách tệp (mở khoá tuần tự): dòng văn bản thuần "> [1] TÊN_TỆP", tệp chưa mở ghi [KHOÁ] */}
             {phase === 'files' && (
-              <div className="w-[36%] border-r border-cyan-900/60 p-2 space-y-1.5 text-[clamp(9px,0.85vw,12px)]">
+              <div className="w-[38%] px-3 py-2 space-y-1 text-[clamp(9px,0.85vw,12px)]">
                 {LOG_FILES.map((f, i) => {
                   const unlocked = i <= readCount;
                   const read = i < readCount;
@@ -1603,29 +1682,28 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
                       key={f.file}
                       onClick={(e) => { e.stopPropagation(); openLog(i); }}
                       disabled={!unlocked}
-                      className={`w-full text-left px-2 py-1.5 rounded border transition-colors ${
+                      className={`block w-full text-left truncate transition-colors ${
                         viewing === i
-                          ? 'border-cyan-400 bg-cyan-950/60 text-cyan-100'
+                          ? 'text-cyan-100 bg-cyan-950/40'
                           : unlocked
-                          ? 'border-cyan-900 hover:border-cyan-500 text-cyan-300 cursor-pointer'
-                          : 'border-zinc-800 text-zinc-600 cursor-not-allowed'
+                          ? `${read ? 'text-cyan-700' : 'text-cyan-300'} hover:text-cyan-100 cursor-pointer`
+                          : 'text-zinc-600 cursor-not-allowed'
                       }`}
                     >
-                      <div className="font-bold truncate">[{i + 1}] {f.file}</div>
-                      <div className="opacity-70 truncate">{unlocked ? tx(f.label) : tx('🔒 Đọc tệp trước để mở')}{read ? ' ✓' : ''}</div>
+                      &gt; [{i + 1}] {f.file}
+                      {!unlocked && <span className="text-zinc-700"> {tx('[KHOÁ]')}</span>}
                     </button>
                   );
                 })}
                 <button
                   onClick={(e) => { e.stopPropagation(); openMom(); }}
-                  className={`w-full text-left px-2 py-1.5 rounded border transition-colors cursor-pointer shadow-[0_0_14px_rgba(245,158,11,0.25)] ${
+                  className={`block w-full text-left truncate transition-colors cursor-pointer ${
                     viewing === MOM_INDEX
-                      ? 'border-amber-300 bg-amber-950/60 text-amber-100'
-                      : `border-amber-500/80 text-amber-300 bg-amber-950/30 hover:border-amber-300 ${momRead ? '' : 'animate-pulse'}`
+                      ? 'text-amber-100 bg-amber-950/40'
+                      : momRead ? 'text-amber-700 hover:text-amber-200' : 'text-amber-300 hover:text-amber-100 animate-pulse'
                   }`}
                 >
-                  <div className="font-bold truncate">[{MOM_INDEX + 1}] {tx(MOM_FILE)}</div>
-                  <div className="opacity-70 truncate">{tx('Người nhận: Mẹ')}{momRead ? tx(' • Đã gửi ✓') : ''}</div>
+                  &gt; [{MOM_INDEX + 1}] {tx(MOM_FILE)}
                 </button>
               </div>
             )}
@@ -1655,8 +1733,8 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
                           <button
                             key={c.nextNodeId}
                             onClick={(e) => { e.stopPropagation(); answer(c); }}
-                            className={`w-full text-left px-3 py-2 rounded border text-[clamp(10px,0.95vw,14px)] transition-colors cursor-pointer ${
-                              i === 0 ? 'border-cyan-400 hover:bg-cyan-950/70 text-cyan-100' : 'border-rose-400 hover:bg-rose-950/60 text-rose-100'
+                            className={`w-full text-left px-3 py-1.5 border-l-2 text-[clamp(10px,0.95vw,14px)] transition-colors cursor-pointer ${
+                              i === 0 ? 'border-cyan-400 hover:bg-cyan-950/40 text-cyan-100' : 'border-rose-400 hover:bg-rose-950/40 text-rose-100'
                             }`}
                           >
                             <div className="font-bold text-[clamp(9px,0.85vw,12px)] opacity-80">[{i + 1}] {title}</div>
@@ -1678,10 +1756,10 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
                     const kind = endingKindOf(c.nextNodeId);
                     const bar = HOLD_BAR[kind];
                     const tone =
-                      kind === 'A' ? 'border-cyan-400 hover:bg-cyan-950/70 text-cyan-100'
-                      : kind === 'B' ? 'border-red-500 hover:bg-red-950/70 text-red-200'
-                      : kind === 'S' ? 'border-violet-300 hover:bg-violet-950/70 text-violet-100'
-                      : 'border-zinc-500 hover:bg-zinc-900 text-zinc-200';
+                      kind === 'A' ? 'border-cyan-400 hover:bg-cyan-950/40 text-cyan-100'
+                      : kind === 'B' ? 'border-red-500 hover:bg-red-950/40 text-red-200'
+                      : kind === 'S' ? 'border-violet-300 hover:bg-violet-950/40 text-violet-100'
+                      : 'border-zinc-500 hover:bg-zinc-900/60 text-zinc-200';
                     return (
                       <button
                         key={`${c.nextNodeId}-${i}`}
@@ -1695,9 +1773,9 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
                         onTouchCancel={releaseHold}
                         onContextMenu={(e) => e.preventDefault()}
                         disabled={locked}
-                        className={`relative overflow-hidden w-full text-left px-3 py-2 rounded border text-[clamp(10px,0.95vw,14px)] transition-colors ${
+                        className={`relative overflow-hidden w-full text-left px-3 py-1.5 border-l-2 text-[clamp(10px,0.95vw,14px)] transition-colors ${
                           locked ? 'border-zinc-800 text-zinc-600 cursor-not-allowed' : `${tone} cursor-pointer`
-                        } ${!locked && i === focusIdx ? 'ring-1 ring-white/40' : ''}`}
+                        } ${!locked && i === focusIdx ? 'bg-white/5' : ''}`}
                       >
                         {/* Thanh giữ nút: lấp đầy từ trái qua phải, viền sáng ở mép đang chạy */}
                         <div
@@ -1706,7 +1784,7 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
                           style={{ transform: 'scaleX(0)', background: `linear-gradient(90deg, ${bar.fill} 0%, ${bar.fill} 96%, ${bar.edge} 100%)` }}
                         />
                         <div className="relative font-bold">[{i + 1}] {title}</div>
-                        <div className="relative opacity-75">{locked ? lockLabel(c, dict) : sub}</div>
+                        <div className="relative opacity-75">{locked ? lockReason(c, dict) : sub}</div>
                       </button>
                     );
                   })}
@@ -1719,70 +1797,47 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
           </div>
 
           {canContinue && (
-            <div className="px-3 py-1.5 border-t border-cyan-900/60 text-right text-[clamp(9px,0.85vw,12px)] text-cyan-400" style={{ animation: 'c4-blink 1.4s steps(1) infinite' }}>
+            <div className="px-3 py-1.5 text-right text-[clamp(9px,0.85vw,12px)] text-cyan-500" style={{ animation: 'c4-blink 1.4s steps(1) infinite' }}>
               [SPACE] {continueLabel} ▸
             </div>
           )}
         </div>
 
-        {/* ===== CỘT PHẢI: WEBCAM THẾ GIỚI THỰC + LỜI MIÊN ===== */}
-        <div className="absolute right-[4%] top-[6%] bottom-[17%] w-[32%] flex flex-col items-end gap-2">
+        {/* ===== CỘT PHẢI: WEBCAM THẾ GIỚI THỰC (không chữ đè lên hình, nhãn REC nằm dưới khung) ===== */}
+        <div className="absolute right-[4%] top-[11%] w-[30%] flex flex-col items-end gap-1.5">
           <div
-            className={`relative shrink-0 border-2 border-zinc-700 bg-black rounded-sm overflow-hidden shadow-[0_0_30px_rgba(239,68,68,0.25)] transition-all duration-700 ${camLarge ? 'w-full' : 'w-[86%]'}`}
+            className={`relative shrink-0 border border-zinc-800 bg-black overflow-hidden transition-all duration-700 ${camLarge ? 'w-full' : 'w-[78%]'}`}
             style={{ aspectRatio: '4 / 3' }}
           >
             <canvas ref={camCanvasRef} width={CAM_W} height={CAM_H} className="absolute inset-0 w-full h-full" style={{ imageRendering: 'pixelated' }} />
-            <div className="absolute top-1 left-1.5 text-[clamp(8px,0.75vw,11px)] text-red-400 font-bold">
-              <span style={{ animation: 'c4-blink 1s steps(1) infinite' }}>●</span> {tx('REC • CAM_02 • PHÒNG MÁY 312')}
-            </div>
-            <div className="absolute bottom-1 right-1.5 text-[clamp(8px,0.75vw,11px)] text-zinc-200">{serverClock}</div>
-            <div className="absolute bottom-1 left-1.5 text-[clamp(7px,0.65vw,10px)] text-zinc-400">{tx('THẾ GIỚI THỰC • TRỰC TIẾP')}</div>
           </div>
-
-          {(phase === 'call' || phase === 'decide') && (
-            <div ref={miePanelRef} className="w-full flex-1 min-h-0 overflow-y-auto bg-black/75 border border-red-900/70 rounded p-2.5">
-              <div className="text-[clamp(9px,0.85vw,12px)] text-red-300 font-bold mb-1">{getStory(lang)[CALL_NODE]?.speaker ?? 'Miên'}</div>
-              <div className={`text-[clamp(10px,0.95vw,14px)] leading-relaxed text-justify transition-colors duration-700 ${reply ? 'text-zinc-400' : 'text-zinc-100'}`}>
-                {phase === 'call' && !reply ? shownText('call') : nodeText(CALL_NODE)}
-              </div>
-              {reply && (
-                <div className="mt-2.5 pt-2 border-t border-red-900/50 animate-fade-in">
-                  <div className="text-[clamp(9px,0.85vw,12px)] text-amber-300/90 font-bold">{tx('An (qua micro)')}</div>
-                  <div className="text-[clamp(10px,0.95vw,14px)] text-amber-100/90 italic leading-relaxed text-justify mb-2">{reply.line}</div>
-                  <div className="text-[clamp(9px,0.85vw,12px)] text-red-300 font-bold">{getStory(lang)[reply.node]?.speaker ?? 'Miên'}</div>
-                  <div className="text-[clamp(10px,0.95vw,14px)] text-zinc-100 leading-relaxed text-justify">
-                    {typed.key === 'reply' ? typed.text : nodeText(reply.node)}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* ===== THANH ĐẾM NGƯỢC ===== */}
-        <div className="absolute left-[4%] right-[4%] bottom-[5%]">
-          <div className="flex justify-between text-[clamp(9px,0.95vw,13px)] mb-1">
-            <span className={urgent ? 'text-red-400 font-bold' : 'text-red-300/90'}>
-              {tx('THỜI GIAN TRƯỚC KHI CẮT ĐIỆN VĨNH VIỄN: [{0}]', fmtMMSS(remaining))}
-            </span>
-            <span className="text-zinc-400">{tx('GIỜ MÁY CHỦ:')} <span className="text-zinc-100">{serverClock}</span></span>
-          </div>
-          <div className="h-2.5 bg-red-950/60 border border-red-900 rounded-sm overflow-hidden">
-            <div
-              className={`h-full bg-gradient-to-r from-red-700 to-red-500 ${urgent ? 'animate-pulse' : ''}`}
-              style={{ width: `${(remaining / COUNTDOWN_START) * 100}%`, transition: 'width 0.3s linear' }}
-            />
+          <div className="text-[clamp(8px,0.75vw,11px)] text-zinc-500 tracking-widest">
+            <span className="text-red-500" style={{ animation: 'c4-blink 1s steps(1) infinite' }}>●</span> {tx('REC • CAM_02 • PHÒNG MÁY 312')}
           </div>
         </div>
+
+        {/* Lời Miên trong cuộc gọi: phụ đề điện ảnh sát đáy màn hình (giữ nguyên tới lúc Miên nói câu tiếp theo) */}
+        {(phase === 'call' || phase === 'decide') && (
+          <SubtitleFrame
+            className={`max-w-[72%] text-rose-100 transition-opacity duration-700 ${phase === 'decide' ? 'opacity-60' : ''}`}
+            style={{ animation: 'cine-sub-in .6s ease-out' }}
+          >
+            <p>
+              {!reply
+                ? phase === 'call' ? shownText('call') : nodeText(CALL_NODE)
+                : typed.key === 'reply' ? typed.text : nodeText(reply.node)}
+            </p>
+          </SubtitleFrame>
+        )}
 
         {/* Chớp trắng lúc cầu dao ngắt */}
         <div ref={flashRef} className="absolute inset-0 z-30 bg-white pointer-events-none" style={{ opacity: 0 }} />
 
         {/* Đọc xong bản nháp gửi mẹ: tâm trí lắng lại */}
         {calmToast !== null && (
-          <div className="absolute left-1/2 top-[13%] -translate-x-1/2 -translate-y-[130%] z-20 pointer-events-none px-4 py-1.5 rounded border border-amber-400/60 bg-amber-950/80 text-amber-200 text-[clamp(9px,0.95vw,13px)] tracking-widest whitespace-nowrap shadow-[0_0_24px_rgba(251,191,36,0.35)] animate-fade-in">
-            {tx('[TÂM TRÍ BÌNH TÂM TRỞ LẠI: +{0} SANITY]', calmToast)}
-          </div>
+          <SubtitleFrame className="text-zinc-200" style={{ animation: `cine-sub ${CALM_TOAST_MS}ms ease-out forwards` }}>
+            <p>{tx('Tâm trí bình tâm trở lại')}</p>
+          </SubtitleFrame>
         )}
 
         {/* Mành quét CRT + viền tối */}
