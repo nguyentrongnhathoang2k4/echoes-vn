@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { InventoryModal } from './InventoryModal';
 import { DesktopScreen } from './DesktopScreen';
+import { LockpickMinigame } from './minigames/LockpickMinigame';
+import { DiskRestoreMinigame } from './minigames/DiskRestoreMinigame';
 import { useUiLayer } from '../services/uiLayers';
 import { InventoryItem, CHAPTER_1_ITEMS } from '../types/inventory';
 import { ItemSprite } from './pixel/ItemSprite';
@@ -73,7 +75,8 @@ interface OverworldStageProps {
 // =====================================================================
 
 const EMPTY_IDS: string[] = [];
-const ROOM: RoomRect = { left: 70, top: 95, right: 570, bottom: 435 };
+// Phòng trọ sinh viên ~12-15m²: vùng đi lại chỉ tới x=480, phần 480-570 là nhà vệ sinh khép kín
+const ROOM: RoomRect = { left: 70, top: 95, right: 480, bottom: 435 };
 const INTERACT_RADIUS = 75;
 const HITBOX_HALF_W = 14;
 const AN_DRAW_W = 42;
@@ -85,45 +88,69 @@ const HUD_CLUE_TARGET = 5;
 
 // Vị trí các vật thể vẽ trên canvas
 const BED = { x: 70, y: 95, w: 110, h: 90 };
-const NIGHTSTAND = { x: 70, y: 200, w: 50, h: 45 };
+const NIGHTSTAND = { x: 70, y: 195, w: 45, h: 40 };
 const TEA_TABLE = { x: 80, y: 265, w: 60, h: 42 };
 const DESK = { x: 250, y: 95, w: 110, h: 55 };
 const LAMP_LIGHT = { x: 334, y: 118 };          // Tâm ánh sáng đèn bàn sợi đốt
 const CRT_LIGHT = { x: 297, y: 108 };           // Tâm ánh sáng màn hình CRT
 const CURTAIN_WINDOW = { x: 180, y: 22, w: 70, h: 56 };
-const BOOKSHELF = { x: 460, y: 52, w: 55, h: 98 }; // Kệ cao, đứng sát tường (chân ở y=150)
-const PHONE_TABLE = { x: 445, y: 155, w: 42, h: 32 };
-const MIRROR = { x: 535, y: 92, w: 34, h: 62 };
-const BOX = { x: 425, y: 305, w: 46, h: 38 };
+const BOOKSHELF = { x: 365, y: 60, w: 50, h: 90 }; // Kệ cao sát vách bàn máy tính (chân ở y=150)
+const PHONE_TABLE = { x: 420, y: 125, w: 40, h: 32 };
+const MIRROR = { x: 455, y: 165, w: 24, h: 50 };    // Gương dựa vách ngăn nhà vệ sinh
+const BOX = { x: 390, y: 290, w: 44, h: 36 };
 const DOOR = { x: 35, y: 310, w: 35, h: 75 };
-const FLOOR_FAN = { x: 541, y: 404 };
+const FLOOR_FAN = { x: 194, y: 178 };                // Tâm lồng quạt cóc, thổi vào giường
+// Nhà vệ sinh khép kín: vách ngăn dày 14px quét vôi ố vàng, bên trong nền gạch caro
+const BATH = { wallX: 480, wallW: 14, innerX: 494, innerR: 570, top: ROOM.top, bottom: ROOM.bottom };
+const BATH_DOOR = { x: 480, y: 250, w: 24, h: 90 };  // Ô cửa nhà vệ sinh (cánh cửa bung bản lề, đã tháo)
+const BATH_BUCKET = { x: 524, y: 104, w: 34, h: 22 }; // Xô nhựa đỏ + gáo dưới vòi nước
+const BATH_SINK = { x: 518, y: 50, w: 42, h: 80 };    // Vòi nước trên tường gạch (rửa mặt)
+const BATH_TOILET = { x: 516, y: 360, w: 30, h: 46 }; // Bệ xí xổm (đi vệ sinh đêm)
+const BATH_CUP = { x: 495, y: 180, w: 16, h: 22 };    // Kệ nhỏ treo vách: cốc đánh răng đôi (manh mối PIN phụ)
+// Đồ sinh hoạt sinh viên
+const WATER_JUG = { x: 446, y: 394, w: 26, h: 28 };  // Bình nước lọc 20L trên kệ sắt, góc dưới phải cạnh vách nhà vệ sinh
+const NOODLE_BOX = { x: 145, y: 285, w: 30, h: 24 }; // Thùng mì tôm cạnh bàn bệt
+const BACKPACK = { x: 361, y: 138, w: 14, h: 17 };   // Balo vải dù tựa chân kệ sách
+const DOORMAT = { x: 72, y: 335, w: 38, h: 22 };     // Thảm chùi chân nỉ trước cửa
+const WALL_CALENDAR = { x: 428, y: 40, w: 28, h: 60 }; // Lịch tháng 5 trên tường (vùng bấm kéo xuống để với tới từ sàn)
+const SPARE_CLIP = { x: 256, y: 152, w: 14, h: 10 }; // Kẹp ghim phụ văng xuống chân bàn sau khi gãy kẹp lần 3
 // Viền tối bám theo An (xanh đêm lạnh)
 const ROOM_VIGNETTE = { tint: [3, 5, 12], strength: 0.82, inner: 120, outer: 330 } as const;
 
-// Vật cản không cho đi xuyên qua (Solid Bounding Boxes) — giữ nguyên toàn bộ + thêm quạt cóc
+// Vật cản không cho đi xuyên qua (Solid Bounding Boxes) — khớp từng hàm vẽ và điểm tương tác
 const COLLIDERS: ReadonlyArray<{ x: number; y: number; w: number; h: number }> = [
-  // Tường bao quanh phòng
-  { x: 0, y: 0, w: CANVAS_WIDTH, h: 95 },       // Tường trên
-  { x: 0, y: 0, w: 70, h: CANVAS_HEIGHT },      // Tường trái
-  { x: CANVAS_WIDTH - 70, y: 0, w: 70, h: CANVAS_HEIGHT }, // Tường phải
-  { x: 0, y: CANVAS_HEIGHT - 45, w: CANVAS_WIDTH, h: 45 }, // Tường dưới
+  // Tường bao quanh phòng (tường phải thu về vách nhà vệ sinh x=480)
+  { x: 0, y: 0, w: CANVAS_WIDTH, h: 95 },                      // Tường trên
+  { x: 0, y: 0, w: 70, h: CANVAS_HEIGHT },                     // Tường trái
+  // Vách ngăn nhà vệ sinh: chừa khe cửa (BATH_DOOR) để An đi vào
+  { x: BATH.wallX, y: 0, w: BATH.wallW, h: BATH_DOOR.y },
+  { x: BATH.wallX, y: BATH_DOOR.y + BATH_DOOR.h, w: BATH.wallW, h: CANVAS_HEIGHT - BATH_DOOR.y - BATH_DOOR.h },
+  { x: BATH.innerR, y: 0, w: CANVAS_WIDTH - BATH.innerR, h: CANVAS_HEIGHT }, // Tường bao phải
+  // Xô nhựa đỏ + gáo dưới vòi nước
+  { x: BATH_BUCKET.x, y: BATH_BUCKET.y, w: BATH_BUCKET.w, h: BATH_BUCKET.h },
+  { x: 0, y: CANVAS_HEIGHT - 45, w: CANVAS_WIDTH, h: 45 },     // Tường dưới
 
+  // Giường ngủ + chiếu trúc
+  { x: BED.x, y: BED.y, w: BED.w, h: BED.h },
+  // Bàn thuốc đầu giường
+  { x: NIGHTSTAND.x, y: NIGHTSTAND.y, w: NIGHTSTAND.w, h: NIGHTSTAND.h },
+  // Bàn bệt sinh viên (bát mì, bật lửa, dao rọc giấy) + thùng mì tôm sát cạnh
+  { x: TEA_TABLE.x, y: TEA_TABLE.y, w: NOODLE_BOX.x + NOODLE_BOX.w - TEA_TABLE.x, h: 44 },
+  // Bình nước 20L góc dưới phải (va chạm cả thân bình lẫn kệ)
+  { x: WATER_JUG.x + 2, y: WATER_JUG.y - 8, w: WATER_JUG.w - 4, h: WATER_JUG.h + 8 },
   // Bàn máy tính CRT + Ghế
-  { x: 250, y: 95, w: 110, h: 55 },
-  // Giường ngủ lộn xộn góc trái
-  { x: 70, y: 95, w: 110, h: 90 },
-  // Bàn nhỏ để thuốc
-  { x: 70, y: 200, w: 50, h: 45 },
-  // Bàn bệt sinh viên (bát mì, dao rọc giấy, bật lửa)
-  { x: 80, y: 265, w: 60, h: 42 },
+  { x: DESK.x, y: DESK.y, w: DESK.w, h: DESK.h },
+  // Kệ sách sát bàn máy tính + balo tựa chân kệ
+  { x: BOOKSHELF.x, y: BOOKSHELF.y, w: BOOKSHELF.w, h: BOOKSHELF.h },
+  { x: BACKPACK.x, y: BACKPACK.y + 10, w: BACKPACK.w, h: BACKPACK.h - 10 },
+  // Bàn điện thoại
+  { x: PHONE_TABLE.x, y: PHONE_TABLE.y, w: PHONE_TABLE.w, h: PHONE_TABLE.h },
+  // Chân gương dựa vách nhà vệ sinh
+  { x: MIRROR.x, y: MIRROR.y + MIRROR.h - 10, w: MIRROR.w, h: 10 },
   // Thùng carton của Miên
-  { x: 425, y: 305, w: 46, h: 38 },
-  // Tủ sách nhỏ góc phải (để trống lối đi thoáng x: 515-570 tới gương vỡ)
-  { x: 460, y: 95, w: 55, h: 55 },
-  // Bàn nhỏ để điện thoại
-  { x: 445, y: 155, w: 42, h: 32 },
-  // Quạt cóc để sàn góc phải dưới
-  { x: 528, y: 400, w: 26, h: 20 },
+  { x: BOX.x, y: BOX.y, w: BOX.w, h: BOX.h },
+  // Quạt cóc cạnh giường (đế quạt)
+  { x: FLOOR_FAN.x - 13, y: FLOOR_FAN.y + 6, w: 26, h: 12 },
 ];
 
 // =====================================================================
@@ -156,6 +183,7 @@ interface RoomFlags {
   cutterOnTable: boolean;
   lighterOnTable: boolean;
   clipOnShelf: boolean;
+  spareClipOnFloor: boolean;
   diskUnderBed: boolean;
   hasLighter: boolean;
   drawerLooted: boolean;
@@ -208,7 +236,10 @@ const deriveFlags = (s: RoomSnapshot): RoomFlags => {
     coffeeOnDesk: !inv.includes('coffee') && !ia.includes('coffee_used'),
     cutterOnTable: !inv.includes('box_cutter'),
     lighterOnTable: !inv.includes('lighter'),
-    clipOnShelf: !inv.includes('paperclip'),
+    // Kẹp trên kệ chỉ có một chiếc: nhặt rồi (cờ 'bookshelf') thì kệ không sinh lại kẹp
+    clipOnShelf: !inv.includes('paperclip') && !ia.includes('bookshelf'),
+    // Bẻ khoá gãy kẹp lần 3 → kẹp mất, một chiếc kẹp phụ văng xuống chân bàn
+    spareClipOnFloor: ia.includes('lockpick_failed') && !inv.includes('paperclip') && !(inv.includes('disk_part_2') || diskDone),
     diskUnderBed: !(inv.includes('disk_part_1') || diskDone),
     hasLighter: inv.includes('lighter'),
     drawerLooted: inv.includes('disk_part_2') || diskDone,
@@ -223,6 +254,12 @@ const deriveFlags = (s: RoomSnapshot): RoomFlags => {
   };
 };
 
+/** Điểm tương tác chỉ tồn tại trong một số trạng thái (vd kẹp ghim phụ chỉ có sau khi gãy kẹp lần 3) */
+const isTargetPresent = (targetId: string, s: RoomSnapshot): boolean => {
+  if (targetId === 'spare_clip') return deriveFlags(s).spareClipOnFloor;
+  return true;
+};
+
 /** Kiểm tra trạng thái đã hoàn thành của từng đối tượng (logic giữ nguyên bản gốc) */
 const isTargetDoneFor = (targetId: string, s: RoomSnapshot): boolean => {
   const inv = s.inventory;
@@ -231,10 +268,11 @@ const isTargetDoneFor = (targetId: string, s: RoomSnapshot): boolean => {
   if (targetId === 'tea_table') return inv.includes('box_cutter') && inv.includes('lighter');
   if (targetId === 'coffee_mug') return inv.includes('coffee') || ia.includes('coffee_used');
   if (targetId === 'cardboard_box') return inv.includes('electrical_tape') || ia.includes('cardboard_box');
-  if (targetId === 'bookshelf') return inv.includes('paperclip');
+  if (targetId === 'bookshelf') return inv.includes('paperclip') || ia.includes('bookshelf');
   if (targetId === 'under_bed') return inv.includes('disk_part_1') || inv.includes('aura_disk') || s.insertedDisk;
   if (targetId === 'pc_drawer') return inv.includes('disk_part_2') || inv.includes('aura_disk') || s.insertedDisk;
-  if (targetId === 'pills') return ia.includes('pills');
+  // Mở được album thì lọ thuốc lại sáng (đường đi ngủ sang Màn 2)
+  if (targetId === 'pills') return ia.includes('pills') && !s.terminalUnlocked;
   return ia.includes(targetId);
 };
 
@@ -252,6 +290,12 @@ const PROMPT_LABEL: Record<string, string> = {
   mirror: 'Gương',
   window: 'Cửa sổ',
   door: 'Cửa',
+  bathroom_door: 'Nhà vệ sinh',
+  bath_sink: 'Vòi nước',
+  bath_toilet: 'Bệ xí',
+  bath_cup: 'Cốc đánh răng',
+  spare_clip: 'Kẹp ghim',
+  calendar: 'Lịch',
 };
 
 /** Nhãn [E] cho vật thể: vật đã xong thì không hiện gì (máy tính và cửa luôn còn việc để làm) */
@@ -354,38 +398,116 @@ function drawRockPoster(ctx: CanvasRenderingContext2D, x: number, y: number) {
   px(ctx, x, y + 38, 6, 8, 'rgba(74,58,43,0.9)');
 }
 
-/** Thảm sợi cũ bạc màu giữa phòng */
-function drawRug(ctx: CanvasRenderingContext2D) {
-  const x = 200;
-  const y = 220;
-  const w = 230;
-  const h = 140;
-  block(ctx, x, y, w, h, '#4a2430', '#5c2f3c', '#381a24');
-  ctx.strokeStyle = 'rgba(214,170,110,0.35)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x + 8, y + 8, w - 16, h - 16);
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x + 14, y + 14, w - 28, h - 28);
-  // Hoa văn trám giữa thảm
-  ctx.fillStyle = 'rgba(214,170,110,0.22)';
-  for (let i = 0; i < 5; i++) {
-    const cx = x + 45 + i * 35;
-    ctx.beginPath();
-    ctx.moveTo(cx, y + 50); ctx.lineTo(cx + 10, y + 70); ctx.lineTo(cx, y + 90); ctx.lineTo(cx - 10, y + 70);
-    ctx.closePath();
-    ctx.fill();
+/** Nhà vệ sinh khép kín góc phải: vách quét vôi ẩm mốc, nền gạch caro, xí xổm, xô nhựa đỏ + gáo, vòi nước rỉ */
+function drawBathroom(ctx: CanvasRenderingContext2D) {
+  const { wallX, wallW, innerX, innerR, top, bottom } = BATH;
+  const iw = innerR - innerX;
+  // Tường trong nhà vệ sinh (phía trên): ốp gạch men trắng ngả xám
+  px(ctx, innerX, 4, iw, top - 12, '#4a5552');
+  for (let ty = 8; ty < top - 8; ty += 9) px(ctx, innerX, ty, iw, 1, '#323b39');
+  for (let tx0 = innerX + 4, r = 0; tx0 < innerR; tx0 += 9, r++) px(ctx, tx0, 4, 1, top - 12, '#323b39');
+  px(ctx, innerX, top - 8, iw, 8, '#2b3331');                         // Gờ chân tường
+  // Vòi nước + vệt rỉ sét chảy dọc tường gạch
+  px(ctx, 529, 52, 8, 3, '#8a8f8c');
+  px(ctx, 532, 55, 2, 5, '#8a8f8c');
+  px(ctx, 532, 60, 2, 26, 'rgba(120,70,30,0.35)');
+  // Nền gạch caro hoa mờ trong bóng tối
+  for (let ty = top, r = 0; ty < bottom; ty += 10, r++) {
+    for (let tx0 = innerX, c = 0; tx0 < innerR; tx0 += 10, c++) {
+      px(ctx, tx0, ty, 10, 10, (r + c) % 2 === 0 ? '#2a3533' : '#1d2523');
+      px(ctx, tx0 + 4, ty + 4, 2, 2, 'rgba(120,140,135,0.18)');          // Hoa nhỏ giữa viên gạch
+    }
   }
-  // Mòn sờn & vết bẩn
-  for (let i = 0; i < 60; i++) px(ctx, x + hash(i * 3) * w, y + hash(i * 7) * h, 2, 1, 'rgba(0,0,0,0.25)');
-  ctx.fillStyle = 'rgba(30,15,10,0.35)';
+  // Vệt nước đọng + rêu ở chân vách
+  ctx.fillStyle = 'rgba(70,90,110,0.25)';
   ctx.beginPath();
-  ctx.ellipse(x + 160, y + 100, 18, 9, 0.4, 0, Math.PI * 2);
+  ctx.ellipse(528, 150, 16, 6, 0, 0, Math.PI * 2);
   ctx.fill();
-  // Tua rua hai đầu
-  for (let fx = x + 2; fx < x + w; fx += 4) {
-    px(ctx, fx, y - 3, 1, 3, '#a68a64');
-    px(ctx, fx, y + h, 1, 3, '#a68a64');
+  for (let i = 0; i < 24; i++) px(ctx, innerX + hash(i * 7) * 6, top + hash(i * 11) * (bottom - top), 2, 1, 'rgba(40,60,30,0.6)');
+  // Xô nhựa đỏ + gáo xanh dưới vòi
+  dropShadow(ctx, BATH_BUCKET.x + 9, BATH_BUCKET.y + BATH_BUCKET.h + 2, 10, 3, 0.5);
+  block(ctx, BATH_BUCKET.x, BATH_BUCKET.y, 18, 22, '#9f1239', '#be123c', '#4c0519');
+  px(ctx, 525, 104, 16, 3, '#1e3a5f');                                // Mặt nước trong xô
+  block(ctx, 543, 112, 9, 6, '#1d4ed8', '#3b82f6', '#1e3a8a');
+  px(ctx, 551, 114, 6, 2, '#1d4ed8');                                 // Cán gáo
+  // Bệ xí xổm men trắng ố + rãnh thoát nước
+  block(ctx, 516, 360, 30, 38, '#9ca3a0', '#c4cac7', '#5f6663');
+  px(ctx, 524, 368, 14, 20, '#4b5250');
+  px(ctx, 527, 380, 8, 6, '#0a0c0b');
+  px(ctx, 516, 404, 30, 2, '#111816');
+  for (let gx = 520; gx < 544; gx += 3) px(ctx, gx, 404, 1, 2, '#3a4240');
+  // Kệ nhựa nhỏ bắt vít vào vách: cốc đánh răng đôi, bàn chải xanh của An + bàn chải hồng của Miên
+  const cup = BATH_CUP;
+  px(ctx, cup.x, cup.y + 16, cup.w, 3, '#6b6f6d');
+  px(ctx, cup.x, cup.y + 16, cup.w, 1, '#9ca3a0');
+  block(ctx, cup.x + 4, cup.y + 7, 8, 9, 'rgba(220,230,228,0.75)', '#f1f5f4', '#8a9391');
+  px(ctx, cup.x + 5, cup.y, 2, 9, '#2563eb');                         // Bàn chải xanh (An), ướt
+  px(ctx, cup.x + 5, cup.y - 2, 2, 3, '#e0f2fe');
+  px(ctx, cup.x + 9, cup.y + 1, 2, 8, '#db2777');                     // Bàn chải hồng (Miên), khô cong
+  px(ctx, cup.x + 9, cup.y - 1, 3, 2, '#d6d3d1');
+  // Phủ tối: không có đèn, chỉ mờ mờ hình khối
+  px(ctx, innerX, 4, iw, bottom - 4, 'rgba(4,6,8,0.45)');
+
+  // Vách ngăn gạch quét vôi ố vàng (nhìn từ trên xuống: một dải dày 14px)
+  px(ctx, wallX, top - 8, wallW, bottom - top + 8, '#7d7462');
+  px(ctx, wallX, top - 8, 2, bottom - top + 8, '#9a907a');             // Mép vôi sáng
+  px(ctx, wallX + wallW - 2, top - 8, 2, bottom - top + 8, '#4e473a');
+  for (let i = 0; i < 30; i++) {
+    px(ctx, wallX + 2 + hash(i * 5) * (wallW - 4), top + hash(i * 9) * (bottom - top), 2, 2 + hash(i) * 4, 'rgba(60,70,40,0.45)'); // Mốc
   }
+  for (let i = 0; i < 10; i++) px(ctx, wallX + 3, top + 20 + i * 31, wallW - 6, 1, 'rgba(110,80,30,0.35)'); // Vệt ố vàng
+  // Mặt trước của tường bao phải (từ 570 trở ra) giữ màu tường bên
+  px(ctx, innerR, top - 8, 3, bottom - top + 8, DORM_PAL.sideWallEdge);
+
+  // Ô cửa nhà vệ sinh: khe đen kịt, cánh gỗ sơn xanh bạc màu mở hé vào trong
+  const d = BATH_DOOR;
+  px(ctx, d.x, d.y, wallW, d.h, '#020203');
+  px(ctx, d.x + wallW, d.y, d.w - wallW + 6, d.h, 'rgba(2,2,3,0.85)');  // Bóng tối tràn vào lòng nhà vệ sinh
+  px(ctx, d.x - 1, d.y - 3, wallW + 2, 3, '#3b2a1c');                   // Khung cửa trên
+  px(ctx, d.x - 1, d.y + d.h, wallW + 2, 3, '#3b2a1c');                 // Khung cửa dưới (bản lề)
+  // Cánh cửa bung bản lề, cô Tư đã tháo đi: chỉ còn khung gỗ sơn xanh bạc màu + hai bản lề gãy
+  px(ctx, d.x - 1, d.y - 3, 3, d.h + 6, '#3f6b66');
+  px(ctx, d.x + wallW - 2, d.y - 3, 3, d.h + 6, '#2f524e');
+  px(ctx, d.x + wallW - 3, d.y + 10, 3, 5, '#6b7280');
+  px(ctx, d.x + wallW - 3, d.y + d.h - 16, 3, 5, '#6b7280');
+  px(ctx, d.x + wallW - 1, d.y + 13, 2, 1, '#9ca3af');                  // Vít bản lề lòi ra
+}
+
+/** Thảm chùi chân nỉ cũ trước cửa: nâu xám, sờn rách mép */
+function drawDoormat(ctx: CanvasRenderingContext2D) {
+  const { x, y, w, h } = DOORMAT;
+  block(ctx, x, y, w, h, '#4a4038', '#5c5148', '#2e2823');
+  for (let i = 0; i < 26; i++) px(ctx, x + 2 + hash(i * 3) * (w - 4), y + 2 + hash(i * 7) * (h - 4), 2, 1, 'rgba(20,16,12,0.45)');
+  px(ctx, x + w - 9, y + h - 4, 7, 4, '#3a2f27');                       // Góc rách
+  for (let fx = x + 1; fx < x + w; fx += 3) px(ctx, fx, y + h, 1, 2, '#5c5148'); // Sợi nỉ tưa
+}
+
+/** Bản vẽ A3 đồ án AURA + giáo trình rơi vãi dưới chân bàn máy tính */
+function drawFloorBlueprints(ctx: CanvasRenderingContext2D) {
+  const sheets: Array<[number, number, number]> = [[236, 160, -0.18], [262, 172, 0.1], [300, 186, -0.06]];
+  sheets.forEach(([sx, sy, rot], si) => {
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(rot);
+    block(ctx, -14, -9, 28, 19, '#cfc6aa', '#e3dcc2', '#9c937a');
+    // Dòng code in ma trận điểm
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 10; c++) if (hash(si * 40 + r * 10 + c) > 0.3) px(ctx, -11 + c * 2, -6 + r * 3, 1, 1, '#5b5546');
+    // Sơ đồ mạch điện tử
+    ctx.strokeStyle = 'rgba(30,58,138,0.7)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-10, 6); ctx.lineTo(-2, 6); ctx.lineTo(-2, 2); ctx.lineTo(8, 2); ctx.lineTo(8, 7);
+    ctx.stroke();
+    px(ctx, -3, 1, 3, 3, '#1e3a8a');
+    px(ctx, 7, 6, 3, 2, '#1e3a8a');
+    px(ctx, 9, -9, 5, 4, 'rgba(140,120,80,0.6)');                       // Góc giấy quăn ố
+    ctx.restore();
+  });
+  // Giáo trình bìa xanh gập mép
+  block(ctx, 312, 166, 15, 11, '#1e40af', '#2563eb', '#172554');
+  px(ctx, 312, 166, 2, 11, '#172554');
+  px(ctx, 316, 169, 8, 1, 'rgba(255,255,255,0.45)');
+  px(ctx, 324, 175, 3, 2, '#e5e7eb');                                   // Mép giấy lòi ra
 }
 
 /** Cây treo áo gỗ: áo khoác đen của An + khăn len hồng của Miên */
@@ -416,13 +538,18 @@ function buildRoomStaticLayer(): HTMLCanvasElement {
   drawWoodFloor(ctx, ROOM.left, ROOM.top, CANVAS_WIDTH, CANVAS_HEIGHT);
   drawFloorGrime(ctx);
   drawDormWalls(ctx, ROOM, CANVAS_WIDTH, CANVAS_HEIGHT);
+  drawBathroom(ctx);
   drawWallDamage(ctx);
   drawRockPoster(ctx, 118, 22);
-  drawPoster(ctx, 392, 16, DORM_PAL.wallDorm);
-  drawCalendar(ctx, 442, 24);
-  drawRug(ctx);
+  drawPoster(ctx, 302, 18, DORM_PAL.wallDorm);
+  drawCalendar(ctx, 428, 40);
   drawCoatRack(ctx);
-  // Ổ cắm Lioa dưới chân bàn + dây điện loằng ngoằng
+  drawDoormat(ctx);
+  drawFloorBlueprints(ctx);
+  // Đồ sinh hoạt thấp, không đổi trạng thái: nướng sẵn vào lớp tĩnh (60 FPS)
+  drawNoodleBox(ctx);
+  drawBackpack(ctx);
+  // Ổ cắm Lioa dưới chân bàn + dây điện lòng thòng (một sợi bò dọc sàn tới quạt cóc)
   block(ctx, 332, 150, 18, 7, '#e7e5e4', '#fafaf9', '#a8a29e');
   px(ctx, 335, 152, 3, 2, '#1c1917');
   px(ctx, 341, 152, 3, 2, '#1c1917');
@@ -431,6 +558,7 @@ function buildRoomStaticLayer(): HTMLCanvasElement {
   ctx.beginPath();
   ctx.moveTo(336, 153); ctx.quadraticCurveTo(320, 162, 300, 150);
   ctx.moveTo(346, 153); ctx.quadraticCurveTo(356, 160, 352, 148);
+  ctx.moveTo(341, 156); ctx.quadraticCurveTo(290, 222, FLOOR_FAN.x + 6, FLOOR_FAN.y + 16);
   ctx.stroke();
   return c;
 }
@@ -600,15 +728,17 @@ function drawBed(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
     px(ctx, 115, 175, 5, 3, `rgba(251,191,36,${a})`);
     px(ctx, 116, 176, 1, 1, '#ffffff');
   }
-  // Nệm mỏng sọc
-  block(ctx, x + 4, y + 7, w - 8, h - 24, '#6f7a8f', '#8a95aa', '#4b5568');
-  for (let sx = x + 10; sx < x + w - 6; sx += 8) px(ctx, sx, y + 8, 1, h - 26, 'rgba(40,48,64,0.35)');
+  // Chiếu trúc vàng nhạt sờn trải trên nệm mỏng: nan tre ngang + dây cước buộc dọc
+  block(ctx, x + 4, y + 7, w - 8, h - 24, '#b89a5a', '#d1b574', '#7d6534');
+  for (let sy = y + 9; sy < y + h - 18; sy += 3) px(ctx, x + 5, sy, w - 10, 1, 'rgba(110,84,40,0.45)');
+  for (let sx = x + 14; sx < x + w - 6; sx += 16) px(ctx, sx, y + 8, 1, h - 26, 'rgba(70,52,24,0.55)');
+  for (let i = 0; i < 10; i++) px(ctx, x + 8 + hash(i * 13) * (w - 18), y + 10 + hash(i * 17) * (h - 30), 3, 1, 'rgba(60,44,20,0.5)'); // Nan gãy sờn
   // Gối nhàu
   block(ctx, x + 9, y + 11, 30, 18, '#e8e4da', '#fbf8f0', '#b5ae9f');
   px(ctx, x + 14, y + 18, 18, 1, '#c9c2b2');
   // Chăn len cuộn tròn (màu theo Phase / Sanity)
-  const blanket = fr.sanity <= 25 ? '#7f1d1d' : fr.phase === 3 ? '#581c87' : '#2b3952';
-  const blanketHi = fr.sanity <= 25 ? '#b91c1c' : fr.phase === 3 ? '#7e22ce' : '#3f5275';
+  const blanket = fr.sanity <= 25 ? '#7f1d1d' : fr.phase === 3 ? '#1f2530' : '#2b3952';
+  const blanketHi = fr.sanity <= 25 ? '#b91c1c' : fr.phase === 3 ? '#343b48' : '#3f5275';
   block(ctx, x + 46, y + 12, 56, 20, blanket, blanketHi, '#111827');
   for (let kx = x + 49; kx < x + 100; kx += 4) px(ctx, kx, y + 15, 2, 14, 'rgba(0,0,0,0.18)'); // Vân len đan
   px(ctx, x + 96, y + 14, 5, 16, 'rgba(255,255,255,0.12)');   // Đầu cuộn
@@ -773,12 +903,21 @@ function drawComputerDesk(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
   const sh = 28;
   const flick = Math.sin(fr.t * 31) > 0.92 ? 0.7 : 1;
   if (!f.powerOn) {
-    // Mất điện lưới: màn hình chập chờn chỉ còn con trỏ
-    px(ctx, sx, sy, sw, sh, '#0a0806');
-    if (Math.sin(fr.t * 4) > 0) px(ctx, sx + 3, sy + sh - 6, 4, 2, '#7c4a03');
-    ctx.font = '5px monospace';
-    ctx.fillStyle = 'rgba(180,110,20,0.5)';
-    ctx.fillText('NO POWER', sx + 3, sy + 8);
+    // Sụt áp (cầu chì phòng 314 cháy sém, dính hờ): CRT thiếu điện nên hình co lại, tối, cuộn dọc
+    px(ctx, sx, sy, sw, sh, '#050302');
+    const shrink = 5 + Math.round(Math.sin(fr.t * 1.7) * 1.5);
+    const ix = sx + shrink;
+    const iy = sy + shrink - 1;
+    const iw = sw - shrink * 2;
+    const ih = sh - shrink * 2 + 2;
+    const dim = Math.sin(fr.t * 23) > 0.8 ? 0.35 : 0.6;
+    ctx.fillStyle = `rgba(120,70,8,${0.35 * dim})`;
+    ctx.fillRect(ix, iy, iw, ih);
+    ctx.font = '4px monospace';
+    ctx.fillStyle = `rgba(245,170,40,${dim})`;
+    ctx.fillText('C:\\>_', ix + 2, iy + 6);
+    ctx.fillText('LOW V', ix + 2, iy + 12);
+    px(ctx, ix, iy + ((fr.t * 14) % ih), iw, 1, `rgba(255,190,80,${0.3 * dim})`); // Vạch cuộn dọc
   } else if (f.terminalUnlocked) {
     px(ctx, sx, sy, sw, sh, '#02160a');
     ctx.fillStyle = `rgba(16,185,129,${0.25 * flick})`;
@@ -802,7 +941,7 @@ function drawComputerDesk(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
   }
   for (let ly = sy; ly < sy + sh; ly += 2) px(ctx, sx, ly, sw, 1, 'rgba(0,0,0,0.28)'); // Scanline CRT
   px(ctx, sx + 2, sy + 2, 10, 1, 'rgba(255,255,255,0.18)');   // Loá kính cong
-  px(ctx, mx + 42, my + 35, 3, 2, f.powerOn ? '#22c55e' : '#7f1d1d');
+  px(ctx, mx + 42, my + 35, 3, 2, f.powerOn ? '#22c55e' : Math.sin(fr.t * 9) > 0 ? '#b45309' : '#451a03');
 
   // Bàn phím + chuột
   block(ctx, 278, 129, 36, 6, '#3f3f46', '#52525b', '#27272a');
@@ -814,7 +953,7 @@ function drawComputerDesk(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
   px(ctx, 331, 106, 2, 19, '#374151');
   px(ctx, 324, 104, 9, 2, '#374151');
   block(ctx, 320, 98, 13, 7, '#15803d', '#22c55e', '#14532d');
-  px(ctx, 322, 105, 9, 2, fr.lamp > 0.35 ? '#fff3c4' : '#7c6a3a');
+  px(ctx, 322, 105, 9, 2, fr.lamp <= 0.35 ? '#7c6a3a' : f.powerOn ? '#fff3c4' : '#f59e5b');
 
   // Case PC: quạt tản nhiệt quay, LED, khe đĩa mềm
   const hum = f.powerOn && Math.sin(fr.t * 90) > 0.6 ? 1 : 0; // Rung rè rè
@@ -850,6 +989,22 @@ function drawComputerDesk(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
   px(ctx, 234, 127, 6, 4, '#d4d4d8');
 }
 
+/** Kẹp ghim phụ văng xuống sàn chân bàn (chỉ sau khi gãy kẹp lần 3) */
+function drawSpareClip(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
+  if (!fr.flags.spareClipOnFloor) return;
+  const { x, y } = SPARE_CLIP;
+  const blink = Math.sin(fr.t * 4.5) > 0;
+  ctx.strokeStyle = blink ? '#e0f2fe' : '#94a3b8';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + 3.5, y + 3); ctx.lineTo(x + 10.5, y + 3); ctx.lineTo(x + 10.5, y + 6); ctx.lineTo(x + 4.5, y + 6); ctx.lineTo(x + 4.5, y + 4.5); ctx.lineTo(x + 9.5, y + 4.5);
+  ctx.stroke();
+  if (blink) {
+    px(ctx, x + 12, y, 1, 3, '#ffffff');
+    px(ctx, x + 11, y + 1, 3, 1, '#ffffff');
+  }
+}
+
 /** Ghế xoay trước bàn máy tính */
 function drawChair(ctx: CanvasRenderingContext2D) {
   dropShadow(ctx, 297, 167, 11, 3);
@@ -864,7 +1019,7 @@ function drawBookshelf(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
   const { x, y, w, h } = BOOKSHELF;
   dropShadow(ctx, x + w / 2, y + h, w / 2, 4);
   block(ctx, x, y, w, h, '#3b2616', '#5b3a22', '#24150b');
-  const shelves = [y + 6, y + 30, y + 54, y + 78];
+  const shelves = [y + 4, y + 25, y + 46, y + 67];
   const bookColors = ['#1e3a8a', '#065f46', '#92400e', '#7f1d1d', '#3f3f46', '#a16207', '#4c1d95', '#155e75'];
   shelves.forEach((sy, si) => {
     px(ctx, x + 3, sy, w - 6, 20, '#1a0f08');                  // Lòng kệ tối
@@ -902,11 +1057,14 @@ function drawBookshelf(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
     const blink = Math.sin(fr.t * 4.5) > 0;
     ctx.strokeStyle = blink ? '#e0f2fe' : '#94a3b8';
     ctx.beginPath();
-    ctx.moveTo(498.5, 118); ctx.lineTo(498.5, 124); ctx.lineTo(501.5, 124); ctx.lineTo(501.5, 119); ctx.lineTo(500, 119); ctx.lineTo(500, 123);
+    // Kẹp nằm sát mép tấm ván kệ thứ 3
+    const kx = x + 38.5;
+    const ky = y + 59;
+    ctx.moveTo(kx, ky); ctx.lineTo(kx, ky + 6); ctx.lineTo(kx + 3, ky + 6); ctx.lineTo(kx + 3, ky + 1); ctx.lineTo(kx + 1.5, ky + 1); ctx.lineTo(kx + 1.5, ky + 5);
     ctx.stroke();
     if (blink) {
-      px(ctx, 503, 116, 1, 3, '#ffffff');
-      px(ctx, 502, 117, 3, 1, '#ffffff');
+      px(ctx, kx + 4.5, ky - 2, 1, 3, '#ffffff');
+      px(ctx, kx + 3.5, ky - 1, 3, 1, '#ffffff');
     }
   }
 }
@@ -944,7 +1102,7 @@ function drawPhoneTable(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
     : '#3f1d1d';
   px(ctx, x + 30, y + 18, 3, 3, led);
   // Mẩu giấy note
-  block(ctx, x + 36, y + 14, 5, 6, '#fde68a', '#fef3c7', '#d97706');
+  block(ctx, x + 34, y + 14, 5, 6, '#fde68a', '#fef3c7', '#d97706');
 }
 
 /** Gương nứt dựa tường: mặt kính xước, phản chiếu bóng mờ u uất của An */
@@ -972,8 +1130,8 @@ function drawMirror(ctx: CanvasRenderingContext2D, fr: RoomFrame, sprites: RoomS
     ctx.rect(gx, gy, gw, gh);
     ctx.clip();
     ctx.globalAlpha = Math.max(0, 0.55 - dist / 340);
-    const rw = 26;
-    const rh = 39;
+    const rw = 20;
+    const rh = 30;
     const lag = Math.sin(fr.t * 1.2) * 1.5;
     drawAnSprite(ctx, sprites.an, p, gx + (gw - rw) / 2 + lag, gy + gh - rh - 2 + Math.min(6, (p.y - y) / 30), fr.t, rw, rh, DIR_ROW.down);
     ctx.globalAlpha = 1;
@@ -982,22 +1140,24 @@ function drawMirror(ctx: CanvasRenderingContext2D, fr: RoomFrame, sprites: RoomS
     ctx.restore();
   }
 
-  // Vết nứt mạng nhện
+  // Vết nứt mạng nhện (toạ độ theo tỉ lệ khung gương)
+  const cx = (fx: number) => x + fx * w;
+  const cy = (fy: number) => y + fy * h;
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(x + 6, y + 10); ctx.lineTo(x + 17, y + 25); ctx.lineTo(x + 14, y + 39); ctx.lineTo(x + 27, y + 47);
-  ctx.moveTo(x + 17, y + 25); ctx.lineTo(x + 27, y + 21);
-  ctx.moveTo(x + 17, y + 25); ctx.lineTo(x + 8, y + 30);
+  ctx.moveTo(cx(0.18), cy(0.16)); ctx.lineTo(cx(0.5), cy(0.4)); ctx.lineTo(cx(0.41), cy(0.63)); ctx.lineTo(cx(0.8), cy(0.76));
+  ctx.moveTo(cx(0.5), cy(0.4)); ctx.lineTo(cx(0.8), cy(0.34));
+  ctx.moveTo(cx(0.5), cy(0.4)); ctx.lineTo(cx(0.24), cy(0.48));
   ctx.stroke();
   // Vết xước mảnh
   ctx.strokeStyle = 'rgba(255,255,255,0.2)';
   ctx.beginPath();
-  ctx.moveTo(x + 22, y + 6); ctx.lineTo(x + 29, y + 15);
-  ctx.moveTo(x + 5, y + 46); ctx.lineTo(x + 12, y + 54);
+  ctx.moveTo(cx(0.65), cy(0.1)); ctx.lineTo(cx(0.85), cy(0.24));
+  ctx.moveTo(cx(0.15), cy(0.74)); ctx.lineTo(cx(0.35), cy(0.87));
   ctx.stroke();
   // Ánh chớp lạnh trên vết nứt
-  if (Math.sin(fr.t * 2.6) > 0.5) px(ctx, x + 16, y + 24, 2, 2, '#ffffff');
+  if (Math.sin(fr.t * 2.6) > 0.5) px(ctx, cx(0.47), cy(0.39), 2, 2, '#ffffff');
 }
 
 /** Thùng carton đồ kỷ niệm Miên gửi ở phòng An: băng keo chữ H, nhãn "ĐỒ CỦA MIÊN", mở toang sau khi rạch */
@@ -1064,22 +1224,75 @@ function drawFloorFan(ctx: CanvasRenderingContext2D, fr: RoomFrame) {
   ctx.stroke();
 }
 
-/** Nhân vật An: bóng elip mềm, bóng glitch thứ hai ở Phase 2-3 */
+/** Bình nước lọc 20L xanh úp ngược trên kệ sắt 3 chân gỉ sét, còn 1/3 nước, loá ánh đèn */
+function drawWaterJug(ctx: CanvasRenderingContext2D) {
+  const { x, y, w, h } = WATER_JUG;
+  dropShadow(ctx, x + w / 2, y + h, w / 2, 3);
+  // Kệ sắt: mâm tròn + 3 chân
+  px(ctx, x + 3, y + 12, w - 6, 3, '#5b3a22');
+  px(ctx, x + 3, y + 12, w - 6, 1, '#8a5a33');
+  px(ctx, x + 4, y + 15, 2, h - 15, '#4a2e1a');
+  px(ctx, x + w / 2 - 1, y + 15, 2, h - 15, '#3b2414');
+  px(ctx, x + w - 6, y + 15, 2, h - 15, '#4a2e1a');
+  px(ctx, x + 4, y + h - 6, w - 8, 1, 'rgba(120,70,30,0.6)');         // Thanh giằng gỉ
+  // Thân bình nhựa xanh trong (úp ngược: cổ bình cắm xuống mâm)
+  ctx.fillStyle = 'rgba(56,189,248,0.55)';
+  ctx.fillRect(x + 4, y - 18, w - 8, 28);
+  ctx.fillRect(x + 6, y - 21, w - 12, 3);                             // Đáy bình (trên cùng) bo tròn
+  px(ctx, x + w / 2 - 3, y + 10, 6, 3, 'rgba(56,189,248,0.75)');      // Cổ bình
+  // Mực nước còn 1/3 (dồn về phía cổ bình)
+  ctx.fillStyle = 'rgba(14,116,144,0.6)';
+  ctx.fillRect(x + 4, y + 1, w - 8, 9);
+  px(ctx, x + 4, y + 1, w - 8, 1, 'rgba(186,230,253,0.7)');
+  // Gờ nhựa vòng quanh thân + vệt loá ánh đèn
+  for (let i = 0; i < 3; i++) px(ctx, x + 4, y - 14 + i * 8, w - 8, 1, 'rgba(12,74,110,0.6)');
+  px(ctx, x + 7, y - 16, 2, 22, 'rgba(224,242,254,0.38)');
+}
+
+/** Thùng mì tôm bìa carton đỏ hồng bạc màu, vệt chữ vàng như nhãn mì chua cay */
+function drawNoodleBox(ctx: CanvasRenderingContext2D) {
+  const { x, y, w, h } = NOODLE_BOX;
+  dropShadow(ctx, x + w / 2, y + h, w / 2 + 1, 3);
+  block(ctx, x, y, w, h, '#b4334a', '#cf5168', '#6e1a2a');
+  px(ctx, x, y + 7, w, 1, 'rgba(70,15,25,0.6)');                      // Nếp nắp
+  px(ctx, x + 4, y + 11, w - 8, 3, '#e8b931');                        // Vệt chữ vàng
+  px(ctx, x + 6, y + 16, w - 14, 2, '#d99a1c');
+  px(ctx, x + w - 9, y + 15, 5, 5, '#f4e3b0');                        // Hình bát mì
+  px(ctx, x + 2, y + 2, 9, 4, 'rgba(255,255,255,0.12)');              // Bạc màu
+  px(ctx, x + w - 8, y - 2, 6, 3, '#cf5168');                         // Nắp hé
+}
+
+/** Balo sinh viên vải dù đen xám tựa chân kệ sách, quai đeo buông thõng */
+function drawBackpack(ctx: CanvasRenderingContext2D) {
+  const { x, y, w, h } = BACKPACK;
+  dropShadow(ctx, x + w / 2, y + h, w / 2 + 1, 2.5);
+  block(ctx, x, y + 2, w, h - 2, '#2e3036', '#41444c', '#16171a');
+  px(ctx, x + 2, y, w - 4, 3, '#2e3036');                             // Đỉnh balo bo tròn
+  block(ctx, x + 2, y + 9, w - 4, 6, '#26282d', '#383b42', '#121316'); // Túi trước
+  px(ctx, x + 3, y + 9, w - 6, 1, '#6b7280');                         // Khoá kéo
+  px(ctx, x - 2, y + 5, 2, 12, '#1c1d21');                            // Quai buông thõng
+  px(ctx, x - 3, y + 16, 3, 1, '#1c1d21');
+}
+
+/** Nhân vật An: bóng elip mềm; Sanity thấp / Phase 2-3 thì hoa mắt thấy bóng đôi xám tro lệch tâm */
 function drawPlayer(ctx: CanvasRenderingContext2D, fr: RoomFrame, sprites: RoomSprites) {
   const p = fr.player;
   // Bóng chân mềm (gradient tỏa)
   const sg = ctx.createRadialGradient(p.x, p.y + 16, 1, p.x, p.y + 16, 14);
-  sg.addColorStop(0, 'rgba(0,0,0,0.6)');
+  sg.addColorStop(0, 'rgba(0,0,0,0.65)');
   sg.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = sg;
   ctx.beginPath();
   ctx.ellipse(p.x, p.y + 16, 14, 5.5, 0, 0, Math.PI * 2);
   ctx.fill();
-  if (fr.phase >= 2) {
-    const off = Math.sin(fr.t * 15) * 6;
-    ctx.fillStyle = 'rgba(168, 85, 247, 0.35)';
+  // Bóng đôi hoa mắt (song thị do suy nhược): xám tro, lệch 1.5–3.5px trôi theo nhịp thở bất an
+  if (fr.sanity <= 65 || fr.phase >= 2) {
+    const insanity = Math.max(0, (65 - fr.sanity) / 65);
+    const ghostOffsetX = Math.sin(fr.t * 2.2) * (1.5 + insanity * 2);
+    const ghostAlpha = 0.15 + insanity * 0.18;
+    ctx.fillStyle = `rgba(0, 0, 0, ${ghostAlpha})`;
     ctx.beginPath();
-    ctx.ellipse(p.x + off + 5, p.y + 16, 11, 4.5, 0.2, 0, Math.PI * 2);
+    ctx.ellipse(p.x + ghostOffsetX, p.y + 16.5, 12, 4.8, 0.05, 0, Math.PI * 2);
     ctx.fill();
   }
   if (sprites.an) drawAnSprite(ctx, sprites.an, p, p.x - AN_DRAW_W / 2, p.y - AN_DRAW_H + 18, fr.t);
@@ -1093,11 +1306,14 @@ function drawRoomObjects(ctx: CanvasRenderingContext2D, fr: RoomFrame, sprites: 
     { y: TEA_TABLE.y + TEA_TABLE.h, draw: () => drawTeaTable(ctx, fr) },
     { y: DESK.y + DESK.h, draw: () => drawComputerDesk(ctx, fr) },
     { y: 167, draw: () => drawChair(ctx) },
+    { y: SPARE_CLIP.y + SPARE_CLIP.h, draw: () => drawSpareClip(ctx, fr) },
     { y: BOOKSHELF.y + BOOKSHELF.h, draw: () => drawBookshelf(ctx, fr) },
     { y: PHONE_TABLE.y + PHONE_TABLE.h, draw: () => drawPhoneTable(ctx, fr) },
     { y: MIRROR.y + MIRROR.h, draw: () => drawMirror(ctx, fr, sprites) },
     { y: BOX.y + BOX.h, draw: () => drawCardboardBox(ctx, fr) },
     { y: FLOOR_FAN.y + 17, draw: () => drawFloorFan(ctx, fr) },
+    // Bình nước cao hơn đầu gối: vẽ theo chiều sâu để An đứng sau không đè lên
+    { y: WATER_JUG.y + WATER_JUG.h, draw: () => drawWaterJug(ctx) },
     { y: fr.player.y + 16, draw: () => drawPlayer(ctx, fr, sprites) },
   ];
   items.sort((a, b) => a.y - b.y);
@@ -1114,12 +1330,13 @@ function drawLightingOverlay(ctx: CanvasRenderingContext2D, light: HTMLCanvasEle
   // 1) Bóng tối nền theo Phase / Sanity / chớp đèn
   l.globalCompositeOperation = 'source-over';
   l.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  // Đen tro lạnh, không ám tím / magenta
   l.fillStyle = fr.flicker
-    ? 'rgba(35, 5, 20, 0.95)'
+    ? 'rgba(6, 6, 9, 0.97)'      // Chớp tắt: tối đen sâu thẳm
     : fr.phase === 3
-      ? 'rgba(20, 3, 20, 0.9)'
-      : fr.sanity <= 25
-        ? 'rgba(30, 0, 0, 0.9)'
+      ? 'rgba(4, 5, 10, 0.93)'   // Phase 3: đen đặc lạnh lẽo
+      : fr.sanity <= 30
+        ? 'rgba(12, 4, 6, 0.92)' // Nguy cấp: viền thâm đen hơi lạnh
         : 'rgba(5, 5, 12, 0.88)';
   l.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   l.globalCompositeOperation = 'destination-out';
@@ -1134,7 +1351,9 @@ function drawLightingOverlay(ctx: CanvasRenderingContext2D, light: HTMLCanvasEle
   };
   punch(LAMP_LIGHT.x - 10, LAMP_LIGHT.y + 25, 175, 0.95 * fr.lamp);     // Đèn bàn sợi đốt
   punch(CRT_LIGHT.x, CRT_LIGHT.y + 10, 95, f.powerOn ? 0.6 : 0.15);       // Màn hình CRT
-  punch(p.x, p.y, 80, 0.72);                                               // Quanh An
+  // Co thắt tầm nhìn: Sanity càng thấp, vùng sáng quanh An càng hẹp (82px → ~50px)
+  const sanityFactor = Math.max(0.6, fr.sanity / 100);
+  punch(p.x, p.y, 82 * sanityFactor, 0.75 * (0.8 + 0.2 * sanityFactor)); // Quanh An
   punch(DOOR.x + DOOR.w + 6, DOOR.y + DOOR.h / 2, 48, 0.4);               // Ánh hành lang lọt khe
   punch(215, 70, 55, 0.22 + fr.lightning * 0.6);                          // Cửa sổ
   if (fr.lightning > 0.02) punch(320, 240, 420, fr.lightning * 0.55);     // Sét đánh bừng sáng
@@ -1151,9 +1370,9 @@ function drawLightingOverlay(ctx: CanvasRenderingContext2D, light: HTMLCanvasEle
     ctx.fillStyle = g;
     ctx.fillRect(x - r, y - r, r * 2, r * 2);
   };
-  // Vầng vàng ấm của đèn sợi đốt
-  glow(LAMP_LIGHT.x - 8, LAMP_LIGHT.y + 22, 160, '255,170,80', 0.26 * fr.lamp);
-  glow(326, 106, 18, '255,230,170', 0.5 * fr.lamp);
+  // Vầng vàng ấm của đèn sợi đốt (sụt áp: dây tóc đỏ quạch như than hồng)
+  glow(LAMP_LIGHT.x - 8, LAMP_LIGHT.y + 22, 160, f.powerOn ? '255,170,80' : '255,110,40', 0.26 * fr.lamp);
+  glow(326, 106, 18, f.powerOn ? '255,230,170' : '255,140,70', 0.5 * fr.lamp);
   // Ánh CRT hổ phách (đang khóa) / xanh lá (đã giải mã) hắt lên mặt bàn và mặt An
   if (f.powerOn) {
     const rgb = f.terminalUnlocked ? '60,255,140' : '255,176,50';
@@ -1331,6 +1550,7 @@ function drawRoomHUD(ctx: CanvasRenderingContext2D, fr: RoomFrame, interactables
   // Chấm lấp lánh nhẹ cho các vật phẩm chưa hoàn thành
   for (const item of interactables) {
     if (fr.nearest && fr.nearest.id === item.id) continue;
+    if (!isTargetPresent(item.id, fr.snap)) continue;
     if (!isTargetDoneFor(item.id, fr.snap) && (fr.t * 60 + item.x) % 60 < 20) {
       px(ctx, item.x + item.w / 2 - 1, item.y + item.h / 2 - 1, 3, 3, 'rgba(250, 204, 21, 0.6)');
     }
@@ -1437,7 +1657,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
   // Vị trí nhân vật An (tọa độ pixel mượt mà)
   const playerRef = useRef({
     x: 220,
-    y: 280,
+    y: 230,
     speed: 3.2,
     dir: 'down' as Direction,
     isMoving: false,
@@ -1456,6 +1676,10 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
   // State cho Terminal Mini-game giải mã mật khẩu máy tính
   // Bật máy → màn hình desktop; hộp thoại nhập PIN của ALBUM_KỶ_NIỆM nằm ngay trong DesktopScreen
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+  // Minigame bẻ then khoá hộc bàn (cần kẹp ghim + dao rọc giấy)
+  const [isLockpickOpen, setIsLockpickOpen] = useState(false);
+  // Minigame phục chế đĩa mềm (2 nửa đĩa + dao rọc giấy + băng dính + bật lửa)
+  const [isDiskOpen, setIsDiskOpen] = useState(false);
   const [isTerminalUnlocked, setIsTerminalUnlocked] = useState(false);
 
   // State gõ cửa ma quái
@@ -1807,6 +2031,26 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
   }, [playItemPickupSound, emotes]);
 
   // Xử lý ghép vật phẩm từ InventoryModal
+  // Mở bàn phục chế đĩa mềm (từ túi đồ hoặc bàn trà bệt); thiếu dụng cụ thì An nói thiếu gì
+  const openDiskRestore = useCallback(() => {
+    const inv = localInventoryIds;
+    if (!inv.includes('disk_part_1') || !inv.includes('disk_part_2')) {
+      showMonologueWhisper('Mới có một nửa đĩa. Nửa kia ở đâu đó trong phòng.');
+      return;
+    }
+    const missing: string[] = [];
+    if (!inv.includes('box_cutter')) missing.push(tx('dao rọc giấy để cạo mép nứt'));
+    if (!inv.includes('electrical_tape')) missing.push(tx('băng dính để gá vỏ'));
+    if (!inv.includes('lighter')) missing.push(tx('bật lửa để hơ keo'));
+    if (missing.length > 0) {
+      showMonologueWhisper(tx('Muốn dán đĩa cho tử tế thì còn thiếu: {0}.', missing.join(', ')));
+      return;
+    }
+    setIsInventoryOpen(false);
+    keysHeld.current.clear();
+    setIsDiskOpen(true);
+  }, [localInventoryIds, showMonologueWhisper]);
+
   const handleCombineItems = useCallback(
     (itemAId: string, itemBId: string, resultItem: InventoryItem, successMsg: string) => {
       const nextIds = localInventoryIds
@@ -1885,7 +2129,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       id: 'coffee_mug',
       name: 'Cốc Cà Phê Đen Đặc',
       actionText: '[E] Nhặt Cốc Cà Phê Đen',
-      x: 245,
+      x: 248,
       y: 105,
       w: 25,
       h: 25,
@@ -1897,7 +2141,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       id: 'pc_drawer',
       name: 'Hộc Bàn Máy Tính Kẹt Khóa',
       actionText: '[E] Cạy then cài hộc bàn máy tính',
-      x: 260,
+      x: 255,
       y: 135,
       w: 30,
       h: 25,
@@ -1921,10 +2165,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       id: 'cardboard_box',
       name: 'Thùng Carton Đồ Kỷ Niệm Của Miên',
       actionText: '[E] Kiểm tra thùng carton dán băng keo',
-      x: 425,
-      y: 305,
-      w: 46,
-      h: 38,
+      ...BOX,
       triggerNodeId: 'obj_cardboard_box',
       canRepeat: true,
       checkedMonologue: 'Thùng trống trơn, chỉ còn xốp vụn.',
@@ -1933,10 +2174,10 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       id: 'bookshelf',
       name: 'Kệ Sách Cũ',
       actionText: '[E] Lục tìm giữa những cuốn sách cũ',
-      x: 460,
-      y: 95,
-      w: 55,
-      h: 55,
+      x: BOOKSHELF.x,
+      y: ROOM.top,
+      w: BOOKSHELF.w,
+      h: BOOKSHELF.y + BOOKSHELF.h - ROOM.top,
       triggerNodeId: 'obj_bookshelf',
       canRepeat: true,
       checkedMonologue: 'Vẫn là "C++ trong 21 ngày". Ngày thứ 22 chắc là ngày mai.',
@@ -1957,22 +2198,16 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       id: 'pills',
       name: 'Bàn Thuốc An Thần',
       actionText: '[E] Xem lọ thuốc an thần',
-      x: 130,
-      y: 210,
-      w: 40,
-      h: 40,
+      ...NIGHTSTAND,
       triggerNodeId: 'node_pills',
       canRepeat: false,
-      checkedMonologue: 'Hết thuốc rồi.',
+      checkedMonologue: 'Để dành lọ thuốc lúc đi ngủ đã.',
     },
     {
       id: 'phone',
       name: 'Điện Thoại Bàn Phím',
       actionText: '[E] Xem tin nhắn điện thoại',
-      x: 445,
-      y: 160,
-      w: 42,
-      h: 36,
+      ...PHONE_TABLE,
       triggerNodeId: 'obj_phone',
       canRepeat: false,
       checkedMonologue: 'Điện thoại sắp hết pin rồi.',
@@ -1981,10 +2216,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       id: 'mirror',
       name: 'Gương Nứt Vỡ',
       actionText: '[E] Soi hình bóng trong gương nứt',
-      x: 530,
-      y: 95,
-      w: 40,
-      h: 65,
+      ...MIRROR,
       triggerNodeId: 'obj_mirror',
       canRepeat: false,
       checkedMonologue: 'Nhìn nữa chỉ thêm nản.',
@@ -2000,6 +2232,60 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       triggerNodeId: 'obj_window',
       canRepeat: false,
       checkedMonologue: 'Mưa vẫn chưa ngớt.',
+    },
+    {
+      id: 'bathroom_door',
+      name: 'Cửa Nhà Vệ Sinh',
+      actionText: '[E] Nhìn vào nhà vệ sinh',
+      ...BATH_DOOR,
+      triggerNodeId: '',
+      canRepeat: true,
+      checkedMonologue: 'Vòi nước vẫn nhỏ giọt tí tách trong bóng tối.',
+    },
+    {
+      id: 'bath_sink',
+      name: 'Vòi Nước Nhà Vệ Sinh',
+      actionText: '[E] Vặn vòi rửa mặt',
+      ...BATH_SINK,
+      triggerNodeId: 'obj_bath_sink',
+      canRepeat: false,
+      checkedMonologue: 'Mặt vẫn còn lạnh buốt. Tỉnh hẳn rồi.',
+    },
+    {
+      id: 'calendar',
+      name: 'Lịch Treo Tường',
+      actionText: '[E] Xem lịch treo tường',
+      ...WALL_CALENDAR,
+      triggerNodeId: '',
+      canRepeat: true,
+      checkedMonologue: 'Tháng 5. Một ngày khoanh đỏ, nhoè mất số.',
+    },
+    {
+      id: 'spare_clip',
+      name: 'Kẹp Ghim Phụ',
+      actionText: '[E] Nhặt kẹp ghim dưới chân bàn',
+      ...SPARE_CLIP,
+      triggerNodeId: '',
+      canRepeat: true,
+      checkedMonologue: '',
+    },
+    {
+      id: 'bath_cup',
+      name: 'Cốc Đánh Răng Đôi',
+      actionText: '[E] Xem cốc đánh răng',
+      ...BATH_CUP,
+      triggerNodeId: '',
+      canRepeat: true,
+      checkedMonologue: 'Bàn chải hồng vẫn khô cong.',
+    },
+    {
+      id: 'bath_toilet',
+      name: 'Bệ Xí',
+      actionText: '[E] Đi vệ sinh',
+      ...BATH_TOILET,
+      triggerNodeId: 'obj_bath_toilet',
+      canRepeat: false,
+      checkedMonologue: 'Xô nước vẫn còn lưng lửng.',
     },
     {
       id: 'door',
@@ -2050,6 +2336,8 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         if (e.key === 'Escape') setIsTerminalOpen(false);
         return;
       }
+      // Minigame bẻ khoá / phục chế đĩa tự bắt phím của nó
+      if (isLockpickOpen || isDiskOpen) return;
 
       // Khi đang mở modal Túi đồ thì phím ưu tiên cho Túi đồ (InventoryModal tự lắng nghe Escape / I)
       if (isInventoryOpen) {
@@ -2069,9 +2357,12 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       if (e.key.toLowerCase() === 'e' || e.key === ' ' || e.key === 'Enter') {
         const p = playerRef.current;
         // Tìm vật thể gần nhất trong phạm vi tương tác (75px)
+        // Trạng thái hiện tại để lọc điểm tương tác chỉ có lúc cần (kẹp ghim phụ)
+        const presenceSnap: RoomSnapshot = { sanity: 0, interacted: localInteractedIds, inventory: localInventoryIds, insertedDisk: localInsertedDisk, terminalUnlocked: isTerminalUnlocked, modalOpen: false };
         let target: InteractableObject | null = null;
         let minDist = 75;
         for (const obj of interactables.current) {
+          if (!isTargetPresent(obj.id, presenceSnap)) continue;
           const cx = obj.x + obj.w / 2;
           const cy = obj.y + obj.h / 2;
           const dist = Math.hypot(p.x - cx, p.y - cy);
@@ -2084,15 +2375,9 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         if (target) {
           // 1. Bàn máy tính: Cần cắm đĩa mềm AURA trước khi mở Terminal giải mã
           if (target.id === 'pc') {
+            // Album đã mở: xem lại chỉ là phụ đề, việc đi ngủ chuyển sang lọ thuốc đầu giường
             if (isTerminalUnlocked) {
-              onTrigger('node_terminal_unlocked');
-              return;
-            }
-
-            // Lần đầu bật máy: màn hình đồ án AURA + album kỷ niệm khoá PIN, An tự nhắc mình cần tìm gì
-            // (save cũ ghi cờ 'mien_intro' cho cùng đoạn này)
-            if (!localInteractedIds.includes('pc_intro') && !localInteractedIds.includes('mien_intro')) {
-              onTrigger('node_pc_log', 'pc_intro');
+              showMonologueWhisper('Album vẫn mở trên màn hình, ảnh hai đứa ở bến An Yên. Mắt díp lại rồi... uống thuốc rồi đi ngủ thôi.');
               return;
             }
 
@@ -2101,7 +2386,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
             if (!isPowerRestored) {
               playBuzzer();
               showMonologueWhisper(
-                'Điện áp yếu quá máy không tải nổi... Chắc cầu dao ngoài hành lang bị sập rồi.'
+                'Điện sụt áp quá, máy không đủ sức đọc ổ đĩa... Chắc cầu chì ngoài hộp cầu dao hành lang lại lỏng rồi.'
               );
               return;
             }
@@ -2197,6 +2482,11 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
               showMonologueWhisper('Bật lửa Zippo cũ vẫn còn xăng... Giờ có thể soi sáng những góc tối rồi.');
               return;
             }
+            // Có đủ 2 nửa đĩa: bàn trà bệt là chỗ ngồi phục chế
+            if (localInventoryIds.includes('disk_part_1') && localInventoryIds.includes('disk_part_2')) {
+              openDiskRestore();
+              return;
+            }
             if (!localInteractedIds.includes('tea_table_taste')) {
               onTrigger('obj_tea_table', 'tea_table_taste');
               return;
@@ -2234,9 +2524,14 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
 
           // 5. Bàn thuốc an thần
           if (target.id === 'pills') {
+            // Mở được album rồi: lọ thuốc là đường đi ngủ sang Màn 2
+            if (isTerminalUnlocked) {
+              onTrigger('node_sleep_ready');
+              return;
+            }
             const isDone = localInteractedIds.includes('pills');
             if (isDone) {
-              showMonologueWhisper('Hết thuốc rồi.');
+              showMonologueWhisper('Để dành lọ thuốc lúc đi ngủ đã.');
             } else {
               onTrigger('node_pills', 'pills');
             }
@@ -2245,7 +2540,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
 
           // 6. Kệ sách cũ -> Nhặt Kẹp Ghim Kim Loại
           if (target.id === 'bookshelf') {
-            if (!localInventoryIds.includes('paperclip')) {
+            if (!localInventoryIds.includes('paperclip') && !localInteractedIds.includes('bookshelf')) {
               const nextInv = [...localInventoryIds, 'paperclip'];
               setLocalInventoryIds(nextInv);
               onUpdateInventory?.(nextInv);
@@ -2300,22 +2595,75 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
               return;
             }
 
-            if (!localInventoryIds.includes('paperclip')) {
-              showMonologueWhisper('Then khóa cơ bị kẹt... Cần một thanh kim loại nhỏ cứng để cạy.');
+            const hasClip = localInventoryIds.includes('paperclip');
+            const hasCutter = localInventoryIds.includes('box_cutter');
+            if (!hasClip && localInteractedIds.includes('lockpick_failed')) {
+              showMonologueWhisper('Kẹp ghim gãy hết rồi... Hình như có một chiếc văng xuống chân bàn.');
               return;
             }
+            if (!hasClip && !hasCutter) {
+              showMonologueWhisper('Then khóa cơ bị kẹt... Cần một thanh kim loại nhỏ để móc chốt, và một thứ dẹt để giữ lực xoay.');
+              return;
+            }
+            if (!hasClip) {
+              showMonologueWhisper('Lưỡi dao rọc giấy giữ được lực xoay, nhưng còn thiếu một thanh kim loại nhỏ để móc chốt.');
+              return;
+            }
+            if (!hasCutter) {
+              showMonologueWhisper('Có kẹp ghim để móc chốt rồi, nhưng cần thêm một thứ dẹt cắm vào ổ để giữ lực xoay... con dao rọc giấy trên bàn bệt chắc được.');
+              return;
+            }
+            // Đủ cả hai: vào minigame bẻ khoá
+            keysHeld.current.clear();
+            setIsLockpickOpen(true);
+            return;
+          }
 
-            const nextInv = [...localInventoryIds, 'disk_part_2'];
+          // Kẹp ghim phụ văng dưới chân bàn (sau khi gãy kẹp lần 3)
+          if (target.id === 'spare_clip') {
+            const nextInv = [...localInventoryIds, 'paperclip'];
             setLocalInventoryIds(nextInv);
             onUpdateInventory?.(nextInv);
             showPickupAlert(
-              'Mảnh Đĩa Mềm B (Data)',
-              'Kỹ năng cạy khoá học được từ hồi năm nhất mất chìa khoá phòng, cuối cùng cũng có ích! Ngăn kéo bật mở, bên trong là Mảnh Đĩa Mềm B!',
-              'disk_part_2'
+              'Kẹp Ghim Kim Loại',
+              'Nhặt lại được một chiếc kẹp ghim dưới chân bàn. Lần này phải nhẹ tay hơn.',
+              'paperclip'
             );
-            if (!localInteractedIds.includes('pc_drawer')) {
-              setLocalInteractedIds(prev => [...prev, 'pc_drawer']);
-              onMarkInteracted?.('pc_drawer');
+            return;
+          }
+
+          // Lịch treo tường: phụ đề, manh mối tháng (05) cho trình giải mã ALBUM.KEY
+          if (target.id === 'calendar') {
+            if (localInteractedIds.includes('calendar')) {
+              showMonologueWhisper(target.checkedMonologue ?? '');
+            } else {
+              setLocalInteractedIds(prev => [...prev, 'calendar']);
+              onMarkInteracted?.('calendar');
+              showMonologueWhisper('Lịch tháng 5. Có một ngày được khoanh bút đỏ, mực nhoè mất số. Chữ Miên ghi bên lề: "Nhớ đấy!"');
+            }
+            return;
+          }
+
+          // Cốc đánh răng đôi: phụ đề, manh mối PIN phụ (ngày kỷ niệm viết dưới đáy cốc)
+          if (target.id === 'bath_cup') {
+            if (localInteractedIds.includes('bath_cup')) {
+              showMonologueWhisper(target.checkedMonologue ?? '');
+            } else {
+              setLocalInteractedIds(prev => [...prev, 'bath_cup']);
+              onMarkInteracted?.('bath_cup');
+              showMonologueWhisper('Cốc đánh răng đôi Miên mua hôm kỷ niệm một năm. Cô dùng bút xoá viết dưới đáy cốc: 17.05. Bàn chải hồng vẫn khô, lâu rồi cô chưa ngủ lại đây.');
+            }
+            return;
+          }
+
+          // Ô cửa nhà vệ sinh (đã tháo cánh): chỉ độc thoại (lần đầu câu dài, về sau câu ngắn)
+          if (target.id === 'bathroom_door') {
+            if (localInteractedIds.includes('bathroom_door')) {
+              showMonologueWhisper(target.checkedMonologue ?? '');
+            } else {
+              setLocalInteractedIds(prev => [...prev, 'bathroom_door']);
+              onMarkInteracted?.('bathroom_door');
+              showMonologueWhisper('Cánh cửa nhà vệ sinh bung bản lề từ tháng trước, cô Tư tháo ra mãi chưa lắp lại. Trong đó tối om, bóng đèn cháy từ tuần trước rồi.');
             }
             return;
           }
@@ -2355,6 +2703,9 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     };
   }, [
     isTerminalOpen,
+    isLockpickOpen,
+    isDiskOpen,
+    openDiskRestore,
     isTerminalUnlocked,
     onTrigger,
     localInteractedIds,
@@ -2378,7 +2729,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
     inventory: localInventoryIds,
     insertedDisk: localInsertedDisk,
     terminalUnlocked: isTerminalUnlocked,
-    modalOpen: isInventoryOpen || isTerminalOpen,
+    modalOpen: isInventoryOpen || isTerminalOpen || isLockpickOpen || isDiskOpen,
   });
   useEffect(() => {
     snapshotRef.current = {
@@ -2387,9 +2738,9 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       inventory: localInventoryIds,
       insertedDisk: localInsertedDisk,
       terminalUnlocked: isTerminalUnlocked,
-      modalOpen: isInventoryOpen || isTerminalOpen,
+      modalOpen: isInventoryOpen || isTerminalOpen || isLockpickOpen || isDiskOpen,
     };
-  }, [sanity, localInteractedIds, localInventoryIds, localInsertedDisk, isTerminalUnlocked, isInventoryOpen, isTerminalOpen]);
+  }, [sanity, localInteractedIds, localInventoryIds, localInsertedDisk, isTerminalUnlocked, isInventoryOpen, isTerminalOpen, isLockpickOpen, isDiskOpen]);
 
   // Giữ phiên bản mới nhất của các hàm âm thanh cho vòng lặp
   const soundRef = useRef({ playKnockSound, playThunder, playStepSound });
@@ -2498,6 +2849,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       let nearTarget: InteractableObject | null = null;
       let minPromptDist = INTERACT_RADIUS;
       for (const obj of interactables.current) {
+        if (!isTargetPresent(obj.id, snap)) continue;
         const dist = Math.hypot(p.x - (obj.x + obj.w / 2), p.y - (obj.y + obj.h / 2));
         if (dist < minPromptDist) {
           minPromptDist = dist;
@@ -2531,8 +2883,9 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
       const flags = deriveFlags(snap);
       const tk = t * 60;
       const flickerTick = phase >= 2 && (tk % 240 < 8 || (tk % 240 > 14 && tk % 240 < 18));
-      // Đèn sợi đốt: le lói nhẹ, chập chờn mạnh khi mất điện lưới
-      const lampDip = !flags.powerOn && Math.random() < 0.06 ? 0.45 : Math.random() < 0.015 ? 0.2 : 0;
+      // Đèn sợi đốt: le lói nhẹ; khi sụt áp (chưa nối cầu chì) thì sáng đỏ quạch, yếu hẳn và chập chờn mạnh
+      const brownout = flags.powerOn ? 1 : 0.62 + Math.sin(t * 0.9) * 0.06;
+      const lampDip = !flags.powerOn && Math.random() < 0.08 ? 0.3 : Math.random() < 0.015 ? 0.2 : 0;
       const fr: RoomFrame = {
         t,
         phase,
@@ -2540,7 +2893,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         knocking: isKnockingNow,
         flicker: flickerTick,
         lightning: sim.lightning,
-        lamp: Math.max(0, 0.92 + Math.sin(t * 2.3) * 0.05 - lampDip),
+        lamp: Math.max(0, (0.92 + Math.sin(t * 2.3) * 0.05) * brownout - lampDip),
         flags,
         player: p,
         nearest: nearTarget,
@@ -2670,6 +3023,57 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
             </div>
           </div>
         )}
+        {/* Minigame phục chế đĩa mềm 1.44MB */}
+        {isDiskOpen && (
+          <DiskRestoreMinigame
+            volume={volume}
+            onComplete={() => {
+              setIsDiskOpen(false);
+              const result = CHAPTER_1_ITEMS['aura_disk'];
+              handleCombineItems('disk_part_1', 'disk_part_2', result, 'Dán xong. Hai nửa đĩa lại thành một, lẫy chống ghi đã gạt sang chỉ đọc.');
+              showPickupAlert(result.name, 'Vết nứt nhẵn, rãnh Track 0 liền lại, mép băng keo co khít. Đĩa sẵn sàng cho vào ổ A:.', 'aura_disk');
+            }}
+            onWarp={() => setSanity?.(prev => Math.max(0, prev - 5))}
+            onClose={() => setIsDiskOpen(false)}
+          />
+        )}
+
+        {/* Minigame bẻ then khoá hộc bàn máy tính */}
+        {isLockpickOpen && (
+          <LockpickMinigame
+            volume={volume}
+            onComplete={() => {
+              setIsLockpickOpen(false);
+              const nextInv = [...localInventoryIds, 'disk_part_2'];
+              setLocalInventoryIds(nextInv);
+              onUpdateInventory?.(nextInv);
+              showPickupAlert(
+                'Mảnh Đĩa Mềm B (Data)',
+                'Kỹ năng cạy khoá học được từ hồi năm nhất mất chìa khoá phòng, cuối cùng cũng có ích! Ngăn kéo bật mở, bên trong là Mảnh Đĩa Mềm B!',
+                'disk_part_2'
+              );
+              if (!localInteractedIds.includes('pc_drawer')) {
+                setLocalInteractedIds(prev => [...prev, 'pc_drawer']);
+                onMarkInteracted?.('pc_drawer');
+              }
+            }}
+            onFail={() => {
+              // Gãy kẹp lần 3: hoảng loạn -10 Sanity, kẹp mất, một chiếc kẹp phụ văng xuống chân bàn
+              setIsLockpickOpen(false);
+              setSanity?.(prev => Math.max(0, prev - 10));
+              const nextInv = localInventoryIds.filter(id => id !== 'paperclip');
+              setLocalInventoryIds(nextInv);
+              onUpdateInventory?.(nextInv);
+              if (!localInteractedIds.includes('lockpick_failed')) {
+                setLocalInteractedIds(prev => [...prev, 'lockpick_failed']);
+                onMarkInteracted?.('lockpick_failed');
+              }
+              showMonologueWhisper('Tay run bần bật... Kẹp ghim gãy vụn rồi. Bình tĩnh nào. Hình như còn một chiếc văng xuống chân bàn.');
+            }}
+            onClose={() => setIsLockpickOpen(false)}
+          />
+        )}
+
         {/* Nhãn [E] nổi ngay trên vật thể đang nhắm tới; vật đã xong thì không hiện */}
         <InteractLabel label={nearLabel} />
 
@@ -2699,6 +3103,7 @@ export const OverworldStage: React.FC<OverworldStageProps> = ({
         onClose={() => setIsInventoryOpen(false)}
         items={inventoryItems}
         onCombineItems={handleCombineItems}
+        onRestoreDisk={openDiskRestore}
         onUseItem={handleUseItem}
         usedConsumableIds={localInteractedIds}
         volume={volume}

@@ -40,6 +40,8 @@ export interface Choice {
   forbidsFlag?: string;
   /** Lựa chọn bí mật: ẩn hẳn (thay vì hiện ổ khoá) khi Sanity nằm ngoài ngưỡng */
   hiddenWhenLocked?: boolean;
+  /** Ghi một vật thể là "đã xem" khi chọn (vd: đã đọc màn hình máy tính → bấm [E] vào máy không phát lại) */
+  markInteracted?: string;
 }
 
 /** Rẽ nhánh tự động theo biến cốt truyện (dùng cho node không có lựa chọn) */

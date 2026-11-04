@@ -25,7 +25,7 @@ const CLIMAX_NODE = 'ch4_climax_choice';
 const LOG_FILES = [
   { file: 'LOG_01_BENHAN_TRUNGHOA.TXT', label: 'Bệnh án cấp cứu đêm 17/05', node: 'ch4_log1' },
   { file: 'LOG_02_NHATKY_MIEN.TXT', label: 'Nhật ký của Miên', node: 'ch4_log2' },
-  { file: 'LOG_03_LENH_NGATNGUON.TXT', label: 'Lệnh cưỡng chế ngắt nguồn', node: 'ch4_log3' },
+  { file: 'LOG_03_THONGBAO_CATDIEN.TXT', label: 'Thông báo cắt điện phòng 312', node: 'ch4_log3' },
 ] as const;
 
 // Tin nhắn chưa gửi cho mẹ: luôn nằm ngay sau 3 log, là tệp thứ 4 trong luồng Space/Enter
@@ -897,7 +897,7 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
     o.stop(t + 3.5);
   }, [getAudio]);
 
-  /** Tiếng an ninh đập cửa phòng máy ngoài đời thực */
+  /** Tiếng cô Tư (chủ trọ) đập cửa phòng 312 ngoài đời thực */
   const playBang = useCallback(() => {
     const a = getAudio();
     if (!a?.ctx || !a.master || !a.noiseBuf) return;
@@ -1177,7 +1177,7 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
     } else if (ph === 'reflect') {
       setPhase('call');
       // Miên hiện lên webcam: mọi âm thanh tắt phụt, chỉ còn một tiếng thở dài;
-      // tiếng an ninh đập cửa chỉ vang lên khi âm thanh đã quay lại
+      // tiếng chủ trọ đập cửa chỉ vang lên khi âm thanh đã quay lại
       audioEngine.triggerDeadSilence(2000, 1200, 'sigh');
       window.setTimeout(() => {
         if (phaseRef.current === 'call' || phaseRef.current === 'decide') {

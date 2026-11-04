@@ -11,6 +11,8 @@ interface InventoryModalProps {
   onClose: () => void;
   items: InventoryItem[];
   onCombineItems: (itemAId: string, itemBId: string, resultItem: InventoryItem, successMsg: string) => void;
+  /** Ghép 2 nửa đĩa mềm: trang ngoài mở minigame phục chế (không ghép tức thì) */
+  onRestoreDisk?: () => void;
   onUseItem?: (item: InventoryItem) => void;
   usedConsumableIds?: string[];
   selectedItemId?: string | null;
@@ -27,6 +29,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
   onClose,
   items,
   onCombineItems,
+  onRestoreDisk,
   onUseItem,
   usedConsumableIds = [],
   volume = 80,
@@ -170,6 +173,11 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
 
     const resultDef = CHAPTER_1_ITEMS[resultId];
     if (!resultDef) return;
+    // Đĩa mềm phải phục chế thủ công (cạo ba-via, căn Track 0, dán & hơ, gạt lẫy chống ghi)
+    if (resultId === 'aura_disk' && onRestoreDisk) {
+      onRestoreDisk();
+      return;
+    }
 
     playCraftSuccessSound();
     const msg = currentItem.combineSuccessMsg ? tx(currentItem.combineSuccessMsg) : tx('Đã kết hợp thành công: {0}!', tx(resultDef.name));
@@ -372,7 +380,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                   <div className="flex justify-center text-center">
                     {hasCombinablePartner ? (
                       hasRequiredTool ? (
-                        <MenuOption size="sm" selected label={tx('Ghép bằng băng dính')} onClick={handleCombine} />
+                        <MenuOption size="sm" selected label={tx(currentItem.combineResultId === 'aura_disk' && onRestoreDisk ? 'Phục chế đĩa mềm' : 'Ghép bằng băng dính')} onClick={handleCombine} />
                       ) : (
                         <p className="text-[10px] text-amber-400/80 leading-snug">
                           {currentItem.requiredToolMsg ? tx(currentItem.requiredToolMsg) : tx('Cần có {0} để dán khít 2 mảnh!', tx(requiredToolDef?.name || 'Băng Dính'))}

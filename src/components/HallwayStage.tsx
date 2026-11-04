@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { InventoryModal } from './InventoryModal';
+import { FuseBoxMinigame } from './minigames/FuseBoxMinigame';
 import { InventoryItem, CHAPTER_1_ITEMS } from '../types/inventory';
 import { ItemSprite } from './pixel/ItemSprite';
 import {
@@ -547,7 +548,7 @@ function drawExtinguisher(ctx: CanvasRenderingContext2D) {
   px(ctx, x + 5, y + 14, 2, 2, '#16a34a');                            // Đồng hồ áp suất
 }
 
-/** Bảng tin cư dân: bảng nỉ xanh, giấy cũ, tờ vàng "CÚP ĐIỆN" của chủ trọ, thư hồng của Miên */
+/** Bảng tin cư dân: bảng nỉ xanh, giấy cũ, tờ vàng "ĐIỆN YẾU • CẦU DAO" của chủ trọ, mẩu báo cũ ố nước mưa */
 function drawNoticeBoard(ctx: CanvasRenderingContext2D, fr: HallFrame) {
   const { x, y, w, h } = NOTICE_BOARD;
   block(ctx, x, y, w, h, '#78350f', '#a0521a', '#4a2108');
@@ -558,28 +559,29 @@ function drawNoticeBoard(ctx: CanvasRenderingContext2D, fr: HallFrame) {
   for (let i = 0; i < 5; i++) px(ctx, x + 8, y + 10 + i * 3, 11 - (i % 2) * 3, 1, '#6b6455');
   block(ctx, x + 38, y + 25, 14, 17, '#e5e5e5', '#f5f5f5', '#a3a3a3');
   for (let i = 0; i < 4; i++) px(ctx, x + 40, y + 29 + i * 3, 10, 1, '#737373');
-  // Tờ giấy vàng của chủ trọ: thông báo cúp điện luân phiên + tia sét
+  // Tờ giấy vàng của chủ trọ: thông báo điện yếu, cầu dao hay nhảy + tia sét
   block(ctx, x + 23, y + 5, 18, 21, '#ca8a04', '#facc15', '#854d0e');
   px(ctx, x + 32, y + 8, 3, 3, '#1c1917');
   px(ctx, x + 30, y + 11, 4, 2, '#1c1917');
   px(ctx, x + 29, y + 13, 3, 3, '#1c1917');
   ctx.font = 'bold 3px monospace';
   ctx.fillStyle = '#1c1917';
-  ctx.fillText(tx('CÚP ĐIỆN'), x + 24, y + 21);
-  ctx.fillText('23H', x + 28, y + 25);
-  // Thư kỷ niệm hồng của Miên (dán chéo) + trái tim
+  ctx.fillText(tx('ĐIỆN YẾU'), x + 24, y + 21);
+  ctx.fillText(tx('CẦU DAO'), x + 25, y + 25);
+  // Bảng kê tiền điện: dòng phòng 312 gạch chân đỏ hai lần
+  px(ctx, x + 8, y + 22, 11, 1, '#dc2626');
+  px(ctx, x + 8, y + 24, 11, 1, '#dc2626');
+  // Mẩu báo cũ cắt ghim chéo, ố nước mưa: tít đậm + cột chữ, góc dưới nhoè (dòng ngày tháng)
   ctx.save();
   ctx.translate(x + 15, y + 34);
   ctx.rotate(-0.12);
-  block(ctx, -9, -6, 20, 13, '#f9a8d4', '#fbcfe8', '#db2777');
-  ctx.strokeStyle = '#db2777';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(-9, -6); ctx.lineTo(1, 1); ctx.lineTo(11, -6);
-  ctx.stroke();
-  px(ctx, -1, 1, 2, 2, '#e11d48');
-  px(ctx, 1, 1, 2, 2, '#e11d48');
-  px(ctx, 0, 3, 2, 1, '#e11d48');
+  block(ctx, -9, -6, 20, 13, '#b8b2a2', '#cfc9b8', '#8a8474');
+  px(ctx, -7, -4, 16, 2, '#3f3a32');
+  for (let i = 0; i < 3; i++) {
+    px(ctx, -7, -1 + i * 2, 7, 1, '#6b6455');
+    px(ctx, 2, -1 + i * 2, 7, 1, '#6b6455');
+  }
+  px(ctx, 1, 3, 9, 3, 'rgba(120,130,140,0.45)');
   ctx.restore();
   // Ghim bấm
   for (const [gx, gy, col] of [[x + 13, y + 6, '#ef4444'], [x + 32, y + 5, '#facc15'], [x + 45, y + 25, '#3b82f6'], [x + 15, y + 28, '#22c55e']] as Array<[number, number, string]>) {
@@ -1217,6 +1219,8 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
 
   // State Túi đồ & Đồng bộ
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
+  // Minigame đấu nối hộp cầu dao (cần băng dính hoặc kẹp ghim)
+  const [isFuseOpen, setIsFuseOpen] = useState(false);
   const [localInventoryIds, setLocalInventoryIds] = useState<string[]>(inventoryIds);
   const [localInteractedIds, setLocalInteractedIds] = useState<string[]>(interactedIds);
   const [pickupAlert, setPickupAlert] = useState<{ name: string; msg: string; itemId?: string } | null>(null);
@@ -1442,14 +1446,14 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     {
       id: 'notice_board',
       name: 'Bảng Tin Cư Dân',
-      actionText: '[E] Xem Bảng Tin Cư Dân (Thiệp Kỷ Niệm 17/05)',
+      actionText: '[E] Xem Bảng Tin Cư Dân',
       x: 405,
       y: 105,
       w: 55,
       h: 40,
       triggerNodeId: 'node_hallway_notice_board',
       canRepeat: true,
-      checkedMonologue: 'Thiệp 17/05 của Miên vẫn ghim trên bảng.',
+      checkedMonologue: 'Phòng 312 vẫn bị gạch đỏ hai lần trên bảng kê tiền điện.',
     },
     {
       id: 'door_316',
@@ -1521,7 +1525,7 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
   // Xử lý bàn phím
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (isInventoryOpen) return;
+      if (isInventoryOpen || isFuseOpen) return;
 
       if (e.key.toLowerCase() === 'i' || e.key === 'Tab') {
         e.preventDefault();
@@ -1563,22 +1567,14 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
             const hasTape = localInventoryIds.includes('electrical_tape');
             const hasClip = localInventoryIds.includes('paperclip');
 
+            // Có băng dính hoặc kẹp ghim: mở minigame đấu nối hộp cầu dao
             if (hasTape || hasClip) {
-              playSparkSound();
-              setLocalInteractedIds(prev => (prev.includes('hallway_power_on') ? prev : [...prev, 'hallway_power_on']));
-              onMarkInteracted?.('hallway_power_on');
-              if (setSanity) {
-                setSanity(prev => Math.min(100, prev + 10));
-              }
-              showMonologueWhisper(
-                hasTape
-                  ? 'Quấn băng dính vào cầu chì... đèn bừng sáng. Máy tính phòng 314 có điện rồi.'
-                  : 'Nối cầu chì bằng kẹp ghim... đèn bừng sáng. Máy tính phòng 314 có điện rồi.'
-              );
+              keysHeld.current.clear();
+              setIsFuseOpen(true);
               return;
             }
 
-            showMonologueWhisper('Cầu dao tổng phòng 314 bị nhảy. Gạt lên để cấp lại nguồn điện... nhưng cầu chì đứt, vừa gạt đã sập. Cần băng dính hoặc kẹp ghim để nối tạm.');
+            showMonologueWhisper('Cầu dao hành lang bị nhảy, còn cầu chì phòng 314 cháy sém, chỉ dính hờ một sợi. Thảo nào trong phòng điện sụt áp, đèn đỏ quạch. Gạt lên là sập lại ngay. Cần băng dính hoặc kẹp ghim để nối tạm cầu chì.');
             return;
           }
 
@@ -1593,7 +1589,7 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
               onMarkInteracted?.('door_316_picked');
               showPickupAlert(
                 'Mặt Dây Chuyền Bạc Của Miên',
-                'Soi dưới khe cửa phòng #316, bạn nhặt được mặt dây chuyền bạc của Miên. Chắc cô làm rơi hôm qua sang chơi.',
+                'Soi dưới khe cửa phòng #316, bạn nhặt được mặt dây chuyền bạc của Miên. Nhưng sao nó lại nằm ở đây? Phòng này trống từ lâu rồi mà.',
                 'miens_pendant'
               );
               return;
@@ -1641,6 +1637,7 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     };
   }, [
     isInventoryOpen,
+    isFuseOpen,
     isPowerOn,
     localInventoryIds,
     localInteractedIds,
@@ -1896,16 +1893,16 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     sanity,
     interacted: localInteractedIds,
     inventory: localInventoryIds,
-    inventoryOpen: isInventoryOpen,
+    inventoryOpen: isInventoryOpen || isFuseOpen,
   });
   useEffect(() => {
     snapshotRef.current = {
       sanity,
       interacted: localInteractedIds,
       inventory: localInventoryIds,
-      inventoryOpen: isInventoryOpen,
+      inventoryOpen: isInventoryOpen || isFuseOpen,
     };
-  }, [sanity, localInteractedIds, localInventoryIds, isInventoryOpen]);
+  }, [sanity, localInteractedIds, localInventoryIds, isInventoryOpen, isFuseOpen]);
 
   const soundRef = useRef({ playStepSound, playFluoroBuzz, playThunder, playNeighborTyping, playRelay, playBallastWhine, playClockTick });
   useEffect(() => {
@@ -2174,12 +2171,32 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
         </div>
       </div>
 
+      {/* Minigame đấu nối hộp cầu dao tầng 3 */}
+      {isFuseOpen && (
+        <FuseBoxMinigame
+          volume={volume}
+          hasClip={localInventoryIds.includes('paperclip')}
+          hasTape={localInventoryIds.includes('electrical_tape')}
+          onComplete={() => {
+            setIsFuseOpen(false);
+            setLocalInteractedIds(prev => (prev.includes('hallway_power_on') ? prev : [...prev, 'hallway_power_on']));
+            onMarkInteracted?.('hallway_power_on');
+            setSanity?.(prev => Math.min(100, prev + 10));
+            showMonologueWhisper('Đèn hành lang bừng sáng. Điện phòng 314 ổn định lại rồi.');
+          }}
+          onSpark={() => setSanity?.(prev => Math.max(0, prev - 3))}
+          onScare={() => setSanity?.(prev => Math.max(0, prev - 5))}
+          onClose={() => setIsFuseOpen(false)}
+        />
+      )}
+
       {/* Modal Túi đồ Ý Thức [I] */}
       <InventoryModal
         isOpen={isInventoryOpen}
         onClose={() => setIsInventoryOpen(false)}
         items={inventoryItems}
         onCombineItems={handleCombineItems}
+        onRestoreDisk={() => showMonologueWhisper('Ngoài này tối quá, tay lại run. Về ngồi bàn trà trong phòng rồi hẵng dán đĩa.')}
         onUseItem={handleUseItem}
         usedConsumableIds={localInteractedIds}
         volume={volume}

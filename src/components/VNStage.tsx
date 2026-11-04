@@ -107,10 +107,13 @@ interface VNStageProps {
   /** Báo node vừa hồi Sanity dương lần đầu */
   onClaimSanity?: (nodeId: string) => void;
   /** Báo người chơi vừa chọn một phương án (hộp thoại coi như đã giải quyết dù đóng ngang sau đó) */
-  onChoice?: () => void;
+  onChoice?: (choice: Choice) => void;
 }
 
 const NO_FLAGS: string[] = [];
+
+// Node chỉ có dòng "[Tiếp tục khám phá]": không hiện, đi tới đó là trả quyền điều khiển cho người chơi
+const EXPLORE_END_NODES = new Set(['end_to_explore', 'end_to_explore_sunset', 'end_to_explore_pixel_bleed']);
 
 export const VNStage: React.FC<VNStageProps> = ({
   initialNodeId,
@@ -512,6 +515,15 @@ export const VNStage: React.FC<VNStageProps> = ({
     };
   }, [currentNodeId, volume, getAudioContext]);
 
+  // Đi tới node kế tiếp; node "[Tiếp tục khám phá]" thì đóng hộp thoại luôn, không hiện khung chữ thừa
+  const goToNode = useCallback((nextId: string) => {
+    if (EXPLORE_END_NODES.has(nextId)) {
+      onClose(nextId);
+      return;
+    }
+    setCurrentNodeId(nextId);
+  }, [onClose]);
+
   const handleNext = useCallback(() => {
     // Nếu chữ đang chạy: BẬT NGAY TOÀN BỘ CÂU VÀ DỪNG TIMER
     if (isTypingRef.current) {
@@ -545,13 +557,13 @@ export const VNStage: React.FC<VNStageProps> = ({
     // Rẽ nhánh theo biến cốt truyện (nhánh đầu tiên khớp được ưu tiên)
     const branch = currentNode.flagBranches?.find((b) => storyFlags.includes(b.flag));
     if (branch) {
-      setCurrentNodeId(branch.nextNodeId);
+      goToNode(branch.nextNodeId);
     } else if (currentNode.nextNodeId) {
-      setCurrentNodeId(currentNode.nextNodeId);
+      goToNode(currentNode.nextNodeId);
     } else if (!visibleChoices || visibleChoices.length === 0) {
       onClose(currentNode.id);
     }
-  }, [currentNode, onClose, storyFlags, visibleChoices]);
+  }, [currentNode, onClose, storyFlags, visibleChoices, goToNode]);
 
   // Lựa chọn bị khóa khi Sanity nằm ngoài ngưỡng minSanity / maxSanity
   const isChoiceLocked = useCallback(
@@ -606,9 +618,9 @@ export const VNStage: React.FC<VNStageProps> = ({
     }
     if (impact !== 0) setSanity((prev) => Math.max(0, Math.min(100, prev + impact)));
     if (choice.setFlag) onSetFlag?.(choice.setFlag);
-    onChoice?.();
-    setCurrentNodeId(choice.nextNodeId);
-  }, [setSanity, playSanityLossSound, isChoiceLocked, onSetFlag, onClaimSanity, sanityAlreadyClaimed, currentNode.id, onChoice]);
+    onChoice?.(choice);
+    goToNode(choice.nextNodeId);
+  }, [setSanity, playSanityLossSound, isChoiceLocked, onSetFlag, onClaimSanity, sanityAlreadyClaimed, currentNode.id, onChoice, goToNode]);
 
   // Lắng nghe phím Space / Enter để qua câu thoại & Phím 1, 2, 3 để chọn lựa chọn nhanh
   useEffect(() => {
