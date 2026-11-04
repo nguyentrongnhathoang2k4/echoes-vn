@@ -999,7 +999,7 @@ function drawPetals(ctx: CanvasRenderingContext2D, petals: Petal[]) {
 /** Ánh sáng hoàng hôn: tint tâm lý + bloom mặt trời + nắng xiên + đèn đường + hào quang Miên */
 function drawSunsetLighting(ctx: CanvasRenderingContext2D, fr: SunsetFrame) {
   // Lớp tint theo tâm lý (ấm → tím lạnh → đỏ báo động)
-  ctx.fillStyle = fr.phase === 2 ? 'rgba(60,6,20,0.3)' : fr.phase === 1 ? 'rgba(126,34,206,0.14)' : 'rgba(244,63,94,0.08)';
+  ctx.fillStyle = fr.phase === 2 ? 'rgba(60,6,20,0.3)' : fr.phase === 1 ? 'rgba(30,20,35,0.1)' : 'rgba(244,63,94,0.08)';
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';

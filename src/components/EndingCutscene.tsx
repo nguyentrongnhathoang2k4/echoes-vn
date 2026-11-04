@@ -475,7 +475,7 @@ function drawKitchen(ctx: CanvasRenderingContext2D, u: number, mien: HTMLImageEl
   ellipse(456, 292, 8, 3, '#e5e7eb');
   ellipse(456, 291, 6, 2, '#b45309');
 
-  // Đĩa dưa cải chua ở giữa, phía trước
+  // Đĩa dưa cà ở giữa, phía trước
   const plateX = 320;
   ellipse(plateX, 292, 24, 7, '#2a1a10');
   ellipse(plateX, 290, 23, 6, '#f8fafc');

@@ -28,6 +28,7 @@ import { ContentWarning } from '../src/components/ContentWarning';
 import { audioEngine, AudioScene } from '../src/services/audioEngine';
 import { tx, translate } from '../src/locales/tx';
 import { hasOpenUiLayer } from '../src/services/uiLayers';
+import type { Choice } from '../src/types/vn';
 
 // OUTRO: cutscene sau mỗi kết cục (A / B / C) trước khi về menu
 type GameState = 'MENU' | 'INTRO' | 'PLAYING' | 'OUTRO';
@@ -424,9 +425,11 @@ export default function Home() {
   // hoặc đọc hết); đóng ngang bằng Esc / [Đóng] thì vật thể vẫn bấm [E] lại được
   const pendingMarkRef = useRef<string | null>(null);
   const vnResolvedRef = useRef(false);
-  const handleVNChoice = useCallback(() => {
+  const handleVNChoice = (choice: Choice) => {
     vnResolvedRef.current = true;
-  }, []);
+    // Lựa chọn tự ghi một vật thể "đã xem" (vd: đọc màn hình máy tính từ lời tự sự mở đầu)
+    if (choice.markInteracted) handleMarkInteracted(choice.markInteracted);
+  };
 
   // Khi người chơi bước vào ô trigger trên bản đồ (markId: vật thể cần đánh dấu khi xong hộp thoại)
   const handleTrigger = (nodeId: string, markId?: string) => {

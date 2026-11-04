@@ -54,8 +54,8 @@ function drawAlbumSunset(ctx: CanvasRenderingContext2D, imgs: HTMLImageElement[]
   };
   wheel(26, 108);
   wheel(52, 108);
-  px(ctx, 26, 100, 26, 1, '#7a2a2a');
-  px(ctx, 36, 96, 1, 12, '#7a2a2a');
+  px(ctx, 26, 100, 26, 1, '#4d6b3c');
+  px(ctx, 36, 96, 1, 12, '#4d6b3c');
   px(ctx, 48, 96, 6, 1, '#1a1012');
   // Hạt nắng lấp lánh
   for (let i = 0; i < 14; i++) px(ctx, hash(i * 11) * CG_W, hash(i * 13) * 60, 1, 1, '#fff4c8');
@@ -91,8 +91,8 @@ function drawAlbumCafe(ctx: CanvasRenderingContext2D) {
   };
   wheel(112, 50);
   wheel(130, 50);
-  px(ctx, 112, 44, 18, 1, '#7a2a2a');
-  px(ctx, 120, 41, 1, 9, '#7a2a2a');
+  px(ctx, 112, 44, 18, 1, '#4d6b3c');
+  px(ctx, 120, 41, 1, 9, '#4d6b3c');
   px(ctx, 106, 40, 6, 4, '#a07040');
   [[107, 38], [109, 37], [111, 38]].forEach(([x, y]) => px(ctx, x, y, 2, 2, '#9a6ad0'));
   // Mặt bàn gỗ
