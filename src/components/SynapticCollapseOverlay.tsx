@@ -17,7 +17,7 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
   onLoadLastSave,
   onRestart,
 }) => {
-  // Trạng thái: 'FLATLINE' (đang cấp cứu) | 'REVIVING' (đang sốc điện lóe sáng) | 'REVIVED_SPEECH' (độc thoại sau sốc) | 'DEAD' (chết não)
+  // Trạng thái: 'FLATLINE' (đang cấp cứu) | 'REVIVING' (đang sốc điện loé sáng) | 'REVIVED_SPEECH' (độc thoại sau sốc) | 'DEAD' (chết não)
   const [phase, setPhase] = useState<'FLATLINE' | 'REVIVING' | 'REVIVED_SPEECH' | 'DEAD'>('FLATLINE');
   
   // Thanh nạp năng lượng (0 - 100%)
@@ -127,7 +127,7 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
     audioEngine.stopFlatline();
     audioEngine.playDefibShock();
 
-    // Hiệu ứng lóe sáng trắng và rung chấn màn hình
+    // Hiệu ứng loé sáng trắng và rung chấn màn hình
     setFlashWhite(true);
     setScreenShock(true);
 
@@ -183,14 +183,14 @@ export const SynapticCollapseOverlay: React.FC<SynapticCollapseOverlayProps> = (
         screenShock ? 'animate-shock' : ''
       }`}
     >
-      {/* Lớp lóe sáng trắng chói lòa khi sốc tim */}
+      {/* Lớp loé sáng trắng chói loà khi sốc tim */}
       {flashWhite && (
         <div className="absolute inset-0 z-50 bg-white pointer-events-none animate-out fade-out duration-300" />
       )}
 
       {/* Background tối om với hiệu ứng lưới ECG y tế và vignette đỏ báo tử */}
       <div className="absolute inset-0 bg-black/95">
-        {/* Lưới tọa độ Monitor ICU */}
+        {/* Lưới toạ độ Monitor ICU */}
         <div
           className="absolute inset-0 opacity-15 pointer-events-none"
           style={{

@@ -13,7 +13,7 @@ export function heartbeatBpm(sanity: number): number {
 }
 
 /** Âm thanh duy nhất vang lên giữa khoảng lặng chân không */
-export type SilenceAccent = 'chime' | 'click' | 'sigh' | 'none';
+export type SilenceAccent = 'chime' | 'click' | 'sigh' | 'rain' | 'none';
 
 /** Sự kiện phát ra khi khoảng lặng bắt đầu, để các màn có AudioContext riêng cũng tự tắt tiếng theo */
 export const DEAD_SILENCE_EVENT = 'echoes:dead-silence';
@@ -371,7 +371,37 @@ class HybridAudioEngine {
     g.exponentialRampToValueAtTime(0.0001, t + 0.04);
     g.setValueAtTime(0.0001, t + durationMs / 1000);
     g.exponentialRampToValueAtTime(1, t + (durationMs + fadeBackMs) / 1000);
+    if (accent === 'rain') {
+      if (this.masterVolume > 0) this.playSilenceRain(t + 0.15, (durationMs + fadeBackMs) / 1000);
+      return;
+    }
     if (accent !== 'none' && this.masterVolume > 0) this.playSilenceAccent(accent, t + Math.min(0.7, durationMs / 2500));
+  }
+
+  /** Khoảng lặng chỉ còn tiếng mưa: mưa rào lọc trầm nổi lên, kéo dài suốt khoảng lặng rồi chìm dần */
+  private playSilenceRain(at: number, totalSec: number) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const buffer = this.createPinkNoiseBuffer();
+    if (!buffer) return;
+    try {
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 620;
+      const e = ctx.createGain();
+      const peak = 0.3 * this.masterVolume;
+      e.gain.setValueAtTime(0.0001, at);
+      e.gain.linearRampToValueAtTime(peak, at + 1.2);
+      e.gain.setValueAtTime(peak, at + Math.max(1.3, totalSec - 2));
+      e.gain.linearRampToValueAtTime(0.0001, at + totalSec);
+      src.connect(f).connect(e).connect(ctx.destination);
+      src.start(at);
+      src.stop(at + totalSec + 0.1);
+      src.onended = () => e.disconnect();
+    } catch {}
   }
 
   /** Âm duy nhất trong khoảng lặng: đi thẳng ra loa, không qua lớp tắt tiếng */

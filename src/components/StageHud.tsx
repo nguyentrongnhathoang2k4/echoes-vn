@@ -205,6 +205,37 @@ export interface NearLabel {
   x: number;
   y: number;
   text: string;
+  /** Có giá trị: nhãn treo DƯỚI đáy vật thể, đây là mép trên của nhãn (An đang đứng che phía trên) */
+  below?: number;
+}
+
+const LABEL_H = 22;
+
+/**
+ * Chọn chỗ đặt nhãn [E] để không đè lên người An: mặc định trên đỉnh vật thể;
+ * vướng An thì chuyển xuống dưới đáy vật thể; cả hai đều vướng thì treo ngay trên đầu An.
+ * p là chân An (toạ độ canvas), sprite cao ~63px vẽ từ p.y - 45 tới p.y + 18.
+ */
+export function placeLabel(
+  obj: { x: number; y: number; w: number; h: number },
+  text: string,
+  p: { x: number; y: number },
+  canvasH: number,
+): NearLabel {
+  const cx = obj.x + obj.w / 2;
+  const half = (34 + tx(text).length * 7.3) / 2;
+  const an = { l: p.x - 22, r: p.x + 22, t: p.y - 47, b: p.y + 18 };
+  const hits = (top: number) => cx - half < an.r && cx + half > an.l && top < an.b && top + LABEL_H > an.t;
+  if (!hits(Math.max(24, obj.y - 6) - LABEL_H)) return { x: cx, y: obj.y, text };
+  const below = obj.y + obj.h + 6;
+  if (!hits(below) && below + LABEL_H < canvasH) return { x: cx, y: obj.y, text, below };
+  // Làm tròn 8px: nhãn bám đầu An mà không setState mỗi khung hình
+  return { x: cx, y: Math.round((an.t - 2) / 8) * 8, text };
+}
+
+/** Khoá so sánh nhãn: chỉ setState khi chữ hoặc chỗ đặt thay đổi */
+export function labelKey(id: string, l: NearLabel | null): string {
+  return l ? `${id}|${l.text}|${l.x}|${l.y}|${l.below ?? ''}` : '';
 }
 
 /** Bong bóng thoại pixel 9x7 (dùng cho nhãn tương tác của các vật kỷ niệm) */
@@ -234,7 +265,9 @@ export function InteractLabel({ label, bubble = false }: { label: NearLabel | nu
   return (
     <div
       className="absolute z-20 pointer-events-none flex items-center gap-1.5 px-1.5 py-1 bg-black/75 font-mono text-[12px] leading-none text-zinc-100 whitespace-nowrap"
-      style={{ left: label.x, top: Math.max(24, label.y - 6), transform: 'translate(-50%, -100%)' }}
+      style={label.below !== undefined
+        ? { left: label.x, top: label.below, transform: 'translate(-50%, 0)' }
+        : { left: label.x, top: Math.max(24, label.y - 6), transform: 'translate(-50%, -100%)' }}
     >
       <span className="px-1 py-px border border-zinc-400 text-[10px] leading-none text-zinc-100">E</span>
       {bubble && <PixelBubble />}

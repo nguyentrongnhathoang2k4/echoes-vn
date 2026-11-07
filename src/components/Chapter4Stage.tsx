@@ -7,6 +7,8 @@ import { StoryNode, Choice } from '../types/vn';
 import { audioEngine, DEAD_SILENCE_EVENT, DeadSilenceDetail } from '../services/audioEngine';
 import { tx } from '../locales/tx';
 import { SubtitleFrame } from './StageHud';
+import { DeductionForm } from './DeductionForm';
+import { unlockedMemories, memoryFlagsForNode, TRUTH_FLAG, TRUTH_MISSED_FLAG } from '../data/memoryJournal';
 
 // =====================================================================
 // MÀN 4 — HƯ VÔ KỸ THUẬT SỐ (THE TERMINAL VOID)
@@ -21,6 +23,20 @@ const BOOT_NODE = 'ch4_start';
 const REFLECT_NODE = 'ch4_reflect';
 const CALL_NODE = 'ch4_video_call';
 const CLIMAX_NODE = 'ch4_climax_choice';
+// Sau lời đáp của Miên: An tự ghép lại đêm 17/05 → đúng thì Miên thú nhận, sai 2 lần thì cô lảng đi
+const RECONSTRUCT_NODE = 'ch4_reconstruct';
+const CONFESSION_NODE = 'ch4_confession';
+const TWIST_NODE = 'ch4_confession_2';
+const DEFLECT_NODE = 'ch4_deflect';
+// Câu chốt "Em hỏi anh có lạnh không": chỉ còn tiếng mưa, webcam đứng hình, chữ hiện từng dòng,
+// không tiếng gõ phím, khoá phím vài giây để người hay bấm bỏ qua cũng không lướt mất
+const GOLDEN_NODE = 'ch4_confession_4';
+const GOLDEN_SILENCE_MS = 7500;
+const GOLDEN_FADE_BACK_MS = 2500;
+const GOLDEN_START_DELAY_MS = 1400;
+const GOLDEN_LINE_DELAY_MS = 1300;
+const GOLDEN_LOCK_MS = 4200;
+const GOLDEN_CAM_FREEZE_MS = 1400;
 
 const LOG_FILES = [
   { file: 'LOG_01_BENHAN_TRUNGHOA.TXT', label: 'Bệnh án cấp cứu đêm 17/05', node: 'ch4_log1' },
@@ -106,7 +122,7 @@ const ELEGY_CHORDS = [
 const ELEGY_CLIMAX_SEC = 30;
 const musicLevel = (bgmVolume: number) => (bgmVolume / 100) * 0.9;
 
-type Phase = 'files' | 'reflect' | 'call' | 'decide' | 'ending';
+type Phase = 'files' | 'reflect' | 'call' | 'deduce' | 'decide' | 'ending';
 type EndingKind = 'A' | 'B' | 'C' | 'S';
 
 interface Chapter4StageProps {
@@ -412,7 +428,11 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
   const [typed, setTyped] = useState({ key: '', text: '', done: false });
   // Lời An nói qua micro (null = chưa trả lời) + node phản ứng của Miên
   const [reply, setReply] = useState<{ node: string; line: string } | null>(null);
+  // Đã qua màn suy luận chưa (đúng hay sai đều chỉ một lần)
+  const deducedRef = useRef(false);
   const camMoodRef = useRef<{ mood: CamMood; since: number }>({ mood: 'sob', since: -10000 });
+  const camFreezeRef = useRef(0);
+  const goldenLockRef = useRef(0);
   // Bảng quyết định: lựa chọn đang nhắm (bàn phím) + trạng thái giữ nút (chỉ sống trong ref, không re-render)
   const [focusPick, setFocusPick] = useState<number | null>(null);
   const focusRef = useRef(0);
@@ -452,6 +472,7 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
       (climax?.choices ?? []).filter(
         (c) =>
           (!c.requiresFlag || storyFlags.includes(c.requiresFlag)) &&
+          (!c.requiresFlags || c.requiresFlags.every((f) => storyFlags.includes(f))) &&
           (!c.forbidsFlag || !storyFlags.includes(c.forbidsFlag)) &&
           !(c.hiddenWhenLocked && isLocked(c)),
       ),
@@ -1071,21 +1092,30 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
   // ===================================================================
   // HIỆU ỨNG GÕ CHỮ (máy in ma trận)
   // ===================================================================
-  const typingRef = useRef<{ timer: number | null; key: string; full: string; idx: number; onDone?: () => void }>({
-    timer: null, key: '', full: '', idx: 0,
+  const typingRef = useRef<{ timer: number | null; key: string; full: string; idx: number; onDone?: () => void; pauseUntil: number }>({
+    timer: null, key: '', full: '', idx: 0, pauseUntil: 0,
   });
 
-  const startTyping = useCallback((key: string, full: string, onDone?: () => void) => {
+  /** opts.slow: chờ trước khi gõ, dừng sau mỗi dòng, không có tiếng gõ phím */
+  const startTyping = useCallback((key: string, full: string, onDone?: () => void, opts?: { startDelayMs: number; lineDelayMs: number }) => {
     const tr = typingRef.current;
     if (tr.timer) window.clearInterval(tr.timer);
     tr.key = key;
     tr.full = full;
     tr.idx = 0;
     tr.onDone = onDone;
+    tr.pauseUntil = opts ? performance.now() + opts.startDelayMs : 0;
+    let cleared = false;
     tr.timer = window.setInterval(() => {
-      tr.idx = Math.min(full.length, tr.idx + TYPE_CHARS_PER_TICK);
+      if (performance.now() < tr.pauseUntil) {
+        // Nhịp chờ đầu tiên: xoá dòng cũ để khung phụ đề trống hẳn
+        if (!cleared) { cleared = true; setTyped({ key, text: '', done: false }); }
+        return;
+      }
+      tr.idx = Math.min(full.length, tr.idx + (opts ? 1 : TYPE_CHARS_PER_TICK));
       const ch = full[tr.idx - 1];
-      if (tr.idx % 6 < TYPE_CHARS_PER_TICK && ch !== ' ' && ch !== '\n') soundRef.current.playKey();
+      if (opts && ch === '\n') tr.pauseUntil = performance.now() + opts.lineDelayMs;
+      if (!opts && tr.idx % 6 < TYPE_CHARS_PER_TICK && ch !== ' ' && ch !== '\n') soundRef.current.playKey();
       const done = tr.idx >= full.length;
       setTyped({ key, text: full.slice(0, tr.idx), done });
       if (done) {
@@ -1130,8 +1160,11 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
       setOpenedFirst(true);
     }
     setViewing(i);
-    startTyping(`log${i}`, nodeText(LOG_FILES[i].node), () => setReadCount((c) => Math.max(c, i + 1)));
-  }, [readCount, openedFirst, setSanity, startTyping]);
+    startTyping(`log${i}`, nodeText(LOG_FILES[i].node), () => {
+      setReadCount((c) => Math.max(c, i + 1));
+      for (const f of memoryFlagsForNode(LOG_FILES[i].node)) onSetStoryFlag?.(f);
+    });
+  }, [readCount, openedFirst, setSanity, startTyping, onSetStoryFlag]);
 
   const openMom = useCallback(() => {
     if (phaseRef.current !== 'files') return;
@@ -1162,6 +1195,7 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
   }, [reply, setSanity, startTyping]);
 
   const advance = useCallback(() => {
+    if (performance.now() < goldenLockRef.current) return;
     if (finishTyping()) return;
     const ph = phaseRef.current;
     if (ph === 'files') {
@@ -1186,11 +1220,40 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
         }
       }, 3200);
       startTyping('call', nodeText(CALL_NODE));
+    } else if (ph === 'call' && reply && deducedRef.current && story[reply.node]?.nextNodeId?.startsWith(CONFESSION_NODE)) {
+      // Lời thú tội chia 5 nhịp; câu "người cầm lái là em" và câu chốt đứng riêng, có khoảng lặng trước
+      const next = story[reply.node].nextNodeId as string;
+      setReply({ node: next, line: reply.line });
+      if (next === GOLDEN_NODE) {
+        const now = performance.now();
+        audioEngine.triggerDeadSilence(GOLDEN_SILENCE_MS, GOLDEN_FADE_BACK_MS, 'rain');
+        camFreezeRef.current = now + GOLDEN_CAM_FREEZE_MS;
+        goldenLockRef.current = now + GOLDEN_LOCK_MS;
+        startTyping('reply', nodeText(next), undefined, { startDelayMs: GOLDEN_START_DELAY_MS, lineDelayMs: GOLDEN_LINE_DELAY_MS });
+        return;
+      }
+      if (next === TWIST_NODE) audioEngine.triggerDeadSilence(2600, 1500, 'sigh');
+      startTyping('reply', nodeText(next));
+    } else if (ph === 'call' && reply && !deducedRef.current) {
+      setPhase('deduce');
+      startTyping('deduce', nodeText(RECONSTRUCT_NODE));
     } else if (ph === 'call' && reply) {
       setPhase('decide');
       startTyping('decide', nodeText(CLIMAX_NODE));
     }
   }, [finishTyping, readCount, viewing, momRead, openLog, openMom, startTyping, reply]);
+
+  /** Kết quả màn suy luận: đúng → Miên thú nhận (mở kết cục True); sai → Miên lảng đi */
+  const finishDeduction = useCallback((ok: boolean) => {
+    if (deducedRef.current || phaseRef.current !== 'deduce') return;
+    deducedRef.current = true;
+    onSetStoryFlag?.(ok ? TRUTH_FLAG : TRUTH_MISSED_FLAG);
+    const node = ok ? CONFESSION_NODE : DEFLECT_NODE;
+    setReply({ node, line: tx('[Gửi biểu mẫu tái dựng qua CAM_02]') });
+    camMoodRef.current = { mood: ok ? 'sob' : 'cover', since: performance.now() };
+    setPhase('call');
+    startTyping('reply', nodeText(node));
+  }, [onSetStoryFlag, startTyping]);
 
   const runEnding = useCallback((nextNodeId: string, impact: number) => {
     if (endedRef.current) return;
@@ -1321,7 +1384,7 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
   // Bảng quyết định: phím số hoặc ↑↓ để nhắm, giữ Space/Enter 3 giây để chốt
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (pausedRef.current) return;
+      if (pausedRef.current || phaseRef.current === 'deduce') return;
       const confirmKey = e.key === ' ' || e.key === 'Enter';
       if (confirmKey) e.preventDefault();
       if (e.repeat) return;
@@ -1381,7 +1444,7 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
       last = now;
       const ph = phaseRef.current;
       if (ph === 'ending') { setFrozen(false); return; }
-      if (pausedRef.current || document.hidden) { endAt += dt; return; }
+      if (pausedRef.current || document.hidden || ph === 'deduce') { endAt += dt; setFrozen(false); return; }
       let rem = (endAt - now) / 1000;
       if (ph !== 'decide' && rem < DECISION_GRACE) {
         endAt = now + DECISION_GRACE * 1000;
@@ -1456,7 +1519,7 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
     events.forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
     const id = window.setInterval(() => {
       const now = Date.now();
-      if (endedRef.current || pausedRef.current || document.hidden || phaseRef.current === 'ending') {
+      if (endedRef.current || pausedRef.current || document.hidden || phaseRef.current === 'ending' || phaseRef.current === 'deduce') {
         lastActive = now;
         return;
       }
@@ -1566,7 +1629,8 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
       frame++;
       drawVoid(vg, vc.width, vc.height, sim, t, endingRef.current);
       const cam = camMoodRef.current;
-      drawWebcam(cg, t, mien, pleading, now - bangAtRef.current, endingRef.current, frame, cam.mood, now - cam.since);
+      // Webcam đứng hình: giữ nguyên khung cuối như kết nối bị treo
+      if (now >= camFreezeRef.current) drawWebcam(cg, t, mien, pleading, now - bangAtRef.current, endingRef.current, frame, cam.mood, now - cam.since);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -1583,13 +1647,14 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
   const doneFor = (key: string) => typed.key === key && typed.done;
 
   const urgent = remaining <= 30;
-  const camLarge = phase === 'call' || phase === 'decide' || phase === 'ending';
-  const termKey = phase === 'files' ? (viewing === null ? 'boot' : `log${viewing}`) : phase === 'reflect' ? 'reflect' : phase === 'call' ? 'call' : 'decide';
+  const camLarge = phase === 'call' || phase === 'deduce' || phase === 'decide' || phase === 'ending';
+  const termKey = phase === 'files' ? (viewing === null ? 'boot' : `log${viewing}`) : phase === 'reflect' ? 'reflect' : phase === 'call' ? 'call' : phase === 'deduce' ? 'deduce' : 'decide';
   const termTitle =
     phase === 'files'
       ? viewing === null ? tx('AURA_OS v3.14 // KHỞI ĐỘNG') : viewing === MOM_INDEX ? 'TIN_NHAN_ME.SMS' : LOG_FILES[viewing].file
       : phase === 'reflect' ? tx('AN // BẢN SAO KÝ ỨC #314')
       : phase === 'call' ? tx('KẾT NỐI WEBCAM // PHÒNG MÁY 312')
+      : phase === 'deduce' ? tx('AURA // TÁI DỰNG PHIÊN 17/05')
       : tx('QUYẾT ĐỊNH CUỐI CÙNG');
   const canContinue =
     (phase === 'files' && doneFor(termKey) && (readCount >= LOG_FILES.length || viewing === null || viewing === MOM_INDEX || viewing + 1 === readCount)) ||
@@ -1660,7 +1725,7 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
         {/* ===== TERMINAL CRT CHÍNH ===== */}
         <div
           className="absolute left-[4%] top-[11%] bottom-[22%] w-[60%] flex flex-col bg-black/45"
-          onClick={() => { if (phase !== 'decide' && phase !== 'ending') advance(); }}
+          onClick={() => { if (phase !== 'decide' && phase !== 'ending' && phase !== 'deduce') advance(); }}
         >
           {/* Đang đọc tin nhắn mẹ: thanh tiêu đề chuyển sang vàng hổ phách dịu */}
           <div className={`flex justify-between items-center px-3 py-1.5 text-[clamp(9px,0.9vw,12px)] transition-colors duration-700 ${
@@ -1737,14 +1802,20 @@ export const Chapter4Stage: React.FC<Chapter4StageProps> = ({
                               i === 0 ? 'border-cyan-400 hover:bg-cyan-950/40 text-cyan-100' : 'border-rose-400 hover:bg-rose-950/40 text-rose-100'
                             }`}
                           >
-                            <div className="font-bold text-[clamp(9px,0.85vw,12px)] opacity-80">[{i + 1}] {title}</div>
-                            <div className="italic text-justify">{sub}</div>
+                            <div className="font-bold text-[clamp(9px,0.85vw,12px)] opacity-80">[{i + 1}]{sub ? ` ${title}` : ''}</div>
+                            {/* Lựa chọn không có thẻ: cả câu là lời An nói */}
+                            <div className="italic text-justify">{sub || title}</div>
                           </button>
                         );
                       })}
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* Màn suy luận: gõ xong lời dẫn thì hiện biểu mẫu */}
+              {phase === 'deduce' && doneFor('deduce') && (
+                <DeductionForm entries={unlockedMemories(storyFlags)} onResult={finishDeduction} />
               )}
 
               {/* Bảng lựa chọn kết cục */}

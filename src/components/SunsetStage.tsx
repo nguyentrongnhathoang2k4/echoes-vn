@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { DialogueZoom, isMoveKey, type FocusPoint } from './pixel/DialogueZoom';
 import { MusicBoxMinigame } from './minigames/MusicBoxMinigame';
 import { PolaroidMinigame } from './minigames/PolaroidMinigame';
 import { RadioMinigame } from './minigames/RadioMinigame';
@@ -18,7 +19,7 @@ import { EmoteDirector, createEmoteDirector, emoteNow, updateEmotes, drawEmotes 
 import { tx } from '../locales/tx';
 import {
   useCinematicSubtitle, CinematicSubtitle, StageClock, ClueFlash, useClueFlash,
-  InteractLabel, NearLabel, useAutoHideHints, HintBar, HintKey,
+  InteractLabel, NearLabel, placeLabel, labelKey, useAutoHideHints, HintBar, HintKey,
 } from './StageHud';
 
 interface InteractableObject {
@@ -51,6 +52,8 @@ interface SunsetStageProps {
   onCutsceneChange?: (active: boolean) => void;
   /** Người chơi đang điều khiển An (không mở thoại / menu): bộ đếm ký ức chờ tới lúc này mới sáng */
   active?: boolean;
+  /** true khi khung thoại VN đang mở: camera tiến về đồ vật vừa tương tác */
+  inDialogue?: boolean;
 }
 
 type Direction = 'down' | 'left' | 'right' | 'up';
@@ -1304,6 +1307,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
   parallax = true,
   onCutsceneChange,
   active = true,
+  inDialogue = false,
 }) => {
   const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1649,6 +1653,15 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     }
   }, [localInteractedIds, onTrigger, playGlitchSound, playMusicBoxSound, showMonologueWhisper]);
 
+  // Đang hội thoại / tạm dừng / chuyển cảnh: khoá điều khiển, xả các phím đang giữ để An không tự đi tiếp
+  // Đồ vật vừa tương tác: khung thoại mở ra thì camera tiến lại gần nó
+  const [dialogFocus, setDialogFocus] = useState<FocusPoint | null>(null);
+  const activeRef = useRef(active);
+  useEffect(() => {
+    activeRef.current = active;
+    if (!active) keysHeld.current.clear();
+  }, [active]);
+
   // Xử lý bàn phím
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1659,8 +1672,10 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
         }
         return;
       }
+      if (!activeRef.current) return; // Khung thoại đang mở: phím thuộc về hộp thoại
 
       keysHeld.current.add(e.key.toLowerCase());
+      if (isMoveKey(e.key)) setDialogFocus(null);
 
       if (e.key.toLowerCase() === 'e' || e.key === ' ' || e.key === 'Enter') {
         const p = playerRef.current;
@@ -1671,6 +1686,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
         });
 
         if (target) {
+          setDialogFocus({ x: target.x + target.w / 2, y: target.y + target.h / 2 });
           handleInteractWith(target);
         }
       }
@@ -1780,10 +1796,11 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
         return Math.hypot(p.x - cx, p.y - cy) < INTERACT_RADIUS;
       }) ?? null;
       const labelText = nearTarget ? promptLabelFor(nearTarget, snap.interacted) : null;
-      const promptKey = nearTarget && labelText ? `${nearTarget.id}|${labelText}` : '';
+      const placedLabel = nearTarget && labelText ? placeLabel(nearTarget, labelText, p, CANVAS_HEIGHT) : null;
+      const promptKey = labelKey(nearTarget?.id ?? '', placedLabel);
       if (promptKey !== promptKeyRef.current) {
         promptKeyRef.current = promptKey;
-        setNearLabel(nearTarget && labelText ? { x: nearTarget.x + nearTarget.w / 2, y: nearTarget.y, text: labelText } : null);
+        setNearLabel(placedLabel);
       }
       // An bước đi thì phụ đề độc thoại mờ sớm
       if (p.isMoving) fadeSubtitleOnMove();
@@ -1863,6 +1880,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     <div className="relative w-full h-full flex flex-col items-center justify-center bg-black overflow-hidden select-none">
       {/* Khung Canvas hiển thị Thị Trấn Hoàng Hôn */}
       <div className="relative border-4 border-fuchsia-950/80 rounded-sm overflow-hidden" ref={frameRef} style={{ width: `min(96vw, calc((100vh - 60px) * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, marginTop: 44 }}>
+        <DialogueZoom focus={dialogFocus} active={inDialogue} width={CANVAS_WIDTH} height={CANVAS_HEIGHT}>
         <canvas
           ref={canvasRef}
           width={CANVAS_WIDTH}
@@ -1870,10 +1888,11 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
           className="pixelated block cursor-pointer w-full h-full"
           style={{ imageRendering: 'pixelated' }}
         />
+        </DialogueZoom>
         <div className="absolute top-0 left-0" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${uiScale})`, transformOrigin: 'top left' }}>
 
         {/* Nhãn [E] mini nổi ngay trên đầu vật thể (kèm bong bóng thoại pixel); manh mối đã xem thì không hiện */}
-        <InteractLabel label={nearLabel} bubble />
+        <InteractLabel label={inDialogue ? null : nearLabel} bubble />
 
         {/* Phụ đề độc thoại kiểu điện ảnh sát đáy khung hình: tự mờ sau vài giây hoặc khi An bước đi */}
         <CinematicSubtitle subtitle={subtitle} />
@@ -1898,6 +1917,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
       {activeMinigame === 'MUSIC_BOX' && (
         <MusicBoxMinigame
           volume={volume}
+          onPenalty={() => setSanity?.(prev => Math.max(5, prev - 2))}
           onComplete={() => {
             setActiveMinigame(null);
             setSanity?.(prev => Math.max(10, prev - 5));
@@ -1907,14 +1927,8 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
             }
             onTrigger('obj_ch2_music_box');
           }}
-          onClose={() => {
-            setActiveMinigame(null);
-            if (!localInteractedIds.includes('ch2_music_box')) {
-              setLocalInteractedIds(prev => [...prev, 'ch2_music_box']);
-              onMarkInteracted?.('ch2_music_box');
-            }
-            onTrigger('obj_ch2_music_box');
-          }}
+          // Thoát giữa chừng: không tính là xong, lần sau mở lại chơi từ đầu
+          onClose={() => setActiveMinigame(null)}
         />
       )}
 
@@ -1932,14 +1946,8 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
             }
             onTrigger('obj_ch2_bench');
           }}
-          onClose={() => {
-            setActiveMinigame(null);
-            if (!localInteractedIds.includes('ch2_bench')) {
-              setLocalInteractedIds(prev => [...prev, 'ch2_bench']);
-              onMarkInteracted?.('ch2_bench');
-            }
-            onTrigger('obj_ch2_bench');
-          }}
+          // Thoát giữa chừng: không tính là xong, lần sau mở lại chơi từ đầu
+          onClose={() => setActiveMinigame(null)}
         />
       )}
 
@@ -1961,14 +1969,8 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
             }
             onTrigger('obj_ch2_umbrella');
           }}
-          onClose={() => {
-            setActiveMinigame(null);
-            if (!localInteractedIds.includes('ch2_umbrella')) {
-              setLocalInteractedIds(prev => [...prev, 'ch2_umbrella']);
-              onMarkInteracted?.('ch2_umbrella');
-            }
-            onTrigger('obj_ch2_umbrella');
-          }}
+          // Thoát giữa chừng: không tính là xong, lần sau mở lại chơi từ đầu
+          onClose={() => setActiveMinigame(null)}
         />
       )}
     </div>
