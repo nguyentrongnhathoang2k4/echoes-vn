@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { tx } from '../../locales/tx';
+import { useUiLayer } from '../../services/uiLayers';
 
 interface RadioMinigameProps {
   onComplete: () => void;
@@ -8,360 +9,359 @@ interface RadioMinigameProps {
   volume?: number;
 }
 
-export const RadioMinigame: React.FC<RadioMinigameProps> = ({
-  onComplete,
-  onClose,
-  volume = 80,
-}) => {
-  const [frequency, setFrequency] = useState(90.2); // 88.0 -> 108.0 MHz. Target: 104.5 MHz
-  const [signalStrength, setSignalStrength] = useState(10); // 0 -> 100%
-  const [activeStation, setActiveStation] = useState<'NONE' | 'CAFE' | 'WHISPER' | 'EMERGENCY'>('NONE');
-  const [isLocked, setIsLocked] = useState(false);
-  const [isRevealed, setIsRevealed] = useState(false);
+/**
+ * DÒ SÓNG GIAO THOA (Màn 2) — một thao tác: vặn núm tần số 88.0–108.0 MHz.
+ * Màn oscilloscope có sóng mục tiêu vàng nhạt (cố định) và sóng tín hiệu xanh lá (đổi theo tần số đang dò).
+ * Dò qua các đài khác: mưa rào, rè rè, nhạc tiền chiến méo. Lại gần 104.5 MHz (Đài Giao thông): sóng xanh
+ * dao động mạnh rồi bị "hút" dần vào sóng vàng. Đồng bộ ≥ 90% một nhịp: sấm rền, mưa quất, một tiếng phanh trượt
+ * ngắn rồi ngắt phụt thành nhiễu; giọng phát thanh viên đứt quãng báo va chạm trên cầu vượt. (Màn 2: chưa nhắc bệnh viện.)
+ */
+const F_MIN = 88;
+const F_MAX = 108;
+const TARGET = 104.5;
+const LOCK_SYNC = 90;
+const LOCK_HOLD_S = 1.2;
+const PULL_RANGE = 0.2;          // MHz: chỉ hút nhẹ khi đã chỉnh rất sát (không cứu người quét bừa)
+const KEY_RATE = 1.6;            // MHz / giây khi giữ A/D
+const WHEEL_STEP = 0.1;
+const DRAG_RATE = 0.02;          // MHz / px kéo núm
+const SCOPE_W = 420;
+const SCOPE_H = 140;
+// Các đài "nhiễu" trên đường dò
+const STATIONS: Array<{ f: number; kind: 'rain' | 'music' }> = [
+  { f: 92.3, kind: 'rain' },
+  { f: 97.8, kind: 'music' },
+];
 
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  // Rời màn / đóng khung thì đóng hẳn AudioContext riêng: không còn âm nào ngân sang cảnh sau
+const syncOf = (f: number) => Math.max(0, Math.round(100 - Math.abs(f - TARGET) * 55));
+
+export const RadioMinigame: React.FC<RadioMinigameProps> = ({ onComplete, onClose, volume = 80 }) => {
+  useUiLayer(true);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const freqRef = useRef(90.2);
+  const [freq, setFreq] = useState(90.2);
+  const [locked, setLocked] = useState(false);
+  const lockedRef = useRef(false);
+  const holdRef = useRef(0);
+  const keysRef = useRef<Set<string>>(new Set());
+  const dragRef = useRef<number | null>(null);
+  const cbRef = useRef({ onComplete, onClose });
   useEffect(() => {
-    const ctxRef = audioCtxRef;
+    cbRef.current = { onComplete, onClose };
+  }, [onComplete, onClose]);
+
+  // ---------------- Âm thanh: rè nền + đài nhiễu, gain chỉnh theo tần số ----------------
+  const audioRef = useRef<AudioContext | null>(null);
+  const nodesRef = useRef<{ staticG: GainNode; rainG: GainNode; musicG: GainNode; musicOsc: OscillatorNode } | null>(null);
+  useEffect(() => {
+    const ref = audioRef;
     return () => {
-      void ctxRef.current?.close().catch(() => {});
-      ctxRef.current = null;
+      void ref.current?.close().catch(() => {});
+      ref.current = null;
+      nodesRef.current = null;
     };
   }, []);
-  const sirenOscRef = useRef<OscillatorNode | null>(null);
-  const sirenGainRef = useRef<GainNode | null>(null);
-  const sirenTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  const getAudioContext = useCallback(() => {
+  const vol = volume / 100;
+  const ensureAudio = useCallback(() => {
     try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!audioCtxRef.current && AudioCtx) {
-        audioCtxRef.current = new AudioCtx();
+      const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!audioRef.current && Ctor) audioRef.current = new Ctor();
+      const ctx = audioRef.current;
+      if (!ctx) return null;
+      if (ctx.state === 'suspended') void ctx.resume();
+      if (!nodesRef.current) {
+        const len = ctx.sampleRate * 2;
+        const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        const mkNoise = (type: BiquadFilterType, freq: number) => {
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          src.loop = true;
+          const f = ctx.createBiquadFilter();
+          f.type = type;
+          f.frequency.value = freq;
+          const g = ctx.createGain();
+          g.gain.value = 0;
+          src.connect(f).connect(g).connect(ctx.destination);
+          src.start();
+          return g;
+        };
+        const staticG = mkNoise('bandpass', 2200);
+        const rainG = mkNoise('lowpass', 900);
+        // Nhạc tiền chiến méo: sóng vuông chậm, cao độ chao đảo
+        const musicOsc = ctx.createOscillator();
+        musicOsc.type = 'square';
+        musicOsc.frequency.value = 330;
+        const mf = ctx.createBiquadFilter();
+        mf.type = 'lowpass';
+        mf.frequency.value = 900;
+        const musicG = ctx.createGain();
+        musicG.gain.value = 0;
+        musicOsc.connect(mf).connect(musicG).connect(ctx.destination);
+        musicOsc.start();
+        nodesRef.current = { staticG, rainG, musicG, musicOsc };
       }
-      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
-        audioCtxRef.current.resume();
-      }
-      return audioCtxRef.current;
+      return ctx;
     } catch {
       return null;
     }
   }, []);
+  // Bắt đúng đài: sấm rền + mưa quất rào rạt + tiếng phanh trượt ngắn, rồi ngắt phụt thành nhiễu tĩnh
+  const playStorm = useCallback(() => {
+    const ctx = audioRef.current;
+    if (!ctx || vol <= 0) return;
+    const t = ctx.currentTime;
+    const len = Math.floor(ctx.sampleRate * 3);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const layer = (type: BiquadFilterType, freq: number, q = 1) => {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.setValueAtTime(freq, t);
+      f.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      src.connect(f).connect(g).connect(ctx.destination);
+      src.start(t);
+      src.stop(t + 3);
+      return { f, g };
+    };
+    // Mưa quất
+    const rain = layer('lowpass', 1400);
+    rain.g.gain.linearRampToValueAtTime(0.16 * vol, t + 0.3);
+    rain.g.gain.setValueAtTime(0.16 * vol, t + 2.15);
+    rain.g.gain.linearRampToValueAtTime(0, t + 2.2);
+    // Sấm rền trầm, hai đợt
+    const thunder = layer('lowpass', 110);
+    thunder.g.gain.linearRampToValueAtTime(0.5 * vol, t + 0.15);
+    thunder.g.gain.linearRampToValueAtTime(0.2 * vol, t + 0.7);
+    thunder.g.gain.linearRampToValueAtTime(0.42 * vol, t + 0.95);
+    thunder.g.gain.linearRampToValueAtTime(0, t + 2.1);
+    // Phanh trượt ngắn
+    const skid = layer('bandpass', 2600, 9);
+    skid.f.frequency.setValueAtTime(2600, t + 1.5);
+    skid.f.frequency.exponentialRampToValueAtTime(900, t + 2.15);
+    skid.g.gain.setValueAtTime(0, t + 1.5);
+    skid.g.gain.linearRampToValueAtTime(0.22 * vol, t + 1.6);
+    skid.g.gain.setValueAtTime(0.22 * vol, t + 2.15);
+    skid.g.gain.linearRampToValueAtTime(0, t + 2.2);
+    // Ngắt phụt thành nhiễu tĩnh rồi im
+    const cut = layer('highpass', 3000);
+    cut.g.gain.setValueAtTime(0, t + 2.2);
+    cut.g.gain.linearRampToValueAtTime(0.1 * vol, t + 2.22);
+    cut.g.gain.setValueAtTime(0.1 * vol, t + 2.6);
+    cut.g.gain.linearRampToValueAtTime(0, t + 2.62);
+  }, [vol]);
 
-  // Tiếng rè rè radio (Static white noise) khi xoay núm
-  const playStaticBurst = useCallback(() => {
-    if (volume <= 0) return;
-    const ctx = getAudioContext();
-    if (!ctx) return;
-    try {
-      const bufferSize = ctx.sampleRate * 0.08;
-      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        data[i] = Math.random() * 2 - 1;
-      }
-      const noise = ctx.createBufferSource();
-      noise.buffer = buffer;
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime((volume / 100) * 0.035, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
-      noise.connect(gain);
-      gain.connect(ctx.destination);
-      noise.start();
-    } catch {}
-  }, [getAudioContext, volume]);
-
-  // Tiếng còi xe cấp cứu inh ỏi (Siren 115)
-  const startSirenSound = useCallback(() => {
-    if (volume <= 0) return;
-    const ctx = getAudioContext();
-    if (!ctx) return;
-    try {
-      if (sirenOscRef.current) return;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      gain.gain.setValueAtTime((volume / 100) * 0.09, ctx.currentTime);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-
-      sirenOscRef.current = osc;
-      sirenGainRef.current = gain;
-
-      // Chu kỳ hú còi 750Hz <-> 960Hz
-      let high = false;
-      sirenTimerRef.current = setInterval(() => {
-        if (!audioCtxRef.current || !sirenOscRef.current) return;
-        high = !high;
-        sirenOscRef.current.frequency.setValueAtTime(
-          high ? 960 : 720,
-          audioCtxRef.current.currentTime
-        );
-      }, 450);
-    } catch {}
-  }, [getAudioContext, volume]);
-
-  const stopSirenSound = useCallback(() => {
-    if (sirenTimerRef.current) clearInterval(sirenTimerRef.current);
-    if (sirenOscRef.current) {
-      try {
-        sirenOscRef.current.stop();
-        sirenOscRef.current.disconnect();
-      } catch {}
-      sirenOscRef.current = null;
-    }
+  const tune = useCallback((delta: number) => {
+    if (lockedRef.current || delta === 0) return;
+    freqRef.current = Math.max(F_MIN, Math.min(F_MAX, freqRef.current + delta));
+    holdRef.current = 0;
+    setFreq(freqRef.current);
   }, []);
 
-  useEffect(() => {
-    return () => {
-      stopSirenSound();
-    };
-  }, [stopSirenSound]);
-
-  // Phân tích dải tần số khi người dùng chỉnh núm
-  useEffect(() => {
-    playStaticBurst();
-
-    // 1. Kênh Cà phê sinh viên: 92.5 MHz (92.2 - 92.8)
-    if (Math.abs(frequency - 92.5) <= 0.35) {
-      setActiveStation('CAFE');
-      setSignalStrength(85 - Math.abs(frequency - 92.5) * 100);
-      setIsLocked(false);
-      stopSirenSound();
-    }
-    // 2. Kênh Lời thì thầm của Miên: 98.0 MHz (97.7 - 98.3)
-    else if (Math.abs(frequency - 98.0) <= 0.35) {
-      setActiveStation('WHISPER');
-      setSignalStrength(90 - Math.abs(frequency - 98.0) * 100);
-      setIsLocked(false);
-      stopSirenSound();
-    }
-    // 3. KÊNH KHẨN CẤP ĐÀI GIAO THÔNG & CẤP CỨU 115: 104.5 MHz (104.2 - 104.8)
-    else if (Math.abs(frequency - 104.5) <= 0.3) {
-      setActiveStation('EMERGENCY');
-      const strength = Math.max(70, Math.round(100 - Math.abs(frequency - 104.5) * 80));
-      setSignalStrength(strength);
-      setIsLocked(true);
-      startSirenSound();
-    } else {
-      setActiveStation('NONE');
-      setSignalStrength(Math.floor(10 + Math.random() * 15));
-      setIsLocked(false);
-      stopSirenSound();
-    }
-  }, [frequency, playStaticBurst, startSirenSound, stopSirenSound]);
-
-  // Xử lý xác nhận tín hiệu
-  const handleConfirmSignal = () => {
-    stopSirenSound();
-    setIsRevealed(true);
+  // ---------------- Chuột / bàn phím ----------------
+  const onKnobDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    ensureAudio();
+    dragRef.current = e.clientX;
   };
+  const onKnobMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragRef.current === null) return;
+    tune((e.clientX - dragRef.current) * DRAG_RATE);
+    dragRef.current = e.clientX;
+  };
+  const onKnobUp = () => {
+    dragRef.current = null;
+  };
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      ensureAudio();
+      tune(-Math.sign(e.deltaY) * WHEEL_STEP);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [ensureAudio, tune]);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      e.stopPropagation();
+      if (k === 'escape') {
+        e.preventDefault();
+        if (!lockedRef.current) cbRef.current.onClose();
+        return;
+      }
+      if (['w', 'a', 's', 'd', 'e', 'i', 'tab', ' ', 'enter', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
+      keysRef.current.add(k);
+      ensureAudio();
+    };
+    const up = (e: KeyboardEvent) => keysRef.current.delete(e.key.toLowerCase());
+    window.addEventListener('keydown', down, true);
+    window.addEventListener('keyup', up, true);
+    return () => {
+      window.removeEventListener('keydown', down, true);
+      window.removeEventListener('keyup', up, true);
+    };
+  }, [ensureAudio]);
+
+  // ---------------- Vòng lặp: phím giữ, lực hút đài, âm thanh, oscilloscope ----------------
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    let raf = 0;
+    let last = performance.now();
+    const loop = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const t = now / 1000;
+      const keys = keysRef.current;
+      let d = 0;
+      if (keys.has('d') || keys.has('arrowright') || keys.has('arrowup')) d += KEY_RATE * dt;
+      if (keys.has('a') || keys.has('arrowleft') || keys.has('arrowdown')) d -= KEY_RATE * dt;
+      if (d !== 0) tune(d);
+      const idle = d === 0 && dragRef.current === null;
+      // Lại gần đài: sóng bị hút dần vào (núm tự trôi nhẹ khi người chơi buông tay)
+      const off = TARGET - freqRef.current;
+      if (!lockedRef.current && idle && Math.abs(off) < PULL_RANGE && Math.abs(off) > 0.01) {
+        freqRef.current += off * Math.min(1, dt * 1.5);
+        setFreq(freqRef.current);
+      }
+      const sync = syncOf(freqRef.current);
+      // Giữ chuột trên núm mà không xoay cũng tính là đứng yên
+      if (!lockedRef.current && sync >= LOCK_SYNC && d === 0) {
+        holdRef.current += dt;
+        if (holdRef.current >= LOCK_HOLD_S) {
+          lockedRef.current = true;
+          freqRef.current = TARGET;
+          setFreq(TARGET);
+          setLocked(true);
+          playStorm();
+          window.setTimeout(() => cbRef.current.onComplete(), 4200);
+        }
+      }
+
+      // Âm lượng các lớp tiếng theo tần số đang dò
+      const n = nodesRef.current;
+      const actx = audioRef.current;
+      if (n && actx) {
+        const at = actx.currentTime;
+        const s = lockedRef.current ? 0 : 1 - sync / 100;
+        n.staticG.gain.setTargetAtTime(0.09 * vol * s, at, 0.05);
+        const near = (f0: number) => Math.max(0, 1 - Math.abs(freqRef.current - f0) / 0.5);
+        n.rainG.gain.setTargetAtTime(lockedRef.current ? 0 : 0.12 * vol * near(STATIONS[0].f), at, 0.05);
+        n.musicG.gain.setTargetAtTime(lockedRef.current ? 0 : 0.03 * vol * near(STATIONS[1].f), at, 0.05);
+        n.musicOsc.frequency.setTargetAtTime(330 + Math.sin(t * 2.3) * 40 + (Math.sin(t * 0.7) > 0 ? 110 : 0), at, 0.05);
+      }
+
+      // ---- Oscilloscope ----
+      ctx.fillStyle = '#031a0b';
+      ctx.fillRect(0, 0, SCOPE_W, SCOPE_H);
+      ctx.strokeStyle = 'rgba(74,222,128,0.12)';
+      for (let x = 0; x < SCOPE_W; x += 30) {
+        ctx.beginPath();
+        ctx.moveTo(x + 0.5, 0);
+        ctx.lineTo(x + 0.5, SCOPE_H);
+        ctx.stroke();
+      }
+      for (let y = 0; y < SCOPE_H; y += 28) {
+        ctx.beginPath();
+        ctx.moveTo(0, y + 0.5);
+        ctx.lineTo(SCOPE_W, y + 0.5);
+        ctx.stroke();
+      }
+      const mid = SCOPE_H / 2;
+      const k = sync / 100;
+      // Sóng mục tiêu vàng nhạt
+      ctx.strokeStyle = 'rgba(253,230,138,0.75)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let x = 0; x <= SCOPE_W; x += 2) {
+        const y = mid + Math.sin(x * 0.045 + t * 3) * 34;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      // Sóng tín hiệu xanh: lệch tần số + nhiễu, càng gần đài càng trùng sóng vàng
+      const df = (freqRef.current - TARGET) * 0.018;
+      ctx.strokeStyle = lockedRef.current ? '#86efac' : '#4ade80';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let x = 0; x <= SCOPE_W; x += 2) {
+        const noise = (Math.random() - 0.5) * 50 * (1 - k);
+        const swing = 1 + (k > 0.5 && k < 0.9 ? Math.sin(t * 25) * 0.35 : 0);
+        const y = mid + Math.sin(x * (0.045 + df) + t * 3 + (1 - k) * 2) * 34 * swing + noise;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.lineWidth = 1;
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [playStorm, tune, vol]);
+
+  const sync = syncOf(freq);
+  const angle = -135 + ((freq - F_MIN) / (F_MAX - F_MIN)) * 270;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md font-mono select-none animate-fade-in">
-      <div
-        className={`relative w-full max-w-lg bg-zinc-950 border-2 rounded-lg p-5 transition-all duration-300 ${
-          isLocked
-            ? 'border-red-500'
-            : 'border-cyan-800/80'
-        }`}
-      >
-        {/* Tiêu đề & Nút bỏ qua */}
-        <div className="flex justify-between items-center pb-3 border-b border-cyan-900/50 mb-3">
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-2.5 h-2.5 rounded-full inline-block ${
-                isLocked ? 'bg-red-500 animate-ping' : 'bg-cyan-400'
-              }`}
-            />
-            <h2 className="text-sm sm:text-base font-bold text-cyan-300 uppercase tracking-wider">
-              {tx('Đài Transistor Đêm Mưa • FM-1705')}
-            </h2>
-          </div>
-          <button
-            onClick={() => {
-              stopSirenSound();
-              onClose();
-            }}
-            className="text-xs text-zinc-400 hover:text-white px-2 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded transition-colors"
-          >
-            {tx('[ESC] Bỏ qua')}
-          </button>
+    <div className="fixed inset-0 z-50 bg-black/90 flex items-start justify-center p-3 font-mono overflow-y-auto">
+      <div ref={panelRef} className="w-full max-w-xl my-auto bg-zinc-950 border border-zinc-700 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-zinc-200 text-sm font-bold tracking-widest">{tx('ĐÀI BÁN DẪN • DƯỚI CỘT ĐÈN')}</div>
+          <div className="text-xs text-zinc-500">{tx('Đồng bộ')} {sync}%</div>
         </div>
-
-        {!isRevealed ? (
-          <div>
-            <p className="text-xs text-zinc-300 mb-3 leading-relaxed text-justify">
-              {tx('Chiếc đài bán dẫn gác cạnh chiếc ô ướt sũng dưới chân cột đèn. Nước mưa đọng trên mặt kính thang đo tần số.')}
-              <span className="text-cyan-300 font-semibold block mt-0.5">
-                {tx('Xoay núm dò sóng từ 88 đến 108 MHz để bắt sóng bản tin thời tiết đêm 17/05.')}
-              </span>
-            </p>
-
-            {/* Mô phỏng Thân Đài Bán Dẫn (Transistor Radio Chassis) */}
-            <div className="bg-zinc-900 border-2 border-zinc-700 rounded-lg p-4 mb-4 shadow-inner relative">
-              {/* Thước đo kim tần số Analog */}
-              <div className="bg-black/80 border border-zinc-600 rounded p-3 mb-4 relative overflow-hidden">
-                <div className="flex justify-between items-center text-[10px] text-zinc-400 mb-1">
-                  <span>FM BAND (MHz)</span>
-                  <span
-                    className={`font-bold px-1.5 py-0.5 rounded text-[11px] ${
-                      isLocked
-                        ? 'bg-red-950 border border-red-500 text-red-300 animate-pulse'
-                        : 'bg-zinc-800 text-cyan-400'
-                    }`}
-                  >
-                    {frequency.toFixed(1)} MHz
-                  </span>
-                </div>
-
-                {/* Thang chia vạch kim */}
-                <div className="relative h-10 w-full border-t border-b border-zinc-700 my-1 flex items-center justify-between px-2 text-[9px] text-zinc-500">
-                  <span>88</span>
-                  <span>92</span>
-                  <span>96</span>
-                  <span>100</span>
-                  <span className="text-red-400 font-bold">104.5</span>
-                  <span>108</span>
-
-                  {/* Kim đỏ di chuyển theo tần số */}
-                  <div
-                    className="absolute top-0 bottom-0 w-0.5 bg-red-500 transition-all duration-75"
-                    style={{
-                      left: `${((frequency - 88) / (108 - 88)) * 100}%`,
-                    }}
-                  >
-                    <div className="w-2 h-2 -ml-[3px] bg-red-500 rotate-45" />
-                  </div>
-                </div>
-
-                {/* Đèn chỉ báo tín hiệu & Đồng hồ VU */}
-                <div className="flex justify-between items-center mt-2 text-[10px]">
-                  <div className="flex items-center gap-1.5">
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        isLocked ? 'bg-red-500 animate-ping' : signalStrength > 60 ? 'bg-amber-400' : 'bg-zinc-700'
-                      }`}
-                    />
-                    <span className="text-zinc-400">
-                      {isLocked ? tx('KÊNH KHẨN CẤP [LOCKED]') : tx('Tín hiệu: {0}%', signalStrength)}
-                    </span>
-                  </div>
-
-                  {/* Thanh VU đo dB */}
-                  <div className="w-28 h-2 bg-zinc-900 border border-zinc-700 rounded overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-150 ${
-                        isLocked ? 'bg-red-500' : 'bg-cyan-500'
-                      }`}
-                      style={{ width: `${signalStrength}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Thanh trượt điều khiển tần số */}
-              <div className="mb-3">
-                <input
-                  type="range"
-                  min="88.0"
-                  max="108.0"
-                  step="0.1"
-                  value={frequency}
-                  onChange={(e) => setFrequency(parseFloat(e.target.value))}
-                  className="w-full accent-cyan-400 cursor-pointer h-2.5 bg-zinc-800 rounded-lg"
-                />
-              </div>
-
-              {/* Màn hình hiển thị nội dung thu được từ sóng radio */}
-              <div
-                className={`p-3 rounded border text-xs min-h-[75px] flex items-center justify-center text-center transition-all ${
-                  activeStation === 'EMERGENCY'
-                    ? 'bg-red-950/70 border-red-500 text-red-200'
-                    : activeStation === 'WHISPER'
-                    ? 'bg-pink-950/40 border-pink-700 text-pink-200'
-                    : activeStation === 'CAFE'
-                    ? 'bg-amber-950/40 border-amber-700 text-amber-200'
-                    : 'bg-black/60 border-zinc-800 text-zinc-500 italic'
-                }`}
-              >
-                {activeStation === 'NONE' && (
-                  <p>{tx('... Rè rè rè ... Tiếng mưa rào xào xạc trong gió ...')}</p>
-                )}
-                {activeStation === 'CAFE' && (
-                  <p>
-                    {tx('[FM 92.5 - Quán Cà Phê Sinh Viên]: Bản nhạc Jazz nhẹ nhàng vang lên mờ ảo giữa tiếng cười nói của các bạn trẻ...')}
-                  </p>
-                )}
-                {activeStation === 'WHISPER' && (
-                  <p className="italic text-pink-300">
-                    {tx('“An ơi... trời bắt đầu mưa to rồi... Anh có lạnh không? Em ôm anh nhé...”')}
-                  </p>
-                )}
-                {activeStation === 'EMERGENCY' && (
-                  <div className="text-left font-mono">
-                    <div className="font-bold text-red-400 flex items-center gap-1.5 mb-1">
-                      {tx('[ĐÀI GIAO THÔNG 00:41 - RẠNG SÁNG 17/05]')}
-                    </div>
-                    <p className="text-[11px] leading-snug">
-                      {tx('“Khẩn cấp: Tai nạn trên cầu vượt trong cơn mưa giông lớn... Xe máy chở 2 người trượt bánh va chạm dải phân cách...”')}
-                    </p>
-                    <p className="text-[11px] text-red-300 font-bold mt-1">
-                      {tx('“[115]: Bệnh nhân nam chấn thương sọ não, mạch tụt sâu! Chuyển thẳng cấp cứu Trung Hoà!...”')}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Nút hành động */}
-            {isLocked ? (
-              <button
-                onClick={handleConfirmSignal}
-                className="w-full py-2.5 bg-red-700 hover:bg-red-600 active:scale-98 text-white font-bold text-xs sm:text-sm tracking-wide rounded transition-all cursor-pointer animate-pulse"
-              >
-                {tx('[GIỮ SÓNG 104.5 MHz]')}
-              </button>
-            ) : (
-              <div className="flex justify-between items-center text-xs text-zinc-400">
-                <span>{tx('* Kéo kim tần số tới 104.5 MHz')}</span>
-                <button
-                  onClick={() => setFrequency(104.5)}
-                  className="text-[11px] text-cyan-400 hover:text-cyan-300 underline"
-                >
-                  {tx('[Bắt sóng 104.5]')}
-                </button>
-              </div>
-            )}
+        <div className="flex flex-col sm:flex-row items-center gap-4 bg-[#2a2420] border-4 border-[#4a3a2a] p-3">
+          <div className="flex-1 w-full">
+            <canvas ref={canvasRef} width={SCOPE_W} height={SCOPE_H} className="w-full border border-zinc-800" />
+            <div className="mt-1 text-center text-lg font-bold text-amber-200 tabular-nums">{freq.toFixed(1)} MHz</div>
           </div>
-        ) : (
-          /* MÀN HÌNH TWIST CHIẾC Ô ƯỚT */
-          <div className="animate-fade-in flex flex-col items-center text-center">
-            <div className="w-full bg-red-950/40 border-2 border-red-500/80 rounded-lg p-4 mb-4 text-left">
-              <div className="flex items-center gap-2 text-red-400 text-xs font-bold uppercase mb-2">
-                {tx('KÝ ỨC ĐÊM MƯA 17/05 BỊ GIẢI MÃ')}
-              </div>
-              <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed italic mb-3 text-justify">
-                {tx('Tiếng còi xe cấp cứu và tiếng bộ đàm 115 dội thẳng vào màng nhĩ... Chiếc ô trong suốt này ướt sũng không phải vì cơn mưa chiều nay. Nó đã rơi xuống mặt đường lạnh ngắt vào đêm 17/05, bên cạnh chiếc xe máy biến dạng sau cú va chạm định mệnh.')}
-              </p>
-              <div className="bg-black/80 border border-red-900 rounded p-2.5 text-[11px] text-red-300 font-mono">
-                {tx('[TRÍ NHỚ PHỤC HỒI]: Bạn không phải đang đi dạo cùng Miên ở một bến sông bình yên. Bạn đang trong cơn hôn mê sâu sau tai nạn giao thông nghiêm trọng trên cầu vượt đêm 17/05.')}
-              </div>
-            </div>
-
-            <button
-              onClick={() => {
-                stopSirenSound();
-                onComplete();
-              }}
-              className="w-full py-2.5 bg-red-700 hover:bg-red-600 active:scale-98 text-white font-bold text-sm tracking-wide rounded transition-all cursor-pointer"
+          {/* Núm dò tần số lớn */}
+          <div className="flex flex-col items-center gap-1.5">
+            <div
+              onPointerDown={onKnobDown}
+              onPointerMove={onKnobMove}
+              onPointerUp={onKnobUp}
+              onPointerCancel={onKnobUp}
+              className="relative w-24 h-24 rounded-full bg-zinc-800 border-4 border-zinc-600 cursor-grab active:cursor-grabbing touch-none"
+              style={{ transform: `rotate(${angle}deg)` }}
+              title={tx('Kéo ngang hoặc lăn chuột để dò đài')}
             >
-              {tx('[TẮT ĐÀI]')}
-            </button>
+              <span className="absolute left-1/2 -translate-x-1/2 top-1.5 w-1.5 h-6 bg-zinc-200" />
+            </div>
+            <div className="text-xs text-zinc-400">{tx('DÒ ĐÀI')}</div>
           </div>
-        )}
+        </div>
+        <div className={`text-sm leading-relaxed min-h-10 ${locked ? 'text-red-300' : 'text-zinc-300'}`}>
+          {locked
+            ? tx('"...Đài Giao thông 104.5... mưa giông lớn khu vực cầu vượt, ghi nhận một vụ va chạm do mặt đường trơn..." Rồi tắt ngấm.')
+            : sync >= 60
+            ? tx('Sóng xanh giật mạnh, đang bị hút dần vào đường sóng vàng...')
+            : Math.abs(freq - STATIONS[0].f) < 0.4
+            ? tx('Chỉ có tiếng mưa rào xối xả...')
+            : Math.abs(freq - STATIONS[1].f) < 0.4
+            ? tx('Một bản nhạc tiền chiến méo mó, chậm như băng cát-xét bị nhão.')
+            : tx('Rè rè... Chiếc đài cũ dựng cạnh chiếc ô trong suốt. Vạch dò kẹt đâu đó giữa băng tần FM.')}
+        </div>
+        <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-zinc-400 border-t border-zinc-800 pt-2">
+          <span><Key>{tx('Kéo núm')}</Key><Key>{tx('Lăn chuột')}</Key><Key>A</Key><Key>D</Key>{tx('Dò tần số')}</span>
+          <span><Key>Esc</Key>{tx('Thoát')}</span>
+        </div>
       </div>
     </div>
   );
 };
+
+/** Ô phím bấm trong dòng hướng dẫn */
+const Key: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <span className="inline-block min-w-6 px-1.5 py-0.5 mr-1 text-center text-zinc-100 bg-zinc-800 border border-zinc-600">{children}</span>
+);

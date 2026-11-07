@@ -1,574 +1,552 @@
 {
   "start": {
     "speaker": "Monologue",
-    "text": "03:14 AM. The familiar little rented room. You've just jolted awake, keyboard marks still pressed into your cheek. The old PC case's cooling fan hums away, and outside the rain still hasn't let up."
+    "text": "03:14 AM. Fell asleep on the keyboard again. The rain still hasn't let up."
   },
   "node_pc_1": {
-    "text": "Fell asleep on the keyboard again... Had some long dream, woke up and forgot all of it. {a:doubt,tilt}Must be a whole week of grinding on the AURA project. My nerves are strung tight as a wire.\n{a:faint_smile,nod}Yesterday I forgot lunch, forgot to charge my phone. Code this much and you start forgetting everything.",
+    "text": "{a:doubt,tilt}A week of office deadlines, then patching AURA every night. {a:faint_smile,nod}Forgot lunch yesterday, too.",
     "choices": [
       {
-        "text": "Get up, stretch, and walk a lap around the room to wake up."
+        "text": "Get up and walk it off."
       }
     ]
   },
   "obj_window": {
     "speaker": "Monologue",
-    "text": "You pull the curtain aside. Rain has turned the whole alley white, the yellow streetlights glinting off slick asphalt. The corner shop pulled its shutters down hours ago.",
+    "text": "Rain whites out the alley. The corner shop closed long ago.",
     "choices": [
       {
-        "text": "Crack the window open to air out the room."
+        "text": "Crack the window open."
       },
       {
-        "text": "Close the curtain and get back to the unfinished work."
+        "text": "Draw the curtain."
       }
     ]
   },
   "obj_window_open": {
     "speaker": "Monologue",
-    "text": "The moment it opens, a cold gust throws rain right into your face. {a:faint_smile,laugh}Well, that's one way to wake up. You shut it fast, before the papers on the desk go flying."
+    "text": "Cold wind and rain in my face. {a:faint_smile,laugh}Wide awake now."
   },
   "obj_mirror": {
     "speaker": "Mirror",
-    "text": "The wall mirror has had a cracked corner ever since you moved in. {a:faint_smile,laugh}With dark circles like these, I could audition for a panda movie, no makeup required.\nMessy hair, scruffy stubble. Textbook final-year student in thesis season.",
+    "text": "{a:faint_smile,laugh}With these dark circles I could play a panda. Textbook coder in crunch season.",
     "choices": [
       {
-        "text": "Smooth down the bedhead so it looks less tragic."
+        "text": "Fix your hair."
       },
       {
-        "text": "Nah, looking any longer will only depress me."
+        "text": "Enough, this is depressing."
       }
     ]
   },
   "obj_mirror_touch": {
     "speaker": "Monologue",
-    "text": "You flatten the messy hair and give yourself a tired grin. {a:faint_smile,nod}Just a few more days. Once the project's in, I'm sleeping for a week."
+    "text": "{a:faint_smile,nod}A few more days. Once the release ships, I'm sleeping for a week."
   },
   "obj_phone": {
     "speaker": "Phone",
-    "text": "The old phone is down to 9% battery. Two unread messages:\n> [21:47] Mom\n> [23:15] Mien",
+    "text": "Phone's at 9%. Three unread:\n> [21:47] Mom\n> [23:15] Mien • 2 messages",
     "choices": [
       {
         "text": "Read Mom's message."
       },
       {
-        "text": "Read Mien's message."
+        "text": "Read Mien's messages."
       },
       {
-        "text": "Turn the phone face down. Reply in the morning."
+        "text": "Glance at the corkboard."
+      },
+      {
+        "text": "Turn the phone face down."
       }
     ]
   },
   "obj_phone_mien": {
     "speaker": "Message • Mien",
-    "text": "[23:15] Mien: \"Go to bed early, and don't drink too much coffee. Pick me up tomorrow so we can celebrate <3\"\n{a:faint_smile,laugh}Early to bed is a lost cause... but the celebration, there's no way I'm forgetting that.",
+    "text": "[23:15] Mien: \"Get to bed early. Pick me up tomorrow to celebrate <3\"\n[23:16] Mien: \"It's pouring. Is your room cold?\"\n{a:faint_smile,laugh}No. The PC case runs like a heater.",
     "choices": [
       {
-        "text": "Read Mom's message."
-      },
-      {
-        "text": "Put the phone down with a smile."
+        "text": "Smile."
       }
     ]
   },
   "node_pills": {
     "speaker": "Monologue",
-    "text": "A bottle of sleeping pills from the pharmacy at the end of the alley. The label reads: \"Take 1 tablet before bed. Do not exceed the prescribed dose.\"\n{a:exhausted,sigh}Ever since deadline season started, I toss and turn till dawn without these.",
+    "text": "Sleeping pills. \"Take 1 before bed.\"\n{a:exhausted,sigh}Can't sleep without them. {a:faint_smile}Mien's rule: after a pill, no driving.",
     "choices": [
       {
-        "text": "Take one to ease the headache."
+        "text": "Take one."
       },
       {
-        "text": "Put the bottle away. I need a clear head tonight to finish this."
+        "text": "Put the bottle away."
       },
       {
-        "text": "[DANGER] Take a few extra so you'll definitely sleep. You haven't slept in three nights."
+        "text": "Take a few more to be sure."
       }
     ]
   },
   "node_pills_swallow": {
     "speaker": "Monologue",
-    "text": "{a:exhausted,sigh}The pill goes down bitter. After a while the headache eases off, but your eyelids start to feel heavy."
+    "text": "{a:exhausted,sigh}Bitter. The headache eases; my eyelids get heavy."
   },
   "node_pills_aftermath": {
     "speaker": "Monologue",
-    "text": "Not yet. {a:doubt,tilt}I have to remember our anniversary and get that album open first, or Mien will sulk for a week."
+    "text": "{a:doubt,tilt}Not yet. I have to remember our anniversary and open that album first."
   },
   "node_pills_overdose": {
     "speaker": "System",
-    "text": "You swallow a few pills, then a few more to be sure. A while later the bitterness still clings to your throat... The room lurches violently, your vision blurs to deep crimson, then collapses entirely into still darkness...",
+    "text": "A few more. The room tilts, turns deep red, then goes black.",
     "glitchText": "CRITICAL WARNING: DRUG LEVELS BEYOND TOLERANCE. VITAL SIGNS FALLING TO 0."
   },
   "bad_ending_0": {
     "speaker": "Medical Equipment",
-    "text": "[CRITICAL ALERT]: 03:14 AM. The ECG line stretches out flat. An endless beep...\nA doctor's voice, faint: “The patient's stopped breathing... Start resuscitation, now...”\n\n[ BAD ENDING 0: SINKING INTO ENDLESS SLEEP (OVERDOSE) ]",
+    "text": "[CRITICAL ALERT]: 03:14 AM. One long beep.\n\"The patient's stopped breathing... Resuscitate, now!\"\n\n[ BAD ENDING 0: SINKING INTO ENDLESS SLEEP ]",
     "glitchText": "SIRENS ECHOING... HEART STOPPED AT 03:14 AM..."
   },
   "node_terminal_unlocked": {
     "speaker": "Computer Screen",
-    "text": "> [PASSWORD ACCEPTED: 1705]\n> [UNLOCKED: ALBUM_KY_NIEM // AN YEN WHARF]\nThe photos open one by one: Mien squinting into a laugh under the afternoon sun at An Yen wharf, the old bicycle leaning against a tree, two glasses of bac xiu on a wooden table. {a:faint_smile,nod}17/05... how could I ever forget that day.\n{a:exhausted,sigh}But my mind is running on empty, and the back of my head throbs in waves.",
+    "text": "> [PASSWORD ACCEPTED: 1705]\n> [UNLOCKED: MEMORY_ALBUM // AN YEN WHARF]\n{a:faint_smile,nod}Mien smiling in the afternoon sun at An Yen wharf. 17/05... how could I forget.",
     "choices": [
       {
-        "text": "Take one sleeping pill and go back to bed. The project is due tomorrow."
+        "text": "Take a pill and go to sleep."
       },
       {
-        "text": "Look at a few more photos first."
+        "text": "Look at a few more."
       }
     ]
   },
   "node_album_more": {
     "speaker": "Computer Screen",
-    "text": "The next photo: two glasses of bac xiu on the wooden table of their usual cafe, Mien's straw chewed flat as always. Outside the window, the old bicycle leans against a tree, a few sprigs of purple bellflowers she picked along the river tucked in the basket.\n{a:faint_smile,nod}Back then I rode her around An Yen wharf every afternoon, pedalling slowly so the ride home would last.\n{a:exhausted,sigh}My eyes keep drooping... the words on the screen are blurring into two.",
+    "text": "Two milk coffees, Mien's straw chewed flat again. {a:faint_smile,nod}Every afternoon I'd pedal her round the wharf, nice and slow.",
     "choices": [
       {
-        "text": "Take one sleeping pill and go back to bed. The project is due tomorrow."
+        "text": "Take a pill and go to sleep."
       }
     ]
   },
   "obj_tea_table": {
     "speaker": "Low Tea Table",
-    "text": "A half-eaten bowl of instant noodles from dinner, stone cold next to an ashtray full of butts. {a:exhausted,sigh}Fourth instant-noodle dinner this week. If Mom knew, I'd never hear the end of it."
+    "text": "A cold bowl of instant noodles. {a:exhausted,sigh}Fourth time this week. Mom would kill me."
   },
   "node_door_knock": {
     "speaker": "Monologue",
-    "text": "You press your ear to the door. The knocking has stopped. You ease it open: the hallway is pitch dark, just rain spattering through the window at the far end.\n{a:doubt,tilt}Probably the neighbor stumbling home from drinks, knocking on the wrong door. Wait, is the hallway power out again?"
+    "text": "The knocking has stopped. The hallway is pitch dark. {a:doubt,tilt}Wrong door, probably."
   },
   "node_chapter_1_transition": {
     "speaker": "Monologue",
-    "text": "An washes the pill down with a sip of cold water, switches off the desk lamp and lies back on the bed. The rain keeps pattering at the window.\nThe room slowly goes dark. The cooling fan fades, bit by bit... {a:exhausted,sigh}Hand in the project tomorrow... then take Mien out to celebrate...\nAn sinks into a deep sleep."
+    "text": "Lights off. The rain keeps falling. {a:exhausted,sigh}Handover tomorrow... then take Mien out to celebrate..."
   },
   "end_to_explore": {
     "speaker": "Monologue",
-    "text": "[Keep exploring]"
+    "text": ""
   },
   "ch2_start": {
     "speaker": "Monologue",
-    "text": "You open your eyes. No more water-stained ceiling, only a blazing violet-pink evening sky and the lap of the river. A sunset breeze, scented with purple bellflowers.\n{a:smile}An Yen wharf. The path where you used to pedal Mien home, as slowly as you could.\n{a:doubt}Exactly as you remember. Too exactly. The wind smells of rust."
+    "text": "{a:smile}An Yen wharf. A violet evening, the river lapping. {a:doubt}Exactly as I remember. Strangely exact."
   },
   "ch2_meet_mien": {
     "speaker": "Mien",
-    "text": "You're awake? {m:playful,hop}Look, isn't the violet-pink sky pretty!\nAt twenty-two you rode me across this bridge and promised we'd watch the sunset every week. We hardly ever did.\n{m:warm_smile}Today's different, {a:faint_smile}milk coffee, music box, everything. {m:playful,laugh}{a:doubt,tilt}Take your time walking around, no one's rushing you. {m:gentle}We finally kept that promise.",
-    "glitchText": "THIS IS THE MOST PERFECT WORLD I COULD GIVE YOU.",
-    "choices": [
-      {
-        "text": "“This place... it's beautiful. Can we just stay here forever?”"
-      },
-      {
-        "text": "“Mien, why does this place feel so... strangely fake?”"
-      },
-      {
-        "text": "“Let me take a walk around the wharf first.”"
-      }
-    ]
+    "text": "You're awake? {m:playful,hop}Isn't it pretty! {m:gentle}At twenty-two you promised to bring me here every week. Today we kept it."
   },
   "ch2_mien_accept": {
     "speaker": "Mien",
-    "text": "Of course... Here you don't have to stay up writing code, {m:playful}no deadlines, no chest pains. {m:gentle,nod}Whenever you feel like it, take a walk along the river. I'll always be right here waiting."
+    "text": "{m:gentle,nod}No deadlines here. Go for a walk, I'll wait."
   },
   "ch2_mien_doubt": {
     "speaker": "Mien",
-    "text": "Mien's face falls for a moment, her eyes trembling with worry: {m:worried,shake}'Why would you say that? I poured everything I had into bringing you here... Stop doubting, just enjoy this warm sunset afternoon... {m:pleading,lean}Please don't try to find out things you shouldn't know...'",
-    "glitchText": "IF YOU REALIZE THE TRUTH... THIS WORLD WILL BE GONE..."
+    "text": "{m:worried}Fake? Don't be silly. {m:playful,laugh}You've been up too late again.\nShe laughs. A little too fast."
   },
   "obj_ch2_river": {
     "speaker": "Monologue",
-    "text": "Beneath the violet water there is no moss, no fish. Looking down to the riverbed, you're stunned to see the water isn't flowing naturally at all: 0s and 1s and patched-together lines of text repeat over and over like a short film stuck on loop...",
-    "glitchText": "[ILLUSION CRACKING]: THE RIVER ISN'T REAL... YOU'RE TRAPPED IN SOMEONE'S MEMORY.",
+    "text": "Clear water, no bottom. {a:doubt}That leaf just drifted past... and past the same spot again.",
     "choices": [
       {
-        "text": "Reach out and touch this strange water."
+        "text": "Dip a hand in the water."
       },
       {
-        "text": "Step back. Tell yourself it's just the sunset refracting on the waves."
+        "text": "Step back."
       }
     ]
   },
   "obj_ch2_river_touch": {
     "speaker": "Monologue",
-    "text": "Your fingertips touch the water, and a numbing sting runs through them like an electric current. Suddenly the long beep of a heart monitor rings in your ears, along with Mien sobbing somewhere far away: 'An... please don't sink into it... you have to hold on...'",
-    "glitchText": "[DISTANT CRYING]: MIEN'S CHOKED SOBS ECHO FROM REALITY."
+    "text": "{a:doubt}Not cold, not warm. A faint tingle, like touching a screen."
   },
   "obj_ch2_pigeon": {
     "speaker": "Monologue",
-    "text": "Two pigeons perch on the stone bridge railing. Their eyes are wide open, never blinking. Looking closer, their feathers are completely still, as if someone froze them in midair. A line in Mien's familiar handwriting appears faintly: // If the birds stay still like this... you'll get less dizzy...",
-    "glitchText": "THEY'RE NOT REAL BIRDS... JUST IMAGES BUILT TO COMFORT YOU.",
+    "text": "Two pigeons, eyes wide open. {a:doubt}The wind is tugging my hair. Their feathers don't move.",
     "choices": [
       {
-        "text": "Touch the pigeon."
+        "text": "Touch a pigeon."
       },
       {
-        "text": "Ignore it and keep walking."
+        "text": "Leave them."
       }
     ]
   },
   "obj_ch2_pigeon_touch": {
     "speaker": "Monologue",
-    "text": "The bird's body is stiff as a plaster statue, cold, without warmth or a heartbeat. This peaceful sunset town... is really just an artificial dream someone is struggling to hold together to keep you here.",
-    "glitchText": "EVERYTHING HERE IS A PUPPET OF ILLUSION HIDING THE PAIN."
+    "text": "{a:doubt}Hard and smooth, like plastic. No warmth."
   },
   "obj_ch2_coffee": {
     "speaker": "Monologue",
-    "text": "On the wooden table sits a fragrant glass of milk coffee, a thin white steam rising from it. Light on the sugar, just the way you like it.\nOn all those nights you stayed up working on the AURA project, every morning you woke up slumped over the desk to find one exactly like it beside the keyboard, {a:smile}with a sticky note from Mien: 'Easy on the sugar, you're getting chubby.' She never forgot, not once.\n{a:doubt}You touch the glass... but feel no warmth at all. The curl of steam rises and repeats the exact same motion every 2 seconds, like a short clip on loop.",
-    "glitchText": "THIS SWEETNESS IS ONLY A MEMORY IN YOUR HEAD... YOU'RE NOT HOLDING A REAL CUP.",
+    "text": "Milk coffee, light on sugar, just how I like it. {a:doubt}Still steaming. But the glass is ice-cold.",
     "choices": [
       {
-        "text": "Take a sip of the sweet coffee."
+        "text": "Take a sip."
       },
       {
-        "text": "Put the glass down. Realize the feeling is only an illusion."
+        "text": "Put the glass down."
       }
     ]
   },
   "obj_ch2_coffee_drink": {
     "speaker": "Monologue",
-    "text": "The sweetness of condensed milk spreads through your mind. A soft calm briefly eases the sharp ache in your head... {a:sigh}It feels so good to let go and sink into this gentle peace, even knowing it may not be real.",
-    "glitchText": "THE SWEETNESS SOOTHES YOUR MIND... BUT THE TRUTH IS STILL WAITING AHEAD."
+    "text": "{a:sigh}Sweet. Comforting. Don't think about it."
   },
   "obj_ch2_bench": {
     "speaker": "Polaroid on the Stone Bench",
-    "text": "The stone bench under the wisteria, where your first Polaroid together was taken.\nYou wipe off the ash. Mien is still beaming... but the person beside her has a gauze-wrapped head and a wristband: [TRUNG HOA HOSP. • 17/05]. Behind them, a heart monitor.",
-    "glitchText": "[TRUTH REVEALED]: YOU'RE NOT OUT FOR A WALK... YOU'RE IN A COMA IN A HOSPITAL.",
+    "text": "{a:doubt}Where I sat in the photo... nothing. Mien's hand rests open, as if holding someone's.",
     "choices": [
       {
-        "text": "Shakily pocket the photo: 'Mien... what happened to us that night?'"
+        "text": "Pocket the photo."
       },
       {
-        "text": "Close your eyes, trying to hold down the shock rising in your chest."
+        "text": "Close your eyes."
       }
     ]
   },
   "obj_ch2_music_box": {
     "speaker": "Wooden Music Box",
-    "text": "Once the dial is set to 17/05 and the spring is fully wound, the wooden lid flies open! Inside there are no gears, no metal comb. Instead, a medical display flashes frantic red text: [CRITICAL HEART RATE: 38 BPM • PATIENT: TRAN HOANG AN]. The nostalgic melody warps into rapid, broken beeps, then shrieks into a long cardiac-arrest alarm...",
-    "glitchText": "[MEDICAL ALERT]: YOUR HEART RATE IS FALLING TO A CRITICAL LEVEL.",
+    "text": "It stumbles at the end of the phrase. The last two notes loop, like a scratched record. {a:doubt}Then the lid pops open.",
     "choices": [
       {
-        "text": "Listen to the heart monitor shrilling as you struggle to breathe..."
+        "text": "Keep listening."
       },
       {
-        "text": "Slam the lid shut, trying to stop the deadly alarm."
+        "text": "Shut the lid."
       }
     ]
   },
   "obj_ch2_bicycle": {
     "speaker": "Memory: The Old Bicycle",
-    "text": "A moss-green Thống Nhất bicycle, paint chipped, leans against the wisteria. Its bell rings slightly off-key.\nMien rested her head on your back, laughing every time you gasped up the bridge: 'Come on, we're almost at the top!'\n{a:sad,sink}Back then, there had been no rainy night yet.",
-    "glitchText": "MEMORIES OF PEACEFUL YEARS, BEFORE ANY TRAGEDY...",
+    "text": "The moss-green Thống Nhất. {a:faint_smile}Mien used to lean her head on my back up the bridge.",
     "choices": [
       {
-        "text": "Touch the handlebars, smiling at memories of rides under the trees."
+        "text": "Touch the handlebar and smile."
       },
       {
-        "text": "Look at the chipped paint, heart sinking, wondering how it all came to this."
+        "text": "Look at the peeling paint."
       }
     ]
   },
   "obj_ch2_umbrella": {
     "speaker": "The Umbrella & the Radio",
-    "text": "Mien's clear umbrella stands under the lamppost, soaking wet, though it hasn't rained this evening.\nThat night the two of you stood under it together, sheltering beneath the awning at the end of the bridge, waiting for the rain to ease before getting on the bike... Somewhere a 115 siren wails. The little radio crackles the 104.5 MHz traffic bulletin: \"...a collision on the overpass, slippery roads...\"\nThen Mien calling your name. Very close. Then very far.",
+    "text": "Mien's umbrella is soaking wet, though it hasn't rained all afternoon.\nA flash of the eaves by the bridge, a key with a chipped-ear cat charm jingling in someone's hand. The radio crackles: \"...collision on the overpass, slippery roads...\"",
     "glitchText": "RAIN. BRAKES. MIEN CALLING YOUR NAME.",
     "choices": [
       {
-        "text": "Clutch your head: 'The overpass... the night of 17/05... what happened up there?'"
+        "text": "Clutch your head: 'The overpass... what happened that night?'"
       },
       {
-        "text": "Back away from the lamppost, your head ringing as if someone were squeezing it."
+        "text": "Step back."
       }
     ]
   },
   "ch2_mien_final": {
     "speaker": "Mien",
-    "text": "{m:turn}Mien stands at the wooden bridge railing, her back to you. The hem of her sweater keeps blurring like TV static.\n{m:worried}'You've figured it all out, haven't you?' She doesn't turn around. 'I know. I know the river is fake, the water has no temperature. I know the pigeons can't breathe. I know the music box sounds like a heart monitor, the coffee has no warmth, and the photo on the bench.'\n{m:melancholy,sigh}'I built this place in such a hurry. But I didn't want you stuck forever in that cold room 314, alone with that screen. I just wanted you to stay somewhere we were happiest.'\n{m:crying}{a:sad,sink}She turns, eyes red: 'There's no rainy night here, An. Why do you keep having to remember it?'",
+    "text": "{m:turn}{m:worried}'You've noticed all of it, haven't you?'\n{m:melancholy,sigh}'I built this place too fast... cold coffee, birds that can't fly.'\n{m:crying}{a:sad,sink}'But there's no rainy night here, An. Stay with me.'",
     "glitchText": "I JUST NEED YOU TO STAY.",
     "choices": [
       {
-        "text": "“This place is beautiful, Mien. But it isn't real, and I need to know what happened.”"
+        "text": "\"It's beautiful, Mien. But it isn't real. I need to know what happened.\""
       },
       {
-        "text": "“...I'm not going anywhere. I'm staying here with you.”"
+        "text": "\"...I'm staying with you.\""
       }
     ]
   },
   "ch2_ending_stay": {
     "speaker": "Mien",
-    "text": "Mien hugs you. It's been so long since you saw her smile like that.\n'Thank you,' she whispers into your shoulder.\n{m:fading}{a:scared,flinch}Then you feel her shoulders growing lighter. The fingers clutching your shirt dissolve into specks of light.\n{m:melancholy}'It's too late...' Mien says, {m:fading,laugh}still smiling. '{a:sad}You remembered. This place can't hold you anymore.'",
+    "text": "{m:gentle}'Thank you.'\n{m:fading}{a:scared,flinch}Her fingers dissolve into light.\n{m:melancholy}'Too late... {m:fading,laugh}{a:sad}you've remembered.'",
     "glitchText": "[THE SUNSET IS DISSOLVING]"
   },
   "ch2_truth_confront": {
     "speaker": "Mien",
-    "text": "Mien stands still for a long while. {m:gentle}Then she smiles, just a little:\n'You haven't changed. Back then I lied about not being afraid of heights, and you saw right through it.'\n'It took me three weeks to rebuild every cluster of wisteria, every plank you used to tap on while you waited for me. I just hoped you'd stay here a little longer, before you had to go back to whatever is waiting for you out there.'\n{m:melancholy}'Now that you know... {m:crying}never mind.'\n{a:scared}On the horizon, a small crack runs across the sun.",
+    "text": "{m:gentle}'Same as ever. Back then I lied that I could ride a motorbike just fine, and you saw through it right away.'\n{m:melancholy}'If you know now, then... {m:crying}that's that.'\n{a:scared}The horizon cracks.",
     "glitchText": "[THE SUNSET BEGINS TO CRACK]"
   },
   "end_to_explore_sunset": {
     "speaker": "Monologue",
-    "text": "[A warm sunset breeze drifts by with purple petals. Keep wandering the town.]"
+    "text": ""
   },
   "node_hallway_door_312": {
     "speaker": "Room #312",
-    "text": "Room #312 is locked tight. From inside comes a PC fan whining in bursts and the clatter of a keyboard.\n{a:faint_smile,nod}Next door's pulling an all-nighter too. This whole floor is IT students.",
+    "text": "A PC fan whining, a keyboard clattering. {a:faint_smile,nod}Next door's on a deadline too.",
     "choices": [
       {
-        "text": "Knock and ask if their power is out too."
+        "text": "Knock."
       },
       {
-        "text": "Never mind, don't bother them."
+        "text": "Leave them be."
       }
     ]
   },
   "node_hallway_312_knock": {
     "speaker": "Monologue",
-    "text": "You knock a few times. The typing inside pauses for a beat... then carries on, steady as before. Nobody comes to the door.\n{a:exhausted,sigh}Headphones on, obviously."
+    "text": "The typing stops for a beat... then carries on. {a:exhausted,sigh}Headphones, probably."
   },
   "node_hallway_door_316": {
     "speaker": "Room #316",
-    "text": "A note from the landlady is taped to Room #316: [VACANT • FOR RENT • ASK MRS. TU].\n{a:faint_smile}Mien lived here back in first year. Every evening she'd knock on my door to drag me out for sweet soup."
+    "text": "[VACANT • FOR RENT]\n{a:faint_smile}Mien lived here back in uni. Every evening she'd drag me out for sweet soup."
   },
   "node_hallway_notice_board": {
     "speaker": "Residents' Notice Board",
-    "text": "The board is pinned with everything. Mrs. Tu's electricity sheet for this month: room 314 — 96 units, room 316 — vacant, room 312 — 1,840 units, underlined twice in red pen.\nNext to it, a yellow notice: \"LOW POWER, THE BREAKER TRIPS OFTEN. MAIN BREAKER IS IN THE HALLWAY\". At the bottom, tutoring flyers, a lunch-box flyer, and a newspaper clipping someone pinned up, stained by rain: \"...a collision on the overpass during the thunderstorm...\" The date has smeared away.\n{a:doubt,tilt}What is room 312 running to burn that much power... And who pinned up this old paper?"
+    "text": "Power bill: room 314 — 96 units, room 312 — 1,840 units, underlined in red. A water-stained clipping: \"...collision on the overpass...\"\n{a:doubt,tilt}What's 312 running?"
   },
   "node_hallway_window": {
     "speaker": "Hallway Window",
-    "text": "Rain hammers the window at the end of the hallway. Down in the alley the yellow streetlights shine on slick asphalt, and a delivery rider wrapped in a raincoat is still plodding through his late-night orders."
+    "text": "Rain lashes the glass. Down in the alley, a delivery rider is still working."
   },
   "node_hallway_stairs": {
     "speaker": "Stairwell",
-    "text": "The stairs down to the 2nd floor are pitch black, and the iron gate at the bottom is locked.\n{a:exhausted,sigh}Mrs. Tu locks the gate at 11 PM. No getting out at this hour."
+    "text": "The iron gate at the bottom is locked. {a:exhausted,sigh}Mrs. Tu locks it at 11."
   },
   "ch3_start": {
     "speaker": "Monologue",
-    "text": "YOU CRASH ONTO THE ICE-COLD FLOOR. Opening your eyes, you find yourself thrown back into room #314... But the room isn't what it was. The grey walls are starting to tear open, revealing streaks of blazing red light. Ambulance sirens and medical alarms blare relentlessly from outside the window...",
+    "text": "A cold floor. Room 314... but the walls are tearing open, red light pouring in. Sirens outside.",
     "glitchText": "[CRITICAL WARNING]: THE DREAM HAS SHATTERED. THE REALITY OF THE EMERGENCY ROOM IS FLOODING IN."
   },
   "ch3_wake_up": {
-    "text": "My head... my head is about to explode! That's not the PC's cooling fan... it's an oxygen ventilator, and someone sobbing by my ear! The reek of antiseptic and metal... What is happening to this room?!",
+    "text": "That's not the PC fan. It's a ventilator. {a:panic}Disinfectant. What is happening?!",
     "glitchText": "THE LINE BETWEEN MEMORY AND REALITY IS BEING TORN APART...",
     "choices": [
       {
-        "text": "Push yourself up and look around the room as the hospital tears through it..."
+        "text": "Look around the room."
       },
       {
-        "text": "Press both hands to your chest, searching for a heartbeat..."
+        "text": "Press a hand to your chest."
       },
       {
-        "text": "Call out to Mien's figure, weeping silently in the middle of the room..."
+        "text": "Call out to Mien."
       }
     ]
   },
   "ch3_heartbeat": {
     "speaker": "Monologue",
-    "text": "Your trembling hand presses against the left of your chest. Your heartbeat... flutters abnormally. Thump... thump... then it stalls. At that instant a shrill beeping drills into your ears: 'Doctor! BP's down to 50/30! He's in V-fib! Get the defibrillator ready, 200 joules, now!'\nThe wall in front of you splits open, revealing the blinding white surgical lights of the emergency room...",
+    "text": "Your heart beats... then stalls.\n'V-fib! Charge to 200 joules!'\nThe wall in front of you splits, white light blazing through.",
     "glitchText": "[CARDIAC ALERT]: HR 38 BPM... CRITICAL VENTRICULAR FIBRILLATION.",
     "choices": [
       {
-        "text": "Get up and look around the violently warping room..."
+        "text": "Look around the room."
       },
       {
-        "text": "Rush to Mien and ask about these strange sounds..."
+        "text": "Ask Mien."
       }
     ]
   },
   "end_to_explore_pixel_bleed": {
     "speaker": "Monologue",
-    "text": "[The room is being violently torn open by the emergency ward and the lights of the 115 ambulance. Investigate the anomalies and confront Mien.]"
+    "text": ""
   },
   "obj_ch3_bed": {
     "speaker": "Emergency Bed",
-    "text": "The familiar mattress is now an emergency bed in white sheets. The pillow is stained with dried blood.\nClipped to the rail is a plastic tag: [TRUNG HOA HOSP. • ICU • PATIENT: TRAN HOANG AN • 17/05].\nThe IV pole is still dripping.",
+    "text": "My mattress is an ER bed, dried blood on the pillow.\n[TRUNG HOA HOSP. • ICU • TRAN HOANG AN • 17/05]",
     "glitchText": "[MEDICAL FLASHBACK]: YOU'RE LYING ON AN EMERGENCY BED... NOT IN YOUR ROOM.",
     "choices": [
       {
-        "text": "Clutch the ID tag, shaking: 'How long... how long have I been lying here?!'"
+        "text": "'How long... have I been lying here?'"
       },
       {
-        "text": "Back away in horror, the stench of antiseptic and blood surging into your throat."
+        "text": "Step back."
       }
     ]
   },
   "obj_ch3_chart": {
     "speaker": "Emergency Medical Chart",
-    "text": "An aluminium clipboard at the head of the bed, red stamp 'TRUNG HOA HOSP.':\n[TRAN HOANG AN • AGE 24 • ADMITTED 00:52 AM 17/05]\n[DEEP COMA — GLASGOW 3/15]\nTucked behind the board is one of Mien's sticky notes, tear-smudged: 'Doctor, please save him, whatever it takes...'",
+    "text": "An aluminium clipboard at the head of the bed, red stamp 'TRUNG HOA HOSP.':\n[TRAN HOANG AN • AGE 24 • ADMITTED 00:52 AM 17/05]\n[DEEP COMA — GLASGOW 3/15]\n[MECHANISM OF INJURY: ████████ MOTORBIKE — LINE ERASED]\n[INJURY SITE: BACK – POSTERIOR CHEST, BLUNT IMPACT]\nClipped behind it, Mien's smudged note: 'Doctor, please save him...'",
     "glitchText": "[CHART 17/05]: DEEP COMA... HOW LONG HAS IT BEEN SINCE THAT NIGHT?",
     "choices": [
       {
-        "text": "Grip the chart: “Glasgow 3... Was I really that close to death?!”"
+        "text": "'Glasgow 3... was I really that close to dying?'"
       },
       {
-        "text": "Look at Mien's tear-smudged handwriting on the note, your heart tightening..."
+        "text": "Look at Mien's smudged handwriting."
       }
     ]
   },
   "obj_ch3_mirror": {
     "speaker": "Broken Mirror",
-    "text": "A mirror cracked in two on the tiled wall.\nThe person in it isn't wearing a hoodie. Ashen face, bloodied gauze around the forehead, an oxygen tube in the nose, electrodes tangled around the temples.\nThose lips move: 'An... wake up...'",
+    "text": "The person in the mirror isn't wearing a hoodie. Bandaged forehead, a tube in the nose.\nThose lips move: 'An... wake up...'",
     "glitchText": "[REAL IMAGE]: THIS IS WHAT YOU TRULY LOOK LIKE NOW.",
     "choices": [
       {
-        "text": "Touch your forehead in terror: “My head... covered in gauze and IV lines?!”"
+        "text": "Touch your forehead."
       },
       {
-        "text": "Stagger back, unable to face the dying figure in the mirror."
+        "text": "Step back."
       }
     ]
   },
   "obj_ch3_bag": {
     "speaker": "The Soaked Backpack",
-    "text": "Your backpack lies in the corner, caked with mud from the rainy night, a couple's raincoat torn in two. At the bottom, a red velvet box, strangely dry.\n{s:chime}Two silver rings, engraved: [AN & MIEN • AN YEN WHARF].\nYou meant to propose at exactly 00:00 on 17/05. The storm came first.",
+    "text": "My raincoat, cut open from the collar down, the back shredded as if scraped along steel. My keyring's all there... except the bike key.\n{s:chime}At the bottom, a ring box: [AN & MIEN • AN YEN WHARF]. I meant to propose at 00:00 on 17/05. The storm came first.",
     "glitchText": "{s:chime}[FATED KEEPSAKE]: THE WEDDING RING THAT NEVER REACHED MIEN'S HAND.",
     "choices": [
       {
-        "text": "Clutch the ring box in your palm: “I promised I'd marry her...”"
+        "text": "'I promised I'd marry her...'"
       },
       {
-        "text": "Stare at the glittering rings in this grief-stricken room, choking back tears."
+        "text": "Hold the ring box tight."
       }
     ]
   },
   "obj_ch3_monitor": {
     "speaker": "Heart Monitor & 200J Defibrillator",
-    "text": "The green oscilloscope traces a feeble ECG wave: [HR: 38 BPM • CRITICAL BRADYCARDIA]. Then the wave suddenly breaks into a jagged sawtooth. The two defibrillator paddles on the charging tray shriek: '200 JOULES READY'. The speaker crackles with the voices of ER doctors echoing from another dimension:\n'Severe hypotension! He's in V-fib! Doctor, I can't find a femoral pulse!'\n'Shock 200 joules, number one! Stand clear! CLEAR!'\nA violent jolt of electricity tears through your chest, sending your whole body into spasms!",
+    "text": "The heart monitor: [HR: 38 BPM]. Then the line breaks into a jagged mess.\n'V-fib! Shock at 200 joules! CLEAR!'\nA jolt tears through your chest.",
     "glitchText": "[CARDIAC ALERT]: YOUR HEART IS STOPPING IN THE EMERGENCY ROOM.",
     "choices": [
       {
-        "text": "Clutch your chest as you convulse in agony: 'Stop... my heart hurts...!'"
+        "text": "'Stop... it hurts...'"
       },
       {
-        "text": "Try to rip out the electrode wires stuck into your temples."
+        "text": "Rip the electrode wires off."
       }
     ]
   },
   "obj_ch3_window": {
     "speaker": "Shattered Window • 115 Lights",
-    "text": "The window glass has shattered into drifting pixel shards. A whirlwind hurls black rain straight into the room. Below is no longer the familiar little alley, but the rain-soaked overpass, scarred with the skid marks of 17/05. Red and blue emergency lights sweep around the room. The 115 siren wails in choking bursts, mixed with Mien screaming at passers-by for help...",
+    "text": "Below the window is a soaked overpass, skid marks on the road. Mien screaming for help.",
     "glitchText": "[ACCIDENT FLASHBACK]: THE 115 AMBULANCE SIREN ON THE STORMY NIGHT OF 17/05.",
     "choices": [
       {
-        "text": "Follow the spinning lights: 'That night... the rain was so heavy... the wheels lost their grip...'"
+        "text": "'That night... the rain was so heavy...'"
       },
       {
-        "text": "Back away from the freezing wind, ears ringing with the ambulance siren."
+        "text": "Step back."
       }
     ]
   },
   "obj_ch3_door": {
     "speaker": "Sealed Door #314",
-    "text": "The door is cordoned off with blazing yellow-and-black warning tape: [QUARANTINE: RESUSCITATION ROOM 3 - NO EXIT]. Through the frosted glass, doctors and nurses in white coats rush past pushing a stretcher. Pounding footsteps, the clatter of trolleys: 'Prep adrenaline, straight into the heart! Hurry!'\nYou can't step out into the hallway anymore. This space has been completely cut off.",
+    "text": "[QUARANTINE: RESUSCITATION ROOM 3]\nOutside: 'Adrenaline! Hurry!'",
     "glitchText": "THE DOOR IS SEALED. OUTSIDE ARE THE CHAOTIC FOOTSTEPS OF THE EMERGENCY ROOM.",
     "choices": [
       {
-        "text": "Pound on the sealed door: 'Open up! Let me out to face reality!'"
+        "text": "Pound on the door."
       },
       {
-        "text": "Stand frozen at the frantic sounds of the ER outside."
+        "text": "Stand still."
       }
     ]
   },
   "obj_ch3_pc": {
     "speaker": "CRT Monitor",
-    "text": "The PC case radiates heat, its fan screaming in choked bursts. The CRT glows blood red, showing an urgent message:\n> [CRITICAL WARNING]: HOSPITAL DATA FROM THE NIGHT OF 17/05 IS RESTORING ITSELF.\n> [MIEN'S NOTES • ER CORRIDOR]: 'They won't let me in. Doctor, is his heart beating again?... Please save him...'\n> [SECRET FOLDER]: C:/MEMORY_DUMP/SECTOR_1705 • LOCKED • LOCKED BY: [HIDDEN]",
+    "text": "The CRT glows red:\n> [WARNING]: HOSPITAL DATA FROM THE NIGHT OF 17/05 IS RESTORING ITSELF.\n> [MIEN'S NOTES • ER HALLWAY]: 'They won't let me in. Is his heart beating again?...'\n> [SECRET FOLDER]: C:/MEMORY_DUMP/SECTOR_1705 • LOCKED • LOCKED BY: [HIDDEN]",
     "glitchText": "C:/MEMORY_DUMP/SECTOR_1705 — WHO LOCKED IT?",
     "choices": [
       {
-        "text": "Stare at the blazing red line. Who locked this folder?"
+        "text": "Who locked this folder?"
       },
       {
-        "text": "Turn to find Mien, standing choked with tears in the middle of the room."
+        "text": "Turn to Mien."
       }
     ]
   },
   "ch3_mien_bleed": {
     "speaker": "Mien",
-    "text": "Mien stands in the middle of the room, right on the tear. Half of her catches the warm yellow of the desk lamp, the other half is bleached white under the hospital tube lights. {m:glitch}Pixels fall from the hem of her sweater.\n{a:sad}'In the Sunset you didn't have to see any of this,' she says softly. {m:crying}'I hid it so carefully.'",
+    "text": "{a:sad}'In the Sunset you didn't have to see any of this.' {m:crying}'I hid it so carefully.'\n{m:melancholy}'...Are you cold?'\n{a:doubt}'...No.' Why is my voice shaking?",
     "glitchText": "I HID IT SO CAREFULLY..."
   },
   "ch3_confront_coma": {
     "speaker": "Mien",
-    "text": "Mien looks at you. {m:crying,sob}Then she cries, for the first time not trying to hide it.\n'Wake up...' she repeats, as if learning a new word. {m:crying}{a:faint_smile}'Yeah. We'll meet out there.'\n{m:melancholy,turn}{a:doubt}She doesn't look you in the eye when she says it.",
+    "text": "{m:crying,sob}'Wake up...' {m:crying}{a:faint_smile}'Yeah. We'll meet out there.'\n{m:melancholy,turn}{a:doubt}She won't look me in the eye.",
     "glitchText": "WE'LL MEET OUT THERE."
   },
   "ch3_confront_truth": {
     "speaker": "Mien",
-    "text": "{m:crying}Mien chokes on her words, pixel tears rolling down her cheeks:\n'I tried to hide your chart, to hide your backpack... I just wanted you to think you were only having a sleepless night in your room. {m:pleading,lean}Why do you keep forcing yourself to remember the ambulance from that night?...'\n{m:melancholy}She looks at you for a long time, then quietly wipes her tears.\n'It's not in your head,' she says. 'It's in that machine. I locked it.'\n{m:worried,turn}She turns to the CRT. 'Once it's open, it can't be closed again, An.'",
+    "text": "{m:crying}'I just wanted you to think you couldn't sleep...'\n{m:melancholy}'It isn't in your head. It's in that machine. I locked it away.'\n{m:worried,turn}'Once it's open, it won't close again, An.'",
     "glitchText": "THE SECRET IS IN THE MACHINE."
   },
   "ch3_crack_server": {
     "speaker": "System",
-    "text": "{s:click}The computer gives a single dry click. The cooling fan goes silent.\nOn the CRT, a line appears:\n[UNLOCKED: C:/MEMORY_DUMP/SECTOR_1705]\nThe ambulance siren stops. The tube lights go out. The room is so quiet you can hear yourself breathing.",
+    "text": "{s:click}Click. The fan goes silent.\n[UNLOCKED: C:/MEMORY_DUMP/SECTOR_1705]\nSirens off. Lights off. Just my breathing.",
     "glitchText": "{s:click}[SECTOR_1705 OPEN]"
   },
   "ch4_start": {
     "speaker": "CRT Monitor",
-    "text": "A pale blue cursor blinks on the black screen. Three secret files appear before you:\n> [1] EMERGENCY RECORD, NIGHT OF 17/05 (Trung Hoa General Hospital)\n> [2] MIEN'S SECRET DIARY (The days after the accident)\n> [3] SERVER SHUTDOWN NOTICE, TODAY (Countdown)\nYou rest a trembling finger on the keyboard...",
+    "text": "A pale blue cursor blinks. Three files:\n> [1] EMERGENCY RECORD, NIGHT OF 17/05\n> [2] MIEN'S SECRET DIARY\n> [3] SERVER SHUTDOWN NOTICE, TODAY",
     "glitchText": "READ IT, AN... THESE ARE THE LAST LINES OF MEMORY ABOUT YOUR EXISTENCE.",
     "choices": [
       {
-        "text": "Open the files one by one, starting with [1]: the Trung Hoa General Hospital emergency record."
+        "text": "Open the files in order, starting with [1]."
       }
     ]
   },
   "ch4_log1": {
     "speaker": "Medical Record: Trung Hoa General Hospital",
-    "text": "> [EMERGENCY & INTENSIVE CARE - TRUNG HOA HOSPITAL]\n> Patient: Tran Hoang An | Age: 24 | Admitted: 00:52 AM, 17/05 (about 20 minutes after the accident).\n> Diagnosis: Motorbike skid and fall on an overpass on a rainy night. Severe traumatic brain injury, out-of-hospital cardiac arrest.\n> Resuscitation record: Defibrillation x3 (200J - 300J - 360J). Pulse returned at 01:40.\n> 03:05: Second cardiac arrest. 9 minutes of resuscitation, no response. Flatline (asystole).\n> CONCLUSION: TIME OF DEATH 03:14 AM, 17/05.\n> Accompanied by: Nguyen Thi Mien (patient's girlfriend, soft-tissue injuries). The patient's family signed for the body at 09:30 AM the same day.",
+    "text": "> [EMERGENCY & ICU - TRUNG HOA HOSPITAL]\n> Patient: Tran Hoang An, 24. Admitted 00:52 AM 17/05, about 20 minutes after the accident.\n> Diagnosis: motorbike skid on an overpass. Crushed chest, severe brain injury, cardiac arrest before arrival.\n> Defibrillated 3 times, pulse back at 01:40. Second arrest at 03:05, 9 minutes of CPR, no response.\n> Blood: the sedative diazepam, therapeutic dose.\n> Driver's breath-alcohol slip, forwarded by traffic police: negative. Signed: Ng. T. Mien.\n> Scene report: the passenger was found wrapped over the driver, back pressed against the median rail.\n> TIME OF DEATH: 03:14 AM 17/05.\n> Accompanied by: Nguyen Thi Mien, girlfriend, soft-tissue injuries.",
     "glitchText": "[THE ULTIMATE TRUTH]: YOU'RE NOT IN A COMA... YOU DIED 6 MONTHS AGO!"
   },
   "ch4_log2": {
     "speaker": "Secret Diary: Nguyen Thi Mien",
-    "text": "> [20/05 — Your funeral]\n> 'Your mom fainted twice. They say your heart stopped at 03:14. I won't accept it.'\n> 'Your machine still has 211 AURA brainwave sessions, every night you were your own lab rat. I rented room 312, right next to your old room, moved your machine in there and loaded you into the AURA-NODE-314 server. Your memories stop on the morning of 16/05, before the rainy night.'\n> 'The medical records and photos I loaded by mistake, I locked in C:/Memory_Dump/ and built the Sunset Town to cover them.'\n> [12/06]\n> 'I put the electrodes on my temples and walked into your room. Every night, at exactly 03:14. The girl you met is me, not any program.'\n> 'Some nights, typing on my side of the wall, I hear what sounds like you knocking on the door of 312. I don't dare open it.'\n> 'I'm so selfish, aren't I, An?...'",
+    "text": "> [20/05 — Your funeral]\n> 'They said your heart stopped at 03:14. I can't accept that.'\n> 'Your machine still had 211 AURA brainwave sessions. I rented room 312 next door and loaded you into AURA-NODE-314. Your memory stops on the morning of 16/05.'\n> 'The records got loaded too. I locked them in C:/Memory_Dump/ and built the Sunset Town over them.'\n> [12/06]\n> 'I put on the electrodes and stepped into your room. Every night, at 03:14 exactly.'\n> 'Some nights it sounds like you're knocking on 312. I don't dare open it.'\n> 'There's something I've never dared tell you, not even in here.'",
     "glitchText": "YOU'RE NOT A LIVING PERSON... YOU'RE A MEMORY COPY THAT MIEN KEPT."
   },
   "ch4_log3": {
     "speaker": "Power Cut Notice: Room 312",
-    "text": "> [LANDLADY'S NOTICE • TAPED TO THE DOOR OF ROOM 312]\n> 'Mien, for six months room 312 has run machines all night, and the main breaker for the whole row keeps tripping. Tonight the fuse box was smoking again, so I've called the night-shift electrician. The power company comes to seal it in the morning.'\n> [POWER CUT ORDER]: THE ELECTRICIAN WILL CUT THE BREAKER FOR ROOM 312 FOR GOOD AT 03:30 AM.\n> (The AURA-NODE-314 hard drive failed last month; the sync session now runs only in RAM: cut the power and it's gone forever.)\n> REAL TIME OUTSIDE THE SERVER: 03:27:45. (The clock in your room stopped at 03:14 six months ago.)\n> COUNTDOWN REMAINING: [02 MIN 15 SEC].",
+    "text": "> [LANDLADY'S NOTICE • DOOR OF ROOM 312]\n> 'Mien, for six months 312 has run machines all night and the breaker keeps tripping. Tonight the fuse box was smoking. I've called the electrician.'\n> [POWER CUT]: ROOM 312 BREAKER OFF FOR GOOD AT 03:30 AM.\n> The AURA-NODE-314 drive has failed; the sync session lives only in RAM. Cut the power and it's gone forever.\n> REAL TIME: 03:27:45. REMAINING: [02 MIN 15 SEC].",
     "glitchText": "[TIME'S UP]: THE SERVER IS ABOUT TO LOSE POWER FOREVER."
   },
   "ch4_video_call": {
     "speaker": "Mien (Real World)",
-    "text": "The webcam flickers on. Mien sits alone in room 312, electrodes still on her temples. {a:sad,sink}Eyes swollen.\n'An... you've read it all, haven't you? {m:pleading,lean}I'm sorry! {m:worried,tremble}Mrs. Tu is pounding on the door, the electrician is already at the breaker box... Every night for six months I've held on to you... {m:crying,sob}I can't bear losing you again!'",
+    "text": "{a:sad,sink}Mien sits alone in room 312, electrodes still on her temples.\n'An... you've read it all, haven't you? {m:pleading,lean}I'm sorry! {m:crying,sob}I can't bear losing you again!'",
     "glitchText": "WHAT DO I DO, AN... I'M SO SCARED...",
     "choices": [
       {
-        "text": "[GENTLE / LETTING GO] • \"Mien... for six months in this freezing room, you've worn yourself out for me far too much...\""
+        "text": "\"Mien... six months keeping watch over me. You've been through so much.\""
       },
       {
-        "text": "[ANGUISHED / TORMENTED] • \"Why didn't you let me go? Six months, Mien... you deserve to go on living...\""
+        "text": "\"Why won't you let me go? You deserve to go on living...\""
       }
     ]
   },
   "ch4_call_gentle": {
     "speaker": "Mien (Real World)",
-    "text": "{m:crying}Mien bows her head, choking on sob after sob, a tear rolling down across the webcam frame:\n'It wasn't hard... I'm just scared that if I shut the server down, I'll never get to hear your voice again...'"
+    "text": "{m:crying}'It wasn't hard... I'm just scared that once it's off, I'll never hear your voice again...'"
   },
   "ch4_call_grief": {
     "speaker": "Mien (Real World)",
-    "text": "{m:pleading}Mien shakes her head, wrenched:\n'Go on living how, An... Without you, the world out here is nothing but a cold graveyard to me...'"
+    "text": "{m:pleading}'Live on how?... Without you, out here is just a graveyard...'"
   },
   "ch4_climax_choice": {
     "speaker": "An (Memory Copy #314)",
-    "text": "On the screen, the cursor blinks, waiting for your final decision.\nOutside room 312, Mrs. Tu's calls grow sharper, and the electrician's hands rattle open the breaker box. Only a few dozen seconds are left on the countdown. You look at Mien through the screen... The last moment of your existence has come. What will you choose?\n(Only a mind clear enough dares to let go by its own hand. Only a mind already shattered dares to beg for something insane.)",
+    "text": "The cursor blinks. Outside room 312, Mrs. Tu's calls grow sharper; the breaker box rattles open.\nMien looks at you through the screen. She is still waiting for an answer.",
     "glitchText": "YOUR FINAL DECISION, AND MIEN'S.",
     "choices": [
       {
-        "text": "[SHUT DOWN THE SERVER YOURSELF] • Smile in peace, and set Mien free to live her life."
+        "text": "[SHUT DOWN THE SERVER YOURSELF] • 'I'm not cold.'"
       },
       {
-        "text": "[SHUT DOWN THE SERVER YOURSELF] • Smile in peace, and set Mien free to live her life."
+        "text": "[SHUT DOWN THE SERVER YOURSELF] • 'I'm not cold.'"
       },
       {
-        "text": "[BEG TO STAY TOGETHER] • Terrified of death, ask Mien to connect to the machine so you can be together forever."
+        "text": "[BEG TO STAY TOGETHER] • 'Will you come in here with me?'"
       },
       {
-        "text": "[BEG TO STAY TOGETHER] • Terrified of death, ask Mien to connect to the machine so you can be together forever."
+        "text": "[BEG TO STAY TOGETHER] • 'Will you come in here with me?'"
       },
       {
-        "text": "[ERASE EVERY SESSION WITH HER] • Wipe every file about Mien. So she has no reason to come back."
+        "text": "[ERASE EVERY SESSION WITH HER] • Erase every memory of Mien, so she has no reason to come back."
       },
       {
-        "text": "[LET GO] • Stand still, and let them pull the breaker when the countdown runs out."
+        "text": "[LET GO] • Stand still and wait for them to pull the breaker."
       }
     ]
   },
   "ending_shutdown_1": {
     "speaker": "An (Memory Copy #314)",
-    "text": "You look into the webcam. It's been so long since you saw Mien this clearly: messy hair, the old sweater, swollen eyes.\n{a:faint_smile}'Mien... it's been six months. Have you slept a single night?'\n{m:melancholy,turn}Mien doesn't answer.\n{a:determined,step}'Thank you for building me that sunset. But I've been gone since the night of 17/05. Stop sitting here every night.'"
+    "text": "{a:faint_smile}'Mien... six months. Have you slept a single night?'\n{a:sad}'I'm the one who took the pill. I'm the one who insisted on going.' {a:faint_smile}'It wasn't your fault.'\n'I couldn't answer you that night. So let me answer now: I'm not cold.'\n{a:determined,step}'I shielded you so you could go on living.'"
   },
   "ending_shutdown_2": {
     "speaker": "Mien (Real World)",
@@ -576,124 +554,121 @@
   },
   "ending_shutdown_2b": {
     "speaker": "An (Memory Copy #314)",
-    "text": "You're quiet for a moment.\n{a:faint_smile,nod}'In a glass of bac xiu at our usual cafe. In the old bicycle leaning against the wisteria. In the songs you always put on while cooking. {m:melancholy}I'm not in this machine, Mien. This is just the place you haven't dared to step out of yet.'"
+    "text": "{a:faint_smile,nod}'In the milk coffee at our café. In the old bicycle. {m:melancholy}I'm not in this machine, Mien. This is just the place you haven't dared to leave.'"
   },
   "ending_shutdown_3": {
     "speaker": "An (Memory Copy #314)",
-    "text": "Mien looks up {m:nod}and nods slightly.\n'One more thing,' you say. 'This Saturday... go back home and visit my mom for me, okay? {a:sad}The message I typed her back in May was never sent. Tell her I miss her.'\n{m:crying,laugh}{a:smile}Mien laughs through her tears, for the first time in six months. 'Okay. I promise.'\n{a:determined,step}You press the key.\n> [SYSTEM SHUTDOWN]: GOODBYE, AN."
+    "text": "{m:nod}'One more thing. Visit my mom this Saturday. {a:sad}Tell her I miss her. She isn't angry with you... she's just afraid you won't come home either.'\n{m:crying,laugh}{a:smile}'Okay. I promise.'\n{a:determined,step}> [SHUTDOWN]: GOODBYE, AN."
   },
   "end_game_true": {
     "speaker": "System",
-    "text": "[TRUE ENDING: TRUE DAWN]\nThe computer's fan fades, then stops. The CRT turns a flat, calm black, peaceful as an eternal sleep...\nIn the real world, Mien lets her hands fall, smiling as she wipes away her last tears. She opens the door of room 312, bows her head in apology to Mrs. Tu, then goes to stand by the window at the end of the hall to wait for the dawn. The storm of 17/05... has finally passed."
+    "text": "[TRUE ENDING: A REAL DAWN]\nThe screen goes dark.\nMien opens the door of 312, bows her head to Mrs. Tu, then waits by the window at the end of the hall for sunrise. The storm of 17/05 has finally passed."
   },
   "ending_corrupt_1": {
     "speaker": "An (Memory Copy #314)",
-    "text": "You look at the blinking cursor, then at Mien.\n'I'm scared,' you say. Your voice is smaller than you expected. {a:panic,tremble}'I don't want to be shut off. {m:surprised,flinch}Can you come in here with me? {a:faint_smile}At that river. Just the two of us.'",
+    "text": "{a:panic,tremble}'I'm scared. I don't want to be switched off.' {m:surprised,flinch}'Will you come in here with me? {a:faint_smile}At the river. Just the two of us.'",
     "glitchText": "[SYNC REQUEST: 2 USERS]"
   },
   "ending_corrupt_2": {
     "speaker": "Mien (Real World)",
-    "text": "Mien is silent for a long time. {m:gentle,nod}Then she nods, as if she'd been waiting six months for those words.\nShe stands and drags the metal cabinet across the door. The banging outside grows louder.\n{m:melancholy,sigh}She sticks the two electrodes back on her temples and pushes the sync slider to the maximum — the level the two of you once marked in the AURA docs as 'never use'.\n'I'm coming,' she says.",
+    "text": "{m:gentle,nod}Mien nods, as if she's waited six months for this.\n{m:melancholy,sigh}Cabinet against the door. Electrodes back on. The sync slider pushed to 'never use'.\n'I'm coming.'",
     "glitchText": "[FORCED SYNC: 100%]"
   },
   "ending_corrupt_3": {
     "speaker": "System",
-    "text": "Out there, the breaker is pulled at 03:30. Two minutes and fifteen seconds.\nIn here, those two minutes never end.\nYou and Mien sit on the stone bench at An Yen Wharf. The sun hangs still at the river's edge. The pigeons don't fly. The music box plays a tune, and at the eighth bar it loops back to the start.\nEvery few minutes, Mien turns to ask: 'Are you cold?' The exact same question. The exact same voice.\nYou know. You still answer: 'No.'",
+    "text": "Out there, the breaker drops at 03:30. In here, those two minutes never end.\nThe bench at An Yen. The sun stands still. The music box loops back at the eighth bar.\nEvery few minutes, Mien asks: 'Are you cold?'\nYou still answer: 'No.'",
     "glitchText": "[LOOP: 03:14 → 03:14]"
   },
   "end_game_bad": {
     "speaker": "System",
-    "text": "[BAD ENDING: SWEET HELL]\nThe sunset at An Yen Wharf never fades.\nIn room 312 of a boarding house out there, they find a girl slumped over the keyboard, two electrodes still stuck to her temples."
+    "text": "[BAD ENDING: SWEET HELL]\nThe sunset at An Yen never ends.\nIn room 312, they find a girl slumped over the keyboard, electrodes still on her temples."
   },
   "ending_segfault_1": {
     "speaker": "Monologue",
-    "text": "You don't touch the keyboard.\nThe countdown reaches [00:00]. Out there, a door opens; someone speaks very quietly.\nMien doesn't turn to look at them. She only looks at you.",
+    "text": "The clock hits [00:00]. Outside, a door opens.\nMien doesn't turn to look at them. She only looks at me.",
     "glitchText": "[TIME'S UP]: POWER IS ABOUT TO BE CUT."
   },
   "ending_segfault_2": {
     "speaker": "Memory",
-    "text": "The screen goes dark.\nThe room dims from one corner to the next, as if someone is switching off the lights one by one. Only the rain on the tin roof remains.\nThen the rain stops too.\nThe last thing you hear is your own name, cut off halfway: 'An... A—'",
+    "text": "The screen goes dark. The room fades corner by corner, only rain on the tin roof.\nThen the rain is gone too. The last thing I hear is my name, half-called: 'An... uh...'",
     "glitchText": "[CONNECTION LOST]"
   },
   "end_game_neutral": {
     "speaker": "Epilogue",
-    "text": "[NEUTRAL ENDING: SEVERED MEMORY (CONNECTION LOST FOREVER)]\nNo farewell, no salvation. Dreams and memories are swept into the boundless void. In the middle of the cold black screen there's only a lone blinking cursor... before it sinks forever into oblivion."
+    "text": "[NEUTRAL ENDING: SEVERED MEMORY]\nNo goodbye. A black screen, one blinking cursor... then nothing."
   },
   "ch3_mien_early": {
     "speaker": "Mien",
-    "text": "{m:flinch}Mien steps back, her shoulders trembling beneath a sweater crumbling into pixels: 'Don't look at me like that... You don't know anything yet, An... {m:pleading,lean}Please, just lie down and rest... stop digging through this room...'\n{m:worried,turn}But her eyes keep darting toward the hospital bed, the medical chart and the broken mirror. {a:determined}You realize you have to find the truth yourself before you can confront her.",
+    "text": "{m:flinch}'Don't look at me like that...' {m:pleading,lean}'Lie down and rest, stop digging...'",
     "glitchText": "THERE'S STILL A LOT IN THIS ROOM YOU HAVEN'T DARED TO FACE."
   },
   "ch3_mien_need_bag": {
     "speaker": "Mien",
-    "text": "{m:crying}An... you still don't remember what you were carrying in your backpack that night?...\n{m:pleading,lean}She bursts into tears, then quickly covers her mouth as if she has said too much. 'No... forget it. Stop looking, I'm begging you.'\n{a:doubt}Without meaning to, her eyes drift to the corner of the room, where the soaked backpack lies.",
+    "text": "{m:crying}'You still don't remember what was in your backpack that night?...' {m:pleading,lean}'No... forget it. Please.'",
     "glitchText": "WHAT WERE YOU CARRYING THAT NIGHT?"
   },
   "ch3_mien_bleed_stay": {
     "speaker": "Mien",
-    "text": "Mien's voice grows quiet:\n'That day at the river, you held my hand and said you weren't going anywhere. {m:melancholy}I really believed you.'\n{m:fading,sink}She looks down at her hands, her fingers slowly blurring.\n{m:pleading,lean}'And now you want to open that door.'",
+    "text": "'At the river you said you weren't going anywhere. {m:melancholy}I believed you.'\n{m:pleading,lean}'Now you want to open that door.'",
     "glitchText": "YOU SAID YOU WEREN'T GOING ANYWHERE.",
     "choices": [
       {
-        "text": "“Mien. I want to know what happened that night. Whatever it is.”"
+        "text": "\"I want to know what happened that night.\""
       },
       {
-        "text": "“I'm in the hospital, right? I'm in a coma. I'll wake up, and we'll meet out there.”"
+        "text": "\"I'm in a coma, right? I'll wake up.\""
       }
     ]
   },
   "ch3_mien_bleed_confront": {
     "speaker": "Mien",
-    "text": "{m:laugh}Mien laughs, a tired laugh:\n'You said I was fooling us both. Yeah. {m:sigh}Well, now the river's broken.'\n{m:crying}'What else do you want to know, An?'",
+    "text": "{m:laugh}'You said I was fooling us both. {m:sigh}Fine. The river's broken now.' {m:crying}'What else do you want to know?'",
     "glitchText": "YOU'RE THE ONE WHO SHATTERED OUR SUNSET.",
     "choices": [
       {
-        "text": "“Mien. I want to know what happened that night. Whatever it is.”"
+        "text": "\"I want to know what happened that night.\""
       },
       {
-        "text": "“I'm in the hospital, right? I'm in a coma. I'll wake up, and we'll meet out there.”"
+        "text": "\"I'm in a coma, right? I'll wake up.\""
       }
     ]
   },
   "ch3_mien_bleed_default": {
     "speaker": "Mien",
-    "text": "Mien looks at you, waiting. {a:scared,flinch}Outside the window, ambulance lights sweep across the wall, then go dark again.",
+    "text": "{a:scared,flinch}Ambulance lights sweep the wall, then vanish. Mien is waiting for me to speak.",
     "choices": [
       {
-        "text": "“Mien. I want to know what happened that night. Whatever it is.”"
+        "text": "\"I want to know what happened that night.\""
       },
       {
-        "text": "“I'm in the hospital, right? I'm in a coma. I'll wake up, and we'll meet out there.”"
+        "text": "\"I'm in a coma, right? I'll wake up.\""
       }
     ]
   },
   "ending_shutdown_stay": {
     "speaker": "Mien (Real World)",
-    "text": "Mien wipes her tears, her voice shaky but growing steadier:\n{m:melancholy}'In the Sunset Town... you chose to stay for me, even knowing it was fake... You gave up the truth for me once already. This time... {m:gentle,nod}{a:faint_smile}it's my turn to let go for you.'"
+    "text": "{m:melancholy}'In the Sunset you stayed for me, knowing it was fake. {m:gentle,nod}{a:faint_smile}This time it's my turn to let go.'"
   },
   "ending_shutdown_confront": {
     "speaker": "An (Memory Copy #314)",
-    "text": "You smile softly into the webcam:\n'In the Sunset Town, you asked why I kept trying to remember that rainy night... {a:determined}{m:melancholy}Because I want you to go on living, Mien. Really living, out there — not beside a shadow.'"
+    "text": "'In the Sunset you said there was no rainy night there. {a:determined}{m:melancholy}But I want you to go on living, Mien. Really living, out there.'"
   },
   "obj_phone_mom": {
     "speaker": "Message • Mom",
-    "text": "[21:47] Mom: \"An, I kept calling and you never picked up, you must be glued to that computer again. Are you coming home Saturday? I pickled eggplant, saving it for you. Eat properly and don't stay up too late. And if it's raining when you go out, wear your raincoat.\"",
+    "text": "[21:47] Mom: \"Coming home Saturday? I've pickled eggplant for you. If it rains when you go out, wear your raincoat.\"",
     "choices": [
       {
-        "text": "Read Mien's message."
-      },
-      {
-        "text": "Type quickly: \"Got it, I'll be home Saturday.\" Send it in the morning so Mom isn't woken up."
+        "text": "Type: \"Got it, I'll be home Saturday.\" Send it tomorrow."
       }
     ]
   },
   "ch4_reflect": {
     "speaker": "An (Memory Copy #314)",
-    "text": "You look around the room. The desk, the CRT, the bowl of noodles gone cold long ago.\nIn those last years, you sat right here, in front of a screen just like this one. Up until three, four in the morning for a project called AURA. {a:faint_smile}Promising Mom “I'll come home next week”. Promising Mien “once this is done I'll take you somewhere”.\n{a:sad,sink}Now you live entirely inside that screen.\n{a:doubt,tilt}You try to remember the last time you sat down to a home-cooked meal. You can't.\nThat night you even promised yourself: once AURA was done, you'd sleep three days straight.\n{a:sad,sigh}That sleep has lasted six months."
+    "text": "{a:sad,sink}Deadlines by day, AURA until three or four every night. Telling Mom \"next week\". Telling Mien \"once this is done\".\n{a:sad,sigh}I promised myself three days of sleep after AURA. That sleep has lasted six months."
   },
   "ch4_log_mom": {
     "speaker": "Unsent Message: To Mom",
-    "text": "> [DRAFT • 03:16 • 16/05 • TO: MOM]\n> 'Got it, Mom. I'll be home Saturday, save me a jar of pickled eggplant. I'll eat it all when I'm back.'\n> [NOT SENT]\nThe draft has sat there for six months. You rest your finger on the Enter key... then pull it back. A message from a son who is gone won't make her hurt any less.\n{a:sad,sink}Some words have to be said by someone still alive.",
+    "text": "> [DRAFT • 03:16 • 16/05 • TO: MOM]\n> 'Got it, Mom. I'll be home Saturday, save me a jar of pickled eggplant.'\n> [NOT SENT]\n{a:sad,sink}Some words have to be carried by the living.",
     "choices": [
       {
         "text": "[BACK TO THE FILE LIST]"
@@ -702,19 +677,19 @@
   },
   "ending_stranger_1": {
     "speaker": "An (Memory Copy #314)",
-    "text": "You look at Mien through the webcam for a long time. Then you understand: she can't let go, because inside this machine there's still someone who remembers her.\n{a:sad,sink}If she's going to live on, that someone has to forget.\n{a:determined,step}You type the command.\n{m:surprised,tremble}> PURGE SECTOR_MIEN --all\n> Erasing every session containing Mien... 1,204 photos... 38 voice recordings... 1 music box song...\n> PURGE SECTOR_MIEN... SUCCESS [100%]"
+    "text": "{a:sad,sink}Mien can't let go, because someone in this machine still remembers her. For her to live, that someone has to forget.\n{a:determined,step}{m:surprised,tremble}> PURGE SECTOR_MIEN --all\n> 1,204 photos... 38 voice clips... 1 music-box song...\n> SUCCESS [100%]"
   },
   "ending_stranger_2": {
     "speaker": "Mien (Real World)",
-    "text": "On the webcam, Mien slumps over the keyboard. She's read the command.\n{m:crying,sob}'An... I'm sorry... I couldn't keep you...'\n{a:glitched,glitch}The progress bar fills. Your screen flashes white, once."
+    "text": "{m:crying,sob}'An... I'm sorry... I couldn't hold on to you...'\n{a:glitched,glitch}The screen flashes white once."
   },
   "ending_stranger_3": {
     "speaker": "An (Memory Copy #314)",
-    "text": "You open your eyes. On the screen is a strange girl crying: messy hair, swollen eyes, two electrodes stuck to her temples.\nYou look up at the camera, {a:faint_smile,nod}politely:\n'Hello, miss... Who are you? Do you know where this is?'\n{m:surprised}The girl doesn't answer.\n{a:doubt,tilt}'I feel so empty inside. I think I'm waiting for someone... but I can't remember their name anymore.'"
+    "text": "There's a strange girl crying on the screen.\n{a:faint_smile,nod}'Hello... who are you?'\n{m:surprised}{a:doubt,tilt}'I think I'm waiting for someone... but I can't remember their name.'"
   },
   "end_game_stranger": {
     "speaker": "Epilogue",
-    "text": "[SECRET ENDING: A STRANGER]\nMien stares at the screen for a long time. Her tears stop, not because the pain is gone, but because it has gone numb.\nThe person she loves has just died one more time, right in front of her. And the person on the screen still smiles at her politely, as if at a stranger.\nShe stands up, no longer crying, walks to the breaker box and pulls it down herself.\nThe screen goes dark."
+    "text": "[SECRET ENDING: THE STRANGER]\nThe man she loves just died a second time, right in front of her, and still smiles politely at her like a stranger.\nMien stands, and pulls the breaker herself.\nThe screen goes dark."
   },
   "end_game_abandoned": {
     "speaker": "System",
@@ -722,59 +697,116 @@
   },
   "obj_hall_mirror": {
     "speaker": "Convex Mirror",
-    "text": "A convex mirror bolted to the corner of the stairwell, its glass yellowed like day-old tea. Your reflection warps in it, big head, stubby legs, like a cartoon character.\n{a:faint_smile,laugh}At least in here I look like I've eaten something.",
+    "text": "A yellowed convex mirror. Big head, short legs. {a:faint_smile,laugh}At least I look well-fed in here.",
     "choices": [
       {
-        "text": "Fix your hair and move on."
+        "text": "Move on."
       }
     ]
   },
   "obj_hall_clock": {
     "speaker": "Hallway Clock",
-    "text": "The round clock between the doors of #312 and #314 reads 03:14. The second hand keeps ticking forward one notch, then twitching back.\n{a:exhausted,sigh}Battery's dying. I'll remind Mrs. Tu tomorrow."
+    "text": "03:14. The second hand ticks forward, then snaps back. {a:exhausted,sigh}Dead battery."
   },
   "obj_bath_sink": {
     "speaker": "Tap",
-    "text": "You turn the tap. The pipe judders and gurgles for a while before it finally runs, ice-cold tap water with a whiff of rust.\nYou splash it on your face and the cold shoots straight to the top of your skull. {a:faint_smile,nod}Wide awake.\n{a:doubt,tilt}There's no mirror in the bathroom; Mrs. Tu says damp spots spoil mirrors fast. You don't want to look at your face right now anyway.",
+    "text": "Ice-cold, rusty water. {a:faint_smile,nod}Wide awake. {a:doubt,tilt}Don't want to see my face right now anyway.",
     "choices": [
       {
-        "text": "Splash a few more handfuls to really wake up."
+        "text": "Splash a bit more."
       },
       {
-        "text": "Turn off the tap, wipe your face on your sleeve and step out."
+        "text": "Turn off the tap."
       }
     ]
   },
   "obj_bath_sink_more": {
     "speaker": "Monologue",
-    "text": "Water drips from your chin onto the tiles. You stand still in the dark, letting the running water drown out the computer fan.\n{a:doubt,tilt}From the other side of the wall comes the steady clatter of typing. Someone in the row is still up at this hour.\n{a:exhausted,sigh}You turn off the tap. The typing stops too."
+    "text": "{a:doubt,tilt}Someone's typing through the wall. {a:exhausted,sigh}I turn off the tap. The typing stops too."
   },
   "obj_bath_toilet": {
     "speaker": "Bathroom",
-    "text": "You use the toilet in the dark. No point flicking the switch; the bulb burned out last week.\nThe bucket under the tap is almost empty, barely half a scoop to flush. {a:exhausted,sigh}Have to fill it early tomorrow, or Mrs. Tu will be on at me again.",
+    "text": "The bulb burnt out last week. The bucket's nearly empty. {a:exhausted,sigh}Need to fill it early tomorrow.",
     "choices": [
       {
-        "text": "Open the tap and fill the bucket for the morning."
+        "text": "Fill the bucket."
       },
       {
-        "text": "Forget it, tomorrow's problem. Step out."
+        "text": "Tomorrow."
       }
     ]
   },
   "obj_bath_toilet_fill": {
     "speaker": "Monologue",
-    "text": "The power is too weak for the rooftop pump to push any water. The tap only drips.\nDrip... drip... You squat and wait, counting each drop into the plastic bucket.\n{a:faint_smile,laugh}You give up at forty. Leave the tap on; it'll probably be full by morning."
+    "text": "Weak power, the tap only drips. {a:faint_smile,laugh}I give up at forty."
   },
   "node_sleep_ready": {
     "speaker": "Monologue",
-    "text": "The sleeping pills on the bedside table. The album is open, and I've finally remembered 17/05.\n{a:exhausted,sigh}My eyelids are heavy, and the back of my neck throbs.",
+    "text": "{a:exhausted,sigh}Album's open, and I remembered 17/05. My eyelids are heavy.",
     "choices": [
       {
-        "text": "Take one sleeping pill and go to bed. The project is due tomorrow."
+        "text": "Take a pill and go to sleep."
       },
       {
-        "text": "Not yet. Walk around the room a little longer."
+        "text": "Walk around a bit more."
       }
     ]
+  },
+  "obj_corkboard": {
+    "speaker": "Corkboard",
+    "text": "The handover date circled in red, Mien's notes, a spare key. In the corner: a speeding fine, Tran Hoang An, March.\n{a:faint_smile,laugh}Mien sulked for a week after that."
+  },
+  "ch4_reconstruct": {
+    "speaker": "An (Memory Copy #314)",
+    "text": "An old AURA form, every line blank.\n{a:doubt}I can't remember that night. I can only piece it together from what's left in the machine."
+  },
+  "ch4_confession": {
+    "speaker": "Mien (Real World)",
+    "text": "'You took the pill at half ten, nodding off on the stairs... and still insisted on going, to make it by midnight.'\n'I yanked the bike key with the chipped-ear cat charm off your keyring. I lied that I could handle it.'"
+  },
+  "ch4_deflect": {
+    "speaker": "Mien (Real World)",
+    "text": "{m:gentle}Mien sighs with relief.\n'You were exhausted and dozed off on the bike, that's all. Slippery road. Nobody's fault.'\nShe smiles. Too fast."
+  },
+  "ending_corrupt_3_truth": {
+    "speaker": "System",
+    "text": "Out there, the breaker drops at 03:30. In here, those two minutes never end.\nThe bench at An Yen. The sun stands still. The music box loops back at the eighth bar.\nEvery few minutes, Mien asks: 'Are you cold?'\nNow you know which night she's asking about. You still answer: 'No.'",
+    "glitchText": "[LOOP: 03:14 → 03:14]"
+  },
+  "ending_stranger_3b": {
+    "speaker": "System",
+    "text": "The question she carried out of that rainy night has no one left to answer it.\nThe only person who could forgive her has just forgotten her name."
+  },
+  "ch4_confession_2": {
+    "speaker": "Mien (Real World)",
+    "text": "'...That night, I was the one driving.'",
+    "glitchText": "I WAS THE ONE DRIVING."
+  },
+  "ch4_confession_3": {
+    "speaker": "Mien (Real World)",
+    "text": "'The wheel slid out on the overpass bend. You twisted round and wrapped yourself over me... then a very dry sound, your back against the steel rail.'\n'I only got scratches. You died shielding me.'"
+  },
+  "ch2_meet_cold": {
+    "speaker": "Mien",
+    "text": "{m:gentle}'It's windy. Are you cold?'\n{a:faint_smile}'No.'\nMien lets out a small breath. Then smiles.",
+    "choices": [
+      {
+        "text": "\"It's beautiful. Can we stay here forever?\""
+      },
+      {
+        "text": "\"Why does this place feel... kind of fake?\""
+      },
+      {
+        "text": "\"Let me take a walk.\""
+      }
+    ]
+  },
+  "ch4_confession_4": {
+    "speaker": "Mien (Real World)",
+    "text": "'I asked if you were cold.'\n'I kept asking, for twenty minutes.'\n'...You never answered me.'"
+  },
+  "ch4_confession_5": {
+    "speaker": "Mien (Real World)",
+    "text": "'The police know. Your mom knows, and never said a word of blame. When I loaded you in, I erased one line on the chart; the original I only dared lock away.'\n'In here, every time I asked, you answered. But you never knew what I was asking.'"
   }
 }

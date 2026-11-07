@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { DialogueZoom, isMoveKey, type FocusPoint } from './pixel/DialogueZoom';
 import { InventoryModal } from './InventoryModal';
 import { FuseBoxMinigame } from './minigames/FuseBoxMinigame';
 import { InventoryItem, CHAPTER_1_ITEMS } from '../types/inventory';
@@ -17,7 +18,7 @@ import { EmoteDirector, createEmoteDirector, emoteNow, updateEmotes, drawEmotes 
 import { tx } from '../locales/tx';
 import {
   useCinematicSubtitle, CinematicSubtitle, StageClock, SUBTITLE_MS,
-  InteractLabel, NearLabel, useAutoHideHints, HintBar, HintKey,
+  InteractLabel, NearLabel, placeLabel, labelKey, useAutoHideHints, HintBar, HintKey,
 } from './StageHud';
 
 // --- Kích thước và Tỉ lệ ---
@@ -59,6 +60,10 @@ interface HallwayStageProps {
   inventoryIds?: string[];
   onUpdateInventory?: (newInventoryIds: string[]) => void;
   volume?: number;
+  /** false khi khung thoại VN / Pause đang mở: khoá di chuyển và tương tác */
+  active?: boolean;
+  /** true khi khung thoại VN đang mở: camera tiến về đồ vật vừa tương tác */
+  inDialogue?: boolean;
   /** Khung canvas nghiêng nhẹ theo con trỏ chuột (cài đặt) */
   parallax?: boolean;
 }
@@ -1185,6 +1190,8 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
   onUpdateInventory,
   volume = 80,
   parallax = true,
+  active = true,
+  inDialogue = false,
 }) => {
   const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1279,7 +1286,7 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     } catch {}
   }, [getAudioContext, volume]);
 
-  // Tiếng chập điện tóe lửa khi sửa cầu chì
+  // Tiếng chập điện toé lửa khi sửa cầu chì
   const playSparkSound = useCallback(() => {
     if (volume <= 0) return;
     const ctx = getAudioContext();
@@ -1421,7 +1428,7 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     },
     {
       id: 'door_312',
-      name: 'Cửa Phòng #312 (Khóa Xích)',
+      name: 'Cửa Phòng #312 (Khoá Xích)',
       actionText: '[E] Áp tai nghe ngóng tiếng gõ phím bên trong phòng #312',
       x: 230,
       y: 120,
@@ -1499,7 +1506,7 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
       w: 50,
       h: 40,
       triggerNodeId: 'obj_hall_clock',
-      checkedMonologue: 'Tíc... tắc... Kim giây vẫn giật lùi. Vẫn mãi là 03:14.',
+      checkedMonologue: 'Tích... tắc... Kim giây vẫn giật lùi. Vẫn mãi là 03:14.',
     },
     {
       id: 'stairs',
@@ -1522,10 +1529,20 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     anImg.onload = () => { anSpriteRef.current = anImg; };
   }, [characterSprite]);
 
+  // Đang hội thoại / tạm dừng / chuyển cảnh: khoá điều khiển, xả các phím đang giữ để An không tự đi tiếp
+  // Đồ vật vừa tương tác: khung thoại mở ra thì camera tiến lại gần nó
+  const [dialogFocus, setDialogFocus] = useState<FocusPoint | null>(null);
+  const activeRef = useRef(active);
+  useEffect(() => {
+    activeRef.current = active;
+    if (!active) keysHeld.current.clear();
+  }, [active]);
+
   // Xử lý bàn phím
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isInventoryOpen || isFuseOpen) return;
+      if (!activeRef.current) return; // Khung thoại đang mở: phím thuộc về hộp thoại
 
       if (e.key.toLowerCase() === 'i' || e.key === 'Tab') {
         e.preventDefault();
@@ -1534,6 +1551,7 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
       }
 
       keysHeld.current.add(e.key.toLowerCase());
+      if (isMoveKey(e.key)) setDialogFocus(null);
 
       if (e.key.toLowerCase() === 'e' || e.key === ' ' || e.key === 'Enter') {
         const p = playerRef.current;
@@ -1551,6 +1569,7 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
         }
 
         if (target) {
+          setDialogFocus({ x: target.x + target.w / 2, y: target.y + target.h / 2 });
           // 1. Quay lại phòng trọ #314
           if (target.id === 'door_314') {
             onEnterRoom314();
@@ -2008,14 +2027,11 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
       }
       // Nhãn [E] tại vật thể đang nhắm tới: chỉ setState khi đổi sang vật khác (tránh re-render 60 lần/giây)
       const nearLabelText = nearTarget ? promptLabelFor(nearTarget, snap) : null;
-      const nearKey = nearTarget && nearLabelText ? `${nearTarget.id}|${nearLabelText}` : '';
+      const placedLabel = nearTarget && nearLabelText ? placeLabel(nearTarget, nearLabelText, p, CANVAS_HEIGHT) : null;
+      const nearKey = labelKey(nearTarget?.id ?? '', placedLabel);
       if (nearKey !== nearLabelKeyRef.current) {
         nearLabelKeyRef.current = nearKey;
-        setNearLabel(
-          nearTarget && nearLabelText
-            ? { x: nearTarget.x + nearTarget.w / 2, y: nearTarget.y, text: nearLabelText }
-            : null,
-        );
+        setNearLabel(placedLabel);
       }
       // An bước đi thì phụ đề độc thoại mờ sớm
       if (p.isMoving) fadeSubtitleOnMove();
@@ -2104,6 +2120,7 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
     <div className="relative w-full h-full flex flex-col items-center justify-center bg-black overflow-hidden select-none">
       {/* Khung Canvas hiển thị Hành lang tầng 3 */}
       <div className="relative border-4 border-zinc-800 rounded-sm overflow-hidden" ref={frameRef} style={{ width: `min(96vw, calc((100vh - 60px) * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, marginTop: 44 }}>
+        <DialogueZoom focus={dialogFocus} active={inDialogue} width={CANVAS_WIDTH} height={CANVAS_HEIGHT}>
         <canvas
           ref={canvasRef}
           width={CANVAS_WIDTH}
@@ -2111,6 +2128,7 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
           className="pixelated block cursor-pointer w-full h-full"
           style={{ imageRendering: 'pixelated' }}
         />
+        </DialogueZoom>
         <div className="absolute top-0 left-0" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${uiScale})`, transformOrigin: 'top left' }}>
 
 
@@ -2144,7 +2162,7 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
         )}
 
         {/* Nhãn [E] nổi ngay trên vật thể đang nhắm tới; vật đã xong thì không hiện */}
-        <InteractLabel label={nearLabel} />
+        <InteractLabel label={inDialogue ? null : nearLabel} />
 
         {/* Đồng hồ 03:14 AM góc trên trái (HTML thay vì canvas để chữ không nhoè khi phóng to) */}
         <StageClock />
@@ -2175,8 +2193,7 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
       {isFuseOpen && (
         <FuseBoxMinigame
           volume={volume}
-          hasClip={localInventoryIds.includes('paperclip')}
-          hasTape={localInventoryIds.includes('electrical_tape')}
+          onPenalty={() => setSanity?.(prev => Math.max(5, prev - 2))}
           onComplete={() => {
             setIsFuseOpen(false);
             setLocalInteractedIds(prev => (prev.includes('hallway_power_on') ? prev : [...prev, 'hallway_power_on']));
@@ -2184,7 +2201,6 @@ export const HallwayStage: React.FC<HallwayStageProps> = ({
             setSanity?.(prev => Math.min(100, prev + 10));
             showMonologueWhisper('Đèn hành lang bừng sáng. Điện phòng 314 ổn định lại rồi.');
           }}
-          onSpark={() => setSanity?.(prev => Math.max(0, prev - 3))}
           onScare={() => setSanity?.(prev => Math.max(0, prev - 5))}
           onClose={() => setIsFuseOpen(false)}
         />

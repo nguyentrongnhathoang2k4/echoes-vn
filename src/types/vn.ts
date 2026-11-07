@@ -36,6 +36,8 @@ export interface Choice {
   setFlag?: string;
   /** Chỉ hiện lựa chọn khi đã có biến này */
   requiresFlag?: string;
+  /** Chỉ hiện khi đã có ĐỦ mọi biến trong danh sách (vd: kết cục True cần đã suy luận ra người cầm lái) */
+  requiresFlags?: string[];
   /** Ẩn lựa chọn khi đã có biến này */
   forbidsFlag?: string;
   /** Lựa chọn bí mật: ẩn hẳn (thay vì hiện ổ khoá) khi Sanity nằm ngoài ngưỡng */

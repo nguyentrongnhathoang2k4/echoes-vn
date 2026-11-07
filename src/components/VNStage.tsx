@@ -7,6 +7,7 @@ import { PortraitActor, Gesture, GESTURES, EMOTION_GESTURE } from './PortraitAct
 import { EventIllustration } from './EventIllustration';
 import { audioEngine, SilenceAccent } from '../services/audioEngine';
 import { tx } from '../locales/tx';
+import { memoryFlagsForNode } from '../data/memoryJournal';
 import type { Dictionary } from '../locales/vi';
 
 // Bản gốc tiếng Việt: dùng để nhận diện người nói (bản dịch có thể đổi tên hiển thị)
@@ -175,12 +176,17 @@ export const VNStage: React.FC<VNStageProps> = ({
   const storyData = useMemo(() => getStory(lang), [lang]);
   const currentNode = storyData[currentNodeId] || storyData['start'];
   const baseSpeaker = (baseStory[currentNodeId] || baseStory['start']).speaker;
+  // Node chứa manh mối hiện ra → ghi vào sổ Ký ức (cờ mem_*, trang chính tự bỏ qua cờ đã có)
+  useEffect(() => {
+    for (const f of memoryFlagsForNode(currentNode.id)) onSetFlag?.(f);
+  }, [currentNode.id, onSetFlag]);
   // Lựa chọn hiển thị: lọc theo biến cốt truyện (requiresFlag / forbidsFlag)
   const visibleChoices = useMemo<Choice[] | undefined>(
     () =>
       currentNode.choices?.filter(
         (c) =>
           (!c.requiresFlag || storyFlags.includes(c.requiresFlag)) &&
+          (!c.requiresFlags || c.requiresFlags.every((f) => storyFlags.includes(f))) &&
           (!c.forbidsFlag || !storyFlags.includes(c.forbidsFlag))
       ),
     [currentNode, storyFlags]
@@ -435,7 +441,7 @@ export const VNStage: React.FC<VNStageProps> = ({
 
   // Vòng lặp Typewriter
   useEffect(() => {
-    // Xóa interval đang chạy nếu có
+    // Xoá interval đang chạy nếu có
     if (typingIntervalRef.current) {
       clearInterval(typingIntervalRef.current);
       typingIntervalRef.current = null;
@@ -565,7 +571,7 @@ export const VNStage: React.FC<VNStageProps> = ({
     }
   }, [currentNode, onClose, storyFlags, visibleChoices, goToNode]);
 
-  // Lựa chọn bị khóa khi Sanity nằm ngoài ngưỡng minSanity / maxSanity
+  // Lựa chọn bị khoá khi Sanity nằm ngoài ngưỡng minSanity / maxSanity
   const isChoiceLocked = useCallback(
     (choice: Choice) =>
       (choice.minSanity !== undefined && sanity < choice.minSanity) ||
@@ -781,7 +787,7 @@ export const VNStage: React.FC<VNStageProps> = ({
                     e.stopPropagation();
                     handleChoice(choice);
                   }}
-                  className={`w-full text-left font-mono px-4 py-2.5 sm:px-5 sm:py-3 rounded-lg border-2 transition-all duration-150 flex items-center justify-between group shadow-xl ${
+                  className={`w-full text-left font-sans px-4 py-2.5 sm:px-5 sm:py-3 rounded-lg border-2 transition-all duration-150 flex items-center justify-between group shadow-xl ${
                     locked
                       ? 'bg-zinc-900/60 border-zinc-700/50 text-zinc-600 cursor-not-allowed opacity-60'
                       : isSelected
@@ -798,7 +804,7 @@ export const VNStage: React.FC<VNStageProps> = ({
                       ▶
                     </span>
                     <span
-                      className={`text-xs sm:text-sm tracking-wide leading-snug ${
+                      className={`text-sm sm:text-base leading-snug ${
                         isSelected ? 'font-bold text-white' : 'font-medium text-zinc-200'
                       }`}
                     >
@@ -808,7 +814,7 @@ export const VNStage: React.FC<VNStageProps> = ({
 
                   {/* Không lộ điểm số: lựa chọn chỉ có số thứ tự; lựa chọn bị khoá chỉ nói bằng cảm xúc */}
                   {locked ? (
-                    <span className="text-[9px] sm:text-[10px] font-mono italic ml-2 shrink-0 text-zinc-600">
+                    <span className="text-[11px] sm:text-xs font-mono italic ml-2 shrink-0 text-zinc-600">
                       {lockReason(choice, t)}
                     </span>
                   ) : (
@@ -835,11 +841,11 @@ export const VNStage: React.FC<VNStageProps> = ({
 
       {/* 3. HỘP THOẠI VISUAL NOVEL (Dialogue Box) — chiều cao cố định để khung không co giãn theo từng câu */}
       <div
-        className={`z-30 shrink-0 border-2 p-3.5 sm:p-5 rounded-lg transition-[background-color,border-color,box-shadow] duration-300 backdrop-blur-md h-40 sm:h-45 flex flex-col justify-between overflow-hidden ${getThemeClasses()}`}
+        className={`z-30 shrink-0 border-2 p-3.5 sm:p-5 rounded-lg transition-[background-color,border-color,box-shadow] duration-300 backdrop-blur-md h-40 sm:h-44 lg:h-48 flex flex-col justify-between overflow-hidden ${getThemeClasses()}`}
       >
         {/* Header Tên người nói */}
         <div className="flex justify-between items-center mb-1.5 border-b border-current/30 pb-1 shrink-0">
-          <span className="text-xs uppercase tracking-widest font-bold flex items-center gap-2">
+          <span className="text-xs sm:text-sm uppercase tracking-widest font-bold flex items-center gap-2">
             <span className="inline-block w-2 h-2 rounded-full bg-current animate-ping" />
             {isSystem ? t.vn.system : currentNode.speaker}
           </span>
@@ -853,7 +859,7 @@ export const VNStage: React.FC<VNStageProps> = ({
           {/* Các đoạn chảy liền nhau, căn đều hai bên. Phần chưa gõ vẫn chiếm chỗ (ẩn) để chữ đang gõ
               không nhảy xuống dòng giữa chừng khi một từ chạm mép khung */}
           <p
-            className="text-xs sm:text-sm leading-relaxed font-sans font-medium text-justify"
+            className="text-sm sm:text-base lg:text-lg leading-relaxed font-sans font-medium text-justify"
             // Viền bóng đen mỏng giữ chữ sắc nét trên mọi nền chuyển màu
             style={{ textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}
           >
@@ -901,7 +907,7 @@ export const VNStage: React.FC<VNStageProps> = ({
         {!isTyping &&
           (!visibleChoices || visibleChoices.length === 0) &&
           currentNode.id !== 'bad_ending_0' && (
-            <div className="mt-1 flex justify-between items-center text-[10px] sm:text-xs opacity-70 font-mono shrink-0">
+            <div className="mt-1 flex justify-between items-center text-xs sm:text-sm opacity-70 font-mono shrink-0">
               <span>{t.vn.continueHint}</span>
               <span className="animate-bounce">▼</span>
             </div>

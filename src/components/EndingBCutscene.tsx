@@ -322,7 +322,7 @@ export const EndingBCutscene: React.FC<EndingBCutsceneProps> = ({ onComplete, vo
         ctx.drawImage(canvas, -3, 0);
         ctx.restore();
       }
-      // Lóe trắng lúc giật về đầu vòng
+      // Loé trắng lúc giật về đầu vòng
       if (c > 0 && u < 0.12) {
         ctx.fillStyle = 'rgba(255,240,250,0.85)';
         ctx.fillRect(0, 0, W, H);
@@ -339,7 +339,7 @@ export const EndingBCutscene: React.FC<EndingBCutsceneProps> = ({ onComplete, vo
 
       if (t < INTRO_END) {
         // Vạch sáng hồng mở rộng ra thành khung hình (ngược với màn hình tắt ở Ending A)
-        // Vạch sáng mảnh lan ngang, cuối cùng lóe trắng mở vào cảnh
+        // Vạch sáng mảnh lan ngang, cuối cùng loé trắng mở vào cảnh
         const k = t / INTRO_END;
         const lineW = 4 + (W - 4) * ease(k * 1.5);
         ctx.fillStyle = '#f9a8d4';

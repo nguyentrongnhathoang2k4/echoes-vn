@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { DialogueZoom, isMoveKey, type FocusPoint } from './pixel/DialogueZoom';
 import { DefibrillatorMinigame } from './minigames/DefibrillatorMinigame';
 import {
   hash, px, block, dropShadow,
@@ -16,7 +17,7 @@ import { EmoteDirector, createEmoteDirector, emoteNow, updateEmotes, drawEmotes 
 import { tx } from '../locales/tx';
 import {
   useCinematicSubtitle, CinematicSubtitle, SubtitleFrame, StageClock, ClueFlash, useClueFlash,
-  InteractLabel, NearLabel, useAutoHideHints, HintBar, HintKey,
+  InteractLabel, NearLabel, placeLabel, labelKey, useAutoHideHints, HintBar, HintKey,
 } from './StageHud';
 
 interface InteractableObject {
@@ -43,6 +44,8 @@ interface PixelBleedStageProps {
   interactedIds?: string[];
   /** Người chơi đang điều khiển An (không mở thoại / menu): chỉ khi đó mới tính thời gian đứng yên */
   active?: boolean;
+  /** true khi khung thoại VN đang mở: camera tiến về đồ vật vừa tương tác */
+  inDialogue?: boolean;
   onMarkInteracted?: (id: string) => void;
   volume?: number;
   /** Khung canvas nghiêng nhẹ theo con trỏ chuột (cài đặt) */
@@ -240,7 +243,7 @@ const INTERACTABLES: InteractableObject[] = [
     h: 32,
     triggerNodeId: 'obj_ch3_chart',
     canRepeat: true,
-    checkedMonologue: 'Tờ bệnh án dập dấu đỏ Trung Hoà: "Trần Hoàng An - Hôn mê sâu Glasgow 3 điểm". Nét chữ nhòe nước mắt của Miên...',
+    checkedMonologue: 'Tờ bệnh án dập dấu đỏ Trung Hoà: "Trần Hoàng An - Hôn mê sâu Glasgow 3 điểm". Nét chữ nhoè nước mắt của Miên...',
   },
   {
     id: 'ch3_bag',
@@ -300,7 +303,7 @@ const INTERACTABLES: InteractableObject[] = [
     ...DESK,
     triggerNodeId: 'obj_ch3_pc',
     canRepeat: true,
-    checkedMonologue: 'Màn hình đỏ rực: thư mục C:/Memory_Dump/ đang bị khóa. Cần đối chất với Miên để mở toang sự thật.',
+    checkedMonologue: 'Màn hình đỏ rực: thư mục C:/Memory_Dump/ đang bị khoá. Cần đối chất với Miên để mở toang sự thật.',
   },
   {
     id: 'ch3_mien',
@@ -904,7 +907,7 @@ function drawBed(ctx: CanvasRenderingContext2D, fs: FrameState) {
   ctx.arc(cx + 15, cy + 20, 3.5, 0, Math.PI * 2);
   ctx.fill();
   px(ctx, cx + 7, cy - 2, 8, 4, '#475569');                    // Kẹp ghim
-  // Vệt nước mắt nhòe mực khi chưa đọc thì chớp nhẹ
+  // Vệt nước mắt nhoè mực khi chưa đọc thì chớp nhẹ
   if (!fs.interacted.has('ch3_chart') && Math.sin(fs.t * 4) > 0.6) {
     px(ctx, cx + 4, cy + 13, 12, 2, 'rgba(56,189,248,0.6)');
   }
@@ -1015,7 +1018,7 @@ function drawDesk(ctx: CanvasRenderingContext2D, fs: FrameState, sparks: Particl
   ctx.fillStyle = Math.sin(fs.t * 5) > 0 ? '#ffffff' : '#f87171';
   ctx.fillText('SECTOR_1705', mx + 6, my + 18);
   ctx.fillStyle = '#ef4444';
-  ctx.fillText(tx('[ĐÃ KHÓA]'), mx + 6, my + 25);
+  ctx.fillText(tx('[ĐÃ KHOÁ]'), mx + 6, my + 25);
   for (let sy = my + 4; sy < my + 28; sy += 2) px(ctx, mx + 4, sy, 36, 1, 'rgba(0,0,0,0.3)');
   px(ctx, mx + 36, my + 31, 3, 2, '#22c55e');                  // Đèn nguồn
   // Bàn phím
@@ -1625,6 +1628,7 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
   volume = 80,
   parallax = true,
   active = true,
+  inDialogue = false,
 }) => {
   const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1669,8 +1673,13 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
   useEffect(() => { interactedRef.current = localInteractedIds; }, [localInteractedIds]);
   useEffect(() => { defibOpenRef.current = isDefibMinigameOpen; }, [isDefibMinigameOpen]);
   useEffect(() => { sanityRef.current = sanity; }, [sanity]);
+  // Đồ vật vừa tương tác: khung thoại mở ra thì camera tiến lại gần nó
+  const [dialogFocus, setDialogFocus] = useState<FocusPoint | null>(null);
   const activeRef = useRef(active);
-  useEffect(() => { activeRef.current = active; }, [active]);
+  useEffect(() => {
+    activeRef.current = active;
+    if (!active) keysHeld.current.clear();
+  }, [active]);
   // Số giây An đứng yên (đang điều khiển, không bấm phím di chuyển)
   const idleTimeRef = useRef(0);
 
@@ -1821,13 +1830,16 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (defibOpenRef.current) return;
+      if (!activeRef.current) return; // Khung thoại đang mở: phím thuộc về hộp thoại
       keysHeld.current.add(e.key.toLowerCase());
+      if (isMoveKey(e.key)) setDialogFocus(null);
 
       // Phím E, Space, Enter để tương tác (bỏ qua auto-repeat khi giữ phím)
       if (e.key.toLowerCase() === 'e' || e.key === ' ' || e.key === 'Enter') {
         if (e.repeat) return;
         const target = findNearest();
         if (!target) return;
+        setDialogFocus({ x: target.x + target.w / 2, y: target.y + target.h / 2 });
 
         if (target.id === 'ch3_monitor') {
           keysHeld.current.clear();
@@ -2020,10 +2032,11 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
       const ready = clues >= REQUIRED_CLUES && interacted.includes(KEY_CLUE);
       const labelObj = nearest && (nearest.id === 'ch3_mien' || !isDone) ? nearest : ready ? MIEN_OBJ : null;
       const labelText = labelObj ? (labelObj.id === 'ch3_mien' && ready ? 'Đối chất Miên' : labelObj.label) : null;
-      const promptKey = labelObj ? `${labelObj.id}:${labelText}` : '';
+      const placedLabel = labelObj && labelText ? placeLabel(labelObj, labelText, p, CANVAS_HEIGHT) : null;
+      const promptKey = labelKey(labelObj?.id ?? '', placedLabel);
       if (promptKey !== promptKeyRef.current) {
         promptKeyRef.current = promptKey;
-        setNearLabel(labelObj && labelText ? { x: labelObj.x + labelObj.w / 2, y: labelObj.y, text: labelText } : null);
+        setNearLabel(placedLabel);
       }
       // An bước đi thì phụ đề độc thoại mờ sớm
       if (dx !== 0 || dy !== 0) fadeSubtitleOnMove();
@@ -2133,13 +2146,13 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
   const cluesCount = localInteractedIds.filter(id => CH3_CORE_ANOMALIES.includes(id)).length;
 
   /** Đánh dấu máy sốc tim đã thao tác + kích hoạt node thoại */
-  const finishDefib = (success: boolean) => {
+  const finishDefib = () => {
     setIsDefibMinigameOpen(false);
     if (!localInteractedIds.includes('ch3_monitor')) {
       setLocalInteractedIds(prev => (prev.includes('ch3_monitor') ? prev : [...prev, 'ch3_monitor']));
       onMarkInteracted?.('ch3_monitor');
     }
-    if (success) setSanity?.(prev => Math.min(100, prev + 10));
+    setSanity?.(prev => Math.min(100, prev + 10));
     onTrigger('obj_ch3_monitor');
   };
 
@@ -2162,17 +2175,19 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
 
   return (
     <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden select-none">
-      <div className="relative" ref={frameRef} style={{ width: `min(96vw, calc((100vh - 60px) * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, marginTop: 44 }}>
+      <div className="relative overflow-hidden" ref={frameRef} style={{ width: `min(96vw, calc((100vh - 60px) * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, marginTop: 44 }}>
+        <DialogueZoom focus={dialogFocus} active={inDialogue} width={CANVAS_WIDTH} height={CANVAS_HEIGHT}>
         <canvas
           ref={canvasRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
           className="w-full h-full block bg-black border border-red-950/80 [image-rendering:pixelated]"
         />
+        </DialogueZoom>
         <div className="absolute top-0 left-0" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${uiScale})`, transformOrigin: 'top left' }}>
 
         {/* Nhãn [E] mini nổi ngay trên đầu vật thể, không khung hộp che góc màn hình */}
-        <InteractLabel label={nearLabel} />
+        <InteractLabel label={inDialogue ? null : nearLabel} />
 
         {/* Phụ đề kiểu điện ảnh: độc thoại của An (trắng xám) / tiếng phòng cấp cứu (đỏ nhạt);
             nhường chỗ khi Miên đang can ngăn */}
@@ -2202,8 +2217,10 @@ export const PixelBleedStage: React.FC<PixelBleedStageProps> = ({
         {isDefibMinigameOpen && (
           <DefibrillatorMinigame
             volume={volume}
-            onComplete={() => finishDefib(true)}
-            onClose={() => finishDefib(false)}
+            onComplete={finishDefib}
+            onMiss={() => setSanity?.(prev => Math.max(0, prev - 3))}
+            // Thoát giữa chừng: không tính là xong, lần sau mở lại chơi từ đầu
+            onClose={() => setIsDefibMinigameOpen(false)}
           />
         )}
         </div>

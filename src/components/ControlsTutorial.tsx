@@ -10,6 +10,7 @@ const ROWS: Array<{ keys: string[][]; label: string }> = [
   { keys: [['W', 'A', 'S', 'D'], ['←', '↑', '→', '↓']], label: 'Di chuyển' },
   { keys: [['E'], ['Space']], label: 'Tương tác vật thể' },
   { keys: [['I'], ['Tab']], label: 'Túi đồ' },
+  { keys: [['J']], label: 'Sổ Ký ức' },
   { keys: [['Esc']], label: 'Đóng / Tạm dừng' },
 ];
 

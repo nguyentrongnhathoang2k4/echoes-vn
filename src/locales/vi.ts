@@ -85,7 +85,7 @@ export const vi = {
       S: {
         badge: 'SECRET ENDING',
         title: 'NGƯỜI LẠ',
-        summary: 'An chọn xóa sạch mọi ký ức về Miên để cô không còn lý do quay lại. Nhìn An xa lạ hỏi "Chị là ai ạ?", Miên chết lặng tự tay tắt máy. Cô mất An lần thứ hai ngay trước mắt mình.',
+        summary: 'An chọn xoá sạch mọi ký ức về Miên để cô không còn lý do quay lại. Nhìn An xa lạ hỏi "Chị là ai ạ?", Miên chết lặng tự tay tắt máy. Cô mất An lần thứ hai ngay trước mắt mình.',
         hint: '[KẾT CỤC BÍ ẨN] Đã mở mã nguồn Đồ án AURA ở Màn 1 và giữ Sanity ở mức cân bằng (40% - 60%) ở Màn 4.',
       },
       M: {

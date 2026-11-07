@@ -29,6 +29,8 @@ import { audioEngine, AudioScene } from '../src/services/audioEngine';
 import { tx, translate } from '../src/locales/tx';
 import { hasOpenUiLayer } from '../src/services/uiLayers';
 import type { Choice } from '../src/types/vn';
+import { MemoryJournal } from '../src/components/MemoryJournal';
+import { unlockedMemories, MEMORY_FLAG_PREFIX } from '../src/data/memoryJournal';
 
 // OUTRO: cutscene sau mỗi kết cục (A / B / C) trước khi về menu
 type GameState = 'MENU' | 'INTRO' | 'PLAYING' | 'OUTRO';
@@ -128,6 +130,11 @@ export default function Home() {
     storyFlagsRef.current = flags;
     setStoryFlags(flags);
   }, []);
+  // Sổ Ký ức [J] + dòng báo nhỏ khi vừa ghi được mục mới
+  const [journalOpen, setJournalOpen] = useState(false);
+  const [memoryToast, setMemoryToast] = useState(false);
+  const memoryToastTimer = useRef<number | null>(null);
+  const closeJournal = useCallback(() => setJournalOpen(false), []);
   // Chống hồi Sanity vô hạn: node thoại đã cộng Sanity dương thì lần sau chỉ phát thoại, không cộng nữa
   const [sanityClaimedIds, setSanityClaimedIds] = useState<string[]>([]);
   const sanityClaimedRef = useRef<string[]>([]);
@@ -182,7 +189,7 @@ export default function Home() {
         setHasSaveData(true);
       }
 
-      // 4. Đọc danh sách kết cục đã mở khóa
+      // 4. Đọc danh sách kết cục đã mở khoá
       const savedEndings = localStorage.getItem(STORAGE_KEY_ACHIEVEMENTS);
       if (savedEndings) {
         try {
@@ -196,7 +203,7 @@ export default function Home() {
         document.title = tx(ABANDONED_TAB_TITLE);
       }
     } catch {
-      // Bỏ qua nếu localStorage bị vô hiệu hóa
+      // Bỏ qua nếu localStorage bị vô hiệu hoá
     }
   }, []);
 
@@ -306,6 +313,11 @@ export default function Home() {
   const handleSetStoryFlag = useCallback((flag: string) => {
     if (storyFlagsRef.current.includes(flag)) return;
     applyStoryFlags([...storyFlagsRef.current, flag]);
+    if (flag.startsWith(MEMORY_FLAG_PREFIX)) {
+      setMemoryToast(true);
+      if (memoryToastTimer.current) window.clearTimeout(memoryToastTimer.current);
+      memoryToastTimer.current = window.setTimeout(() => setMemoryToast(false), 2600);
+    }
   }, [applyStoryFlags]);
 
   // Ghi nhận node thoại vừa hồi Sanity (lần đầu tiên)
@@ -657,7 +669,7 @@ export default function Home() {
     );
     setDevToast(
       withAllClues
-        ? 'DEV: MÀN 3 (ĐÃ MỞ KHÓA TẤT CẢ MANH MỐI BỆNH VIỆN • ĐỐI CHẤT MIÊN)'
+        ? 'DEV: MÀN 3 (ĐÃ MỞ KHOÁ TẤT CẢ MANH MỐI BỆNH VIỆN • ĐỐI CHẤT MIÊN)'
         : 'DEV: CHUYỂN SANG MÀN 3 (PIXEL BLEED • XÂM THẤU BỆNH VIỆN)'
     );
   }, [insertedDisk, inventoryIds, saveGameProgress]);
@@ -839,6 +851,12 @@ export default function Home() {
         return;
       }
 
+      // [J] Sổ Ký ức: mở được ở mọi màn chơi (đang mở thì sổ tự bắt phím, ở đây chỉ lo việc đóng)
+      if (!typing && !e.repeat && e.key.toLowerCase() === 'j' && gameState === 'PLAYING' && !isPauseMenuOpen && !isSettingsOpen) {
+        if (journalOpen) setJournalOpen(false);
+        else if (!hasOpenUiLayer()) setJournalOpen(true);
+        return;
+      }
       if (e.key === 'Escape') {
         if (gameState === 'PLAYING') {
           // Nếu đang mở modal Settings thì đóng Settings trước
@@ -867,7 +885,7 @@ export default function Home() {
     // Pha capture: đọc trạng thái modal trước khi listener của modal kịp đóng nó trong cùng lần bấm
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [gameState, isSettingsOpen, isPauseMenuOpen, mode, chapter, interactedIds, jumpToChapter2, jumpToChapter1, jumpToChapter3, jumpToChapter4, transition, stageCutscene, showDevToolbar]);
+  }, [gameState, isSettingsOpen, isPauseMenuOpen, mode, chapter, interactedIds, jumpToChapter2, jumpToChapter1, jumpToChapter3, jumpToChapter4, transition, stageCutscene, showDevToolbar, journalOpen]);
 
   const { lang } = useLanguage();
   // Chữ trong JSX dịch theo `lang` của context (lúc hydrate luôn là 'vi') để không lệch với HTML server
@@ -976,7 +994,7 @@ export default function Home() {
               volume={settings.masterVolume}
               onComplete={() => {
                 setGameState('MENU');
-                setDevToast('BẠN ĐÃ MỞ KHÓA [TRUE ENDING: BÌNH MINH THẬT SỰ]');
+                setDevToast('BẠN ĐÃ MỞ KHOÁ [TRUE ENDING: BÌNH MINH THẬT SỰ]');
               }}
             />
           ) : outroEnding === 'S' ? (
@@ -984,7 +1002,7 @@ export default function Home() {
               volume={settings.masterVolume}
               onComplete={() => {
                 setGameState('MENU');
-                setDevToast('BẠN ĐÃ MỞ KHÓA [SECRET ENDING: NGƯỜI LẠ]');
+                setDevToast('BẠN ĐÃ MỞ KHOÁ [SECRET ENDING: NGƯỜI LẠ]');
               }}
             />
           ) : outroEnding === 'M' ? (
@@ -1045,6 +1063,8 @@ export default function Home() {
                 setSanity={setSanity}
                 onTrigger={handleTrigger}
                 onEnterRoom314={handleEnterRoom314}
+                active={mode === 'OVERWORLD' && !isPauseMenuOpen && !isSettingsOpen && !transition && !journalOpen}
+                inDialogue={mode === 'VN'}
                 interactedIds={interactedIds}
                 onMarkInteracted={handleMarkInteracted}
                 inventoryIds={inventoryIds}
@@ -1062,6 +1082,8 @@ export default function Home() {
                 setSanity={setSanity}
                 onTrigger={handleTrigger}
                 onExitToHallway={handleExitToHallway}
+                active={mode === 'OVERWORLD' && !isPauseMenuOpen && !isSettingsOpen && !transition && !journalOpen}
+                inDialogue={mode === 'VN'}
                 interactedIds={interactedIds}
                 onMarkInteracted={handleMarkInteracted}
                 inventoryIds={inventoryIds}
@@ -1089,7 +1111,8 @@ export default function Home() {
               onMarkInteracted={handleMarkInteracted}
               volume={settings.masterVolume}
               onCutsceneChange={setStageCutscene}
-              active={mode === 'OVERWORLD' && !isPauseMenuOpen && !isSettingsOpen && !transition}
+              active={mode === 'OVERWORLD' && !isPauseMenuOpen && !isSettingsOpen && !transition && !journalOpen}
+              inDialogue={mode === 'VN'}
             />
           ) : chapter === 4 ? (
             // Chỉ dựng khi đang ở trạm điều khiển: đồng hồ đếm ngược không được chạy ngầm dưới hộp thoại kết cục
@@ -1103,7 +1126,7 @@ export default function Home() {
                 onSetStoryFlag={handleSetStoryFlag}
                 volume={settings.masterVolume}
                 bgmVolume={settings.bgmVolume}
-                paused={isPauseMenuOpen || isSettingsOpen}
+                paused={isPauseMenuOpen || isSettingsOpen || journalOpen}
               />
             )
           ) : (
@@ -1116,7 +1139,8 @@ export default function Home() {
               interactedIds={interactedIds}
               onMarkInteracted={handleMarkInteracted}
               volume={settings.masterVolume}
-              active={mode === 'OVERWORLD' && !isPauseMenuOpen && !isSettingsOpen && !transition}
+              active={mode === 'OVERWORLD' && !isPauseMenuOpen && !isSettingsOpen && !transition && !journalOpen}
+              inDialogue={mode === 'VN'}
             />
           )}
         </div>
@@ -1128,7 +1152,7 @@ export default function Home() {
           className={`absolute inset-0 transition-opacity duration-300 ${
             // Đang chiếu chuyển cảnh thì gỡ khung thoại cũ ra (không nhận phím Space/Enter lặp lại lời cuối)
             // Lớp phủ tối mờ + làm nhoè nhẹ màn chơi phía sau (không phủ đen 100%)
-            mode === 'VN' && !transition ? 'opacity-100 pointer-events-auto z-20 bg-black/60 backdrop-blur-sm' : 'opacity-0 pointer-events-none'
+            mode === 'VN' && !transition ? 'opacity-100 pointer-events-auto z-20 bg-black/25' : 'opacity-0 pointer-events-none'
           }`}
         >
           {mode === 'VN' && !transition && (
@@ -1156,6 +1180,25 @@ export default function Home() {
         >
           {tr('[ESC] TẠM DỪNG')}
         </button>
+        {/* Màn 4 đã có sổ Ký ức ngay trong biểu mẫu suy luận; nút ở đây sẽ đè lên đồng hồ đếm ngược */}
+        {chapter !== 4 && (
+          <button
+            onClick={() => { if (!hasOpenUiLayer()) setJournalOpen(true); }}
+            className="absolute top-3 left-[136px] z-30 bg-black/70 hover:bg-zinc-800 text-zinc-400 hover:text-white px-2.5 py-1 text-xs font-mono border border-zinc-700/80 rounded backdrop-blur-sm transition-all"
+          >
+            {tr('[J] KÝ ỨC')}
+          </button>
+        )}
+        {memoryToast && (
+          <div className="absolute top-12 left-3 z-30 px-2.5 py-1 text-xs font-mono text-zinc-300 bg-black/80 border border-zinc-700 pointer-events-none">
+            {tr('Đã ghi vào Ký ức')} <span className="text-zinc-500">[J]</span>
+          </div>
+        )}
+        <MemoryJournal
+          open={journalOpen && gameState === 'PLAYING'}
+          entries={unlockedMemories(storyFlags, interactedIds)}
+          onClose={closeJournal}
+        />
 
         {/* Dev Skip Toolbar (Dành cho Dev test nhanh các màn) — ẩn mặc định, bật bằng ~ hoặc F2 */}
         {showDevToolbar && (
@@ -1173,7 +1216,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => jumpToChapter2(true)}
-            title={tr('Mở khóa 5/5 manh mối Màn 2 để kiểm tra bầu trời pha 3 và gặp Miên')}
+            title={tr('Mở khoá 5/5 manh mối Màn 2 để kiểm tra bầu trời pha 3 và gặp Miên')}
             className={`px-2.5 py-1 rounded border font-semibold transition-all cursor-pointer ${
               chapter === 2 &&
               interactedIds.filter(id => ['ch2_river', 'ch2_pigeon', 'ch2_coffee', 'ch2_bench', 'ch2_music_box'].includes(id)).length >= 5

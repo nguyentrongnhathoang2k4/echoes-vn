@@ -4,36 +4,45 @@ import { block, hash } from '../pixel/pixelKit';
 import { drawSpriteFrame } from '../pixel/spriteKit';
 import { drawBenAnYenSunset, BEN_AN_YEN } from '../SunsetStage';
 import { tx } from '../../locales/tx';
-
-// Lau sạch quá ngưỡng này thì lớp bụi còn lại tự tan
-const REVEAL_PERCENT = 60;
-const BRUSH_RADIUS = 30;
-// Ảnh đẹp đứng yên bao lâu trước khi kéo người chơi vào hồi tưởng
-const HOLD_MS = 2000;
-// Thời gian ảnh rỉ hạt pixel, biến thành ảnh bệnh viện
-const CORRUPT_MS = 3400;
-const BLOCK = 6;
-// Chi tiết lộ ra trên cổ tay An ở nửa ảnh phòng hồi sức
-const REVEAL_LINE =
-  'Cổ tay mình trong ảnh đeo một cái vòng nhựa trắng. Chữ in mờ: "BV TRUNG HOÀ • 17/05". ... Mình chưa từng đến đó. Đúng không?';
+import { useUiLayer } from '../../services/uiLayers';
 
 /**
- * dust    : đang lau bụi
- * clear   : ảnh gốc hiện lên trong veo (giữ HOLD_MS, chuông reo)
- * away    : đang xem hồi tưởng; khi trở về (flashbackDone) ảnh bắt đầu rỉ pixel
- * revealed: ảnh đã biến thành An quấn băng trong bệnh viện
+ * TIÊU CỰ GIAO THOA HAI THỰC TẠI (Màn 2) — một thao tác: vặn núm "Tiêu Cự Ký Ức" 0–100%.
+ *   0–40%  : Bến An Yên chiều tà, Miên cười rạng rỡ bên An.
+ *   60–100%: cùng ghế đá nhưng màu nhợt lạnh, chỉ còn Miên; chỗ An ngồi là vệt nhiễu chưa render xong.
+ *   Điểm giao thoa (ngẫu nhiên 25–75%): hai lớp khớp nhau, chỗ của An hiện rõ là khoảng trống.
+ * Màn 2 chưa được lộ bệnh viện: chỉ là dị tượng của một thế giới mô phỏng.
+ * Dừng núm trong vùng giao thoa một nhịp: ảnh rung giật, mở đoạn hồi tưởng chân tướng.
  */
-type Phase = 'dust' | 'clear' | 'away' | 'revealed';
+type Phase = 'focus' | 'interfere' | 'away' | 'revealed';
+
+const W = 340;
+const H = 360;
+// Điểm hai thực tại chồng khít đổi chỗ mỗi lần mở (25–75%): phải nhìn ảnh, không học thuộc được
+const BAND_HALF = 3;
+const rollCenter = () => 25 + Math.round(Math.random() * 50);
+const HOLD_S = 1.0;
+const KEY_RATE = 22;          // % / giây khi giữ A/D
+const WHEEL_STEP = 1;
+const DRAG_RATE = 0.35;       // % / px kéo núm
+const SHAKE_MS = 1300;
+// Điều lộ ra khi lấy nét đúng
+const REVEAL_LINE =
+  'Chỗ mình ngồi trong ảnh chỉ là một vệt nhiễu. Tay Miên đang nắm vào khoảng không.';
 
 interface PolaroidMinigameProps {
   onComplete: () => void;
   onClose: () => void;
   volume?: number;
-  /** Gọi sau khi ảnh đẹp đứng yên 2 giây: mở đoạn hồi tưởng */
+  /** Gọi khi dừng đúng điểm giao thoa: mở đoạn hồi tưởng */
   onTriggerFlashback?: () => void;
-  /** Hồi tưởng đã chiếu xong: ảnh bắt đầu biến dạng */
+  /** Hồi tưởng đã chiếu xong: hiện ảnh thật */
   flashbackDone?: boolean;
 }
+
+/** Tỉ lệ trộn lớp ký ức lỗi theo tiêu cự */
+const blendOf = (f: number, c: number) => Math.min(1, Math.max(0, (f - (c - 10)) / 20));
+const inBandOf = (f: number, c: number) => Math.abs(f - c) <= BAND_HALF;
 
 export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
   onComplete,
@@ -42,162 +51,137 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
   onTriggerFlashback,
   flashbackDone = false,
 }) => {
+  useUiLayer(true);
   const photoCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const dustCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  // Hai phiên bản của cùng một tấm ảnh (dựng sẵn, khung 340x360)
   const sweetRef = useRef<HTMLCanvasElement | null>(null);
-  const hospitalRef = useRef<HTMLCanvasElement | null>(null);
-
-  const [cleanedPercent, setCleanedPercent] = useState(0);
-  const [phase, setPhase] = useState<Phase>('dust');
-  const phaseRef = useRef<Phase>('dust');
-  const isInteractingRef = useRef(false);
-  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ghostRef = useRef<HTMLCanvasElement | null>(null);
+  const labelRectRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [center] = useState(rollCenter);
+  const centerRef = useRef(center);
+  const focusRef = useRef(12);
+  const [focus, setFocus] = useState(12);
+  const [phase, setPhaseState] = useState<Phase>('focus');
+  const phaseRef = useRef<Phase>('focus');
+  const setPhase = useCallback((p: Phase) => {
+    phaseRef.current = p;
+    setPhaseState(p);
+  }, []);
+  const [shake, setShake] = useState(false);
+  const holdRef = useRef(0);
+  const keysRef = useRef<Set<string>>(new Set());
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
   const triggerRef = useRef(onTriggerFlashback);
   useEffect(() => {
     triggerRef.current = onTriggerFlashback;
   }, [onTriggerFlashback]);
-  // Không có hồi tưởng để xem thì biến dạng ngay sau khi giữ ảnh
-  const returned = onTriggerFlashback ? flashbackDone : true;
-  const corrupting = phase === 'away' && returned;
-  const revealed = phase !== 'dust';
-
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  // Rời màn / đóng khung thì đóng hẳn AudioContext riêng: không còn âm nào ngân sang cảnh sau
+  const cbRef = useRef({ onComplete, onClose });
   useEffect(() => {
-    const ctxRef = audioCtxRef;
+    cbRef.current = { onComplete, onClose };
+  }, [onComplete, onClose]);
+  // Không có hồi tưởng để xem thì hiện ảnh thật ngay
+  const returned = onTriggerFlashback ? flashbackDone : true;
+
+  // ---------------- Âm thanh ----------------
+  const audioRef = useRef<AudioContext | null>(null);
+  useEffect(() => {
+    const ref = audioRef;
     return () => {
-      void ctxRef.current?.close().catch(() => {});
-      ctxRef.current = null;
+      void ref.current?.close().catch(() => {});
+      ref.current = null;
     };
   }, []);
-  const lastSoundTimeRef = useRef<number>(0);
-
-  const getAudioContext = useCallback(() => {
+  const ac = useCallback(() => {
     try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!audioCtxRef.current && AudioCtx) {
-        audioCtxRef.current = new AudioCtx();
-      }
-      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
-        audioCtxRef.current.resume();
-      }
-      return audioCtxRef.current;
+      const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!audioRef.current && Ctor) audioRef.current = new Ctor();
+      if (audioRef.current?.state === 'suspended') void audioRef.current.resume();
+      return audioRef.current;
     } catch {
       return null;
     }
   }, []);
-
-  // Tiếng chà xát / lau bụi (white noise có filter dải thông)
-  const playWipeSound = useCallback(() => {
-    if (volume <= 0) return;
+  const vol = volume / 100;
+  // Lạch cạch nhẹ của núm vặn ống kính
+  const lastTickRef = useRef(0);
+  const playTick = useCallback(() => {
     const now = performance.now();
-    if (now - lastSoundTimeRef.current < 80) return; // Debounce
-    lastSoundTimeRef.current = now;
+    if (now - lastTickRef.current < 60) return;
+    lastTickRef.current = now;
+    const ctx = ac();
+    if (!ctx || vol <= 0) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(1300 + Math.random() * 200, t);
+    g.gain.setValueAtTime(0.025 * vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.02);
+    o.connect(g).connect(ctx.destination);
+    o.start(t);
+    o.stop(t + 0.03);
+  }, [ac, vol]);
+  // Cú sốc thị giác: rít lên rồi ù tai
+  const playShock = useCallback(() => {
+    const ctx = ac();
+    if (!ctx || vol <= 0) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(80, t);
+    o.frequency.exponentialRampToValueAtTime(880, t + 0.3);
+    o.frequency.exponentialRampToValueAtTime(220, t + 0.9);
+    g.gain.setValueAtTime(0.14 * vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1);
+    o.connect(g).connect(ctx.destination);
+    o.start(t);
+    o.stop(t + 1);
+  }, [ac, vol]);
 
-    const ctx = getAudioContext();
-    if (!ctx) return;
-    try {
-      const bufferSize = ctx.sampleRate * 0.05;
-      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        data[i] = Math.random() * 2 - 1;
-      }
-
-      const noise = ctx.createBufferSource();
-      noise.buffer = buffer;
-
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'bandpass';
-      filter.frequency.setValueAtTime(1400 + Math.random() * 400, ctx.currentTime);
-      filter.Q.setValueAtTime(3, ctx.currentTime);
-
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime((volume / 100) * 0.04, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
-
-      noise.connect(filter);
-      filter.connect(gain);
-      gain.connect(ctx.destination);
-
-      noise.start();
-    } catch {}
-  }, [getAudioContext, volume]);
-
-  // Tiếng sốc thị giác (rùng mình / tiếng ù tai chói lòa)
-  const playShockSound = useCallback(() => {
-    if (volume <= 0) return;
-    const ctx = getAudioContext();
-    if (!ctx) return;
-    try {
-      const t = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(80, t);
-      osc.frequency.exponentialRampToValueAtTime(880, t + 0.3);
-      osc.frequency.exponentialRampToValueAtTime(220, t + 0.8);
-
-      g.gain.setValueAtTime((volume / 100) * 0.16, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
-
-      osc.connect(g);
-      g.connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.9);
-    } catch {}
-  }, [getAudioContext, volume]);
-
-  // Chuông reo hoài niệm: chuỗi celesta đi lên, ngân dài
-  const playNostalgiaChime = useCallback(() => {
-    if (volume <= 0) return;
-    const ctx = getAudioContext();
-    if (!ctx) return;
-    try {
-      const t = ctx.currentTime + 0.05;
-      [523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98, 2093].forEach((f, i) => {
-        for (const [mul, amp] of [[1, 0.05], [4, 0.008]] as const) {
-          const osc = ctx.createOscillator();
-          const g = ctx.createGain();
-          osc.type = 'sine';
-          osc.frequency.value = f * mul;
-          const at = t + i * 0.16;
-          g.gain.setValueAtTime(0, at);
-          g.gain.linearRampToValueAtTime((volume / 100) * amp, at + 0.008);
-          g.gain.exponentialRampToValueAtTime(0.0001, at + 1.8);
-          osc.connect(g);
-          g.connect(ctx.destination);
-          osc.start(at);
-          osc.stop(at + 1.85);
-        }
-      });
-    } catch {}
-  }, [getAudioContext, volume]);
-
-  // Tiếng ảnh mục rữa: lạo xạo như phim cháy, nhỏ dần
-  const playCrackleSound = useCallback(() => {
-    if (volume <= 0) return;
-    const ctx = getAudioContext();
-    if (!ctx) return;
-    try {
-      const len = Math.floor(ctx.sampleRate * (CORRUPT_MS / 1000));
-      const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < len; i++) data[i] = Math.random() < 0.004 ? (Math.random() * 2 - 1) : (Math.random() * 2 - 1) * 0.05;
-      const src = ctx.createBufferSource();
-      src.buffer = buffer;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime((volume / 100) * 0.35, ctx.currentTime);
-      g.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + CORRUPT_MS / 1000);
-      src.connect(g);
-      g.connect(ctx.destination);
-      src.start();
-    } catch {}
-  }, [getAudioContext, volume]);
+  // ---------------- Vẽ ảnh theo tiêu cự ----------------
+  const redraw = useCallback(() => {
+    const canvas = photoCanvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    const sweet = sweetRef.current;
+    const ghost = ghostRef.current;
+    if (!canvas || !ctx || !sweet || !ghost) return;
+    const ph = phaseRef.current;
+    const f = focusRef.current;
+    ctx.globalAlpha = 1;
+    if (ph === 'revealed') {
+      ctx.drawImage(ghost, 0, 0);
+      return;
+    }
+    const c = centerRef.current;
+    const k = blendOf(f, c);
+    const inBand = inBandOf(f, c);
+    // Lệch tiêu cự: hai lớp ảnh đang chồng dở thì nhoè đôi, chỉ sắc nét đúng điểm khớp
+    const blur = inBand || ph === 'interfere' ? 0 : 3;
+    ctx.drawImage(sweet, 0, 0);
+    if (k > 0) {
+      ctx.globalAlpha = k;
+      ctx.drawImage(ghost, 0, 0);
+      ctx.globalAlpha = 1;
+    }
+    if (blur > 0 && k > 0 && k < 1) {
+      ctx.globalAlpha = 0.35;
+      ctx.drawImage(canvas, blur, 0);
+      ctx.drawImage(canvas, -blur, 0);
+      ctx.globalAlpha = 1;
+    }
+    // Giao thoa: chỗ ngồi trống của An hiện rõ nét giữa hai lớp ảnh
+    const r = labelRectRef.current;
+    if (r && (inBand || ph === 'interfere')) {
+      ctx.drawImage(ghost, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+    }
+  }, []);
+  const redrawRef = useRef(redraw);
+  useEffect(() => {
+    redrawRef.current = redraw;
+  }, [redraw]);
 
   // Vẽ bức ảnh Polaroid bằng chính đồ hoạ trong game, hai phiên bản cùng bố cục:
-  // ảnh gốc (Miên và An trên ghế đá Bến An Yên lúc hoàng hôn) và ảnh thật (An quấn băng trong phòng hồi sức)
+  // ảnh gốc (Miên và An trên ghế đá lúc hoàng hôn) và ký ức lỗi (Miên một mình, chỗ An chỉ còn nhiễu)
   useEffect(() => {
     const canvas = photoCanvasRef.current;
     if (!canvas) return;
@@ -300,92 +284,71 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
       g.fillRect(0, 0, PW, PH);
       g.restore();
 
-      // ---- Ảnh thật: phòng hồi sức, cùng bố cục. Ghế đá thành giường bệnh, chỗ Miên ngồi trống trơn ----
-      const icu = mk(PW, PH);
-      const k = icu.g;
+      // ---- Ký ức lỗi: cùng ghế đá Bến An Yên, màu nhợt lạnh; Miên ngồi một mình, chỗ của An chỉ là vệt nhiễu chưa render xong ----
+      const ghost = mk(PW, PH);
+      const k = ghost.g;
       if (!k) return;
-      k.fillStyle = '#a7c4c0';
-      k.fillRect(0, 0, PW, PH);
-      k.fillStyle = '#8fb0ab';
-      for (let y = 0; y < PH * 0.72; y += 10) k.fillRect(0, y, PW, 1);
-      for (let x = 0; x < PW; x += 12) k.fillRect(x, 0, 1, PH * 0.72);
-      k.fillStyle = '#6b8580';
-      k.fillRect(0, PH * 0.72, PW, PH * 0.28);
-      // Máy đo nhịp tim trên tường
-      k.fillStyle = '#1f2937';
-      k.fillRect(PW - 40, 12, 32, 20);
-      k.fillStyle = '#052e16';
-      k.fillRect(PW - 38, 14, 28, 14);
-      k.fillStyle = '#4ade80';
-      [[0, 6], [4, 6], [6, 2], [8, 10], [10, 6], [16, 6], [18, 3], [20, 9], [22, 6], [27, 6]].forEach(([dx, dy]) => k.fillRect(PW - 37 + dx, 14 + dy, 2, 1));
-      // Cọc truyền dịch + túi dịch
-      k.fillStyle = '#cbd5e1';
-      k.fillRect(PW - 10, 8, 1, PH * 0.72);
-      k.fillStyle = 'rgba(226,240,255,0.85)';
-      k.fillRect(PW - 14, 10, 7, 11);
-      k.fillStyle = '#93c5fd';
-      k.fillRect(PW - 13, 15, 5, 5);
-      // Giường bệnh (ga trắng) thay cho ghế đá
-      const bedY = seatY + 2;
-      k.fillStyle = '#e5e7eb';
-      k.fillRect(0, bedY - 12, PW, 14);
-      k.fillStyle = '#9ca3af';
-      k.fillRect(0, bedY + 2, PW, 3);
-      // An ngồi trên giường, quấn băng trán
+      k.drawImage(world.c, skyX, BEN_AN_YEN.horizon - 58, PW, SPLIT, 0, 0, PW, SPLIT);
+      k.drawImage(world.c, skyX, BEN_AN_YEN.promenadeTop - 4, PW, PH - SPLIT, 0, SPLIT, PW, PH - SPLIT);
+      block(k, benchX, seatY - 12, 101, 8, '#a8a29e', '#d6d3d1', '#78716c');
       k.save();
       k.beginPath();
-      k.rect(anX - 4, anY - 4, 50, bedY - 12 - anY + 4);
+      k.rect(mienX - 4, 0, 50, seatY + 2);
       k.clip();
-      drawSpriteFrame(k, an, 1, 0, false, anX, anY, 42, 63);
+      drawSpriteFrame(k, mien, 1, 0, false, mienX, seatY - 50, 42, 63);
       k.restore();
-      k.fillStyle = '#f8fafc';
-      k.fillRect(anX + 11, anY + 12, 21, 3);
-      k.fillStyle = '#b91c1c';
-      k.fillRect(anX + 25, anY + 12, 3, 2);
-      // Vòng tay nhựa bệnh viện trên cổ tay phải (nhãn trắng + vạch đỏ)
-      k.fillStyle = '#f1f5f9';
-      k.fillRect(anX + 32, anY + 36, 5, 2);
-      k.fillStyle = '#dc2626';
-      k.fillRect(anX + 34, anY + 36, 1, 2);
-      // Chỗ Miên từng ngồi: vài hạt pixel hồng còn sót lại
-      for (let i = 0; i < 9; i++) {
-        k.fillStyle = i % 2 ? '#f9a8d4' : '#c4b5fd';
-        k.fillRect(mienX + 12 + Math.floor(hash(i * 7) * 20), seatY - 44 + Math.floor(hash(i * 3 + 1) * 40), 1, 1);
+      // Vệt sẫm ướt trên cổ tay áo len của Miên
+      k.fillStyle = 'rgba(40,30,60,0.75)';
+      k.fillRect(mienX + 31, anY + 35, 5, 3);
+      k.fillStyle = 'rgba(40,30,60,0.4)';
+      k.fillRect(mienX + 32, anY + 38, 3, 2);
+      // Chỗ An ngồi: giữ dáng sprite nhưng thay từng điểm ảnh bằng nhiễu hạt xám, như chưa render xong
+      const sil = mk(50, 70);
+      if (sil.g) {
+        drawSpriteFrame(sil.g, an, 1, 0, false, 4, 0, 42, 63);
+        const img = sil.g.getImageData(0, 0, 50, 70);
+        const d = img.data;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] < 40) continue;
+          const n = hash(i * 0.37);
+          if (n < 0.35) {
+            d[i + 3] = 0;
+            continue;
+          }
+          const v = 150 + Math.floor(n * 90);
+          d[i] = v;
+          d[i + 1] = v;
+          d[i + 2] = v + 8;
+          d[i + 3] = 120 + Math.floor(n * 100);
+        }
+        sil.g.putImageData(img, 0, 0);
+        k.save();
+        k.beginPath();
+        k.rect(anX - 4, 0, 50, seatY + 2);
+        k.clip();
+        k.drawImage(sil.c, anX - 4, anY);
+        k.restore();
       }
-      // Ánh sáng lạnh, tái nhợt
-      k.fillStyle = 'rgba(30,58,80,0.28)';
+      block(k, benchX - 2, seatY, 105, 9, '#a8a29e', '#d6d3d1', '#78716c');
+      block(k, benchX + 5, seatY + 9, 8, 13, '#57534e', '#78716c', '#3f3a36');
+      block(k, benchX + 88, seatY + 9, 8, 13, '#57534e', '#78716c', '#3f3a36');
+      // Rút bớt màu, phủ lạnh: hoàng hôn như đã nguội
+      k.save();
+      k.globalCompositeOperation = 'saturation';
+      k.fillStyle = 'rgba(128,128,128,0.75)';
       k.fillRect(0, 0, PW, PH);
+      k.globalCompositeOperation = 'source-over';
+      k.fillStyle = 'rgba(40,62,90,0.3)';
+      k.fillRect(0, 0, PW, PH);
+      k.restore();
 
       const sweetFramed = frame(sweet.c, tx('Bến An Yên cùng em'), 'rgba(90,50,10,0.25)');
-      const hospitalFramed = frame(icu.c, tx('Bến An Yên cùng em... 17/05'), 'rgba(10,20,30,0.45)');
-      // Nhãn vòng tay phóng to, đọc được: chú thích ngay cạnh cổ tay
-      const hg = hospitalFramed.getContext('2d');
-      if (hg) {
-        const wx = pad + (anX + 34) * 2;
-        const wy = pad + (anY + 37) * 2;
-        const label = tx('BV TRUNG HOÀ • 17/05');
-        hg.font = 'bold 10px monospace';
-        const tw = hg.measureText(label).width;
-        const lx = Math.min(w - pad - tw - 10, wx + 14);
-        const ly = wy + 34;
-        hg.strokeStyle = 'rgba(220,38,38,0.85)';
-        hg.lineWidth = 1;
-        hg.beginPath();
-        hg.moveTo(wx, wy + 3);
-        hg.lineTo(lx + 4, ly - 6);
-        hg.stroke();
-        hg.fillStyle = '#f8fafc';
-        hg.fillRect(lx, ly - 11, tw + 8, 15);
-        hg.fillStyle = '#dc2626';
-        hg.fillRect(lx, ly - 11, 3, 15);
-        hg.fillStyle = '#1f2937';
-        hg.fillText(label, lx + 6, ly);
-      }
+      const ghostFramed = frame(ghost.c, tx('Bến An Yên — chỉ còn em'), 'rgba(10,20,30,0.45)');
+      // Vùng chỗ ngồi của An: ở điểm giao thoa vùng này hiện rõ nét
+      labelRectRef.current = { x: pad + (anX - 4) * 2, y: pad + (anY - 2) * 2, w: 50 * 2, h: (seatY - anY + 4) * 2 };
       sweetRef.current = sweetFramed;
-      hospitalRef.current = hospitalFramed;
-      // Bên dưới lớp bụi luôn là ảnh gốc (ảnh thật chỉ lộ ra sau hồi tưởng)
-      if (phaseRef.current !== 'revealed') ctx.drawImage(sweetFramed, 0, 0);
-      else ctx.drawImage(hospitalFramed, 0, 0);
+      ghostRef.current = ghostFramed;
+      redrawRef.current();
     };
 
     an.onload = render;
@@ -396,306 +359,197 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
     };
   }, []);
 
-  // Ảnh rỉ hạt pixel: từng ô nhỏ chảy xuống rồi để lộ ảnh bệnh viện bên dưới
+  // ---------------- Vặn núm tiêu cự ----------------
+  const turn = useCallback((delta: number) => {
+    if (phaseRef.current !== 'focus' || delta === 0) return;
+    focusRef.current = Math.max(0, Math.min(100, focusRef.current + delta));
+    holdRef.current = 0;
+    setFocus(focusRef.current);
+    playTick();
+    redrawRef.current();
+  }, [playTick]);
+
+  // Dừng đúng vùng giao thoa đủ lâu → ảnh rung giật, mở hồi tưởng
+  const interfere = useCallback(() => {
+    setPhase('interfere');
+    setShake(true);
+    playShock();
+    redrawRef.current();
+    window.setTimeout(() => {
+      setShake(false);
+      setPhase('away');
+      triggerRef.current?.();
+    }, SHAKE_MS);
+  }, [playShock, setPhase]);
+
+  // Hồi tưởng xong (hoặc không có hồi tưởng): ảnh thật hiện hẳn
   useEffect(() => {
-    if (!corrupting) return;
-    const canvas = photoCanvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    const sweet = sweetRef.current;
-    const hospital = hospitalRef.current;
-    if (!canvas || !ctx || !sweet || !hospital) return;
-    playShockSound();
-    playCrackleSound();
-    const cols = Math.ceil(canvas.width / BLOCK);
-    const rows = Math.ceil(canvas.height / BLOCK);
-    // Ngưỡng mục rữa từng ô: ngẫu nhiên, thiên về phía trên trước (như màu đang chảy xuống)
-    const th = new Float32Array(cols * rows);
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) th[r * cols + c] = 0.6 * hash(c * 7 + r * 131) + 0.32 * (r / rows);
-    }
-    const start = performance.now();
+    if (phase !== 'away' || !returned) return;
+    const id = window.setTimeout(() => {
+      setPhase('revealed');
+      redrawRef.current();
+    }, 200);
+    return () => window.clearTimeout(id);
+  }, [phase, returned, setPhase]);
+
+  useEffect(() => {
     let raf = 0;
+    let last = performance.now();
     const loop = (now: number) => {
-      const k = Math.min(1, (now - start) / CORRUPT_MS);
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(sweet, 0, 0);
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const p = (k * 1.08 - th[r * cols + c]) / 0.14;
-          if (p <= 0) continue;
-          const x = c * BLOCK;
-          const y = r * BLOCK;
-          if (p >= 1) {
-            ctx.drawImage(hospital, x, y, BLOCK, BLOCK, x, y, BLOCK, BLOCK);
-            continue;
-          }
-          // Đang rỉ: ảnh thật hiện dần, hạt cũ trượt xuống, nhiễm sắc hồng / xanh lơ
-          ctx.globalAlpha = p;
-          ctx.drawImage(hospital, x, y, BLOCK, BLOCK, x, y, BLOCK, BLOCK);
-          ctx.globalAlpha = 1 - p;
-          ctx.drawImage(sweet, x, y, BLOCK, BLOCK, x, y + p * 16, BLOCK, BLOCK);
-          ctx.globalAlpha = 1;
-          if (hash(c * 13 + r * 17) > 0.86) {
-            ctx.fillStyle = hash(c + r) > 0.5 ? 'rgba(244,114,182,0.7)' : 'rgba(103,232,249,0.6)';
-            ctx.fillRect(x, y + p * 16, BLOCK / 2, BLOCK / 2);
-          }
-        }
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const keys = keysRef.current;
+      let d = 0;
+      if (keys.has('d') || keys.has('arrowright') || keys.has('arrowup')) d += KEY_RATE * dt;
+      if (keys.has('a') || keys.has('arrowleft') || keys.has('arrowdown')) d -= KEY_RATE * dt;
+      if (d !== 0) turn(d);
+      const f = focusRef.current;
+      // Núm đứng yên (kể cả đang giữ chuột trên núm) đúng vùng khớp đủ lâu → mở hồi tưởng; xoay qua thì không tính
+      if (phaseRef.current === 'focus' && d === 0 && inBandOf(f, centerRef.current)) {
+        holdRef.current += dt;
+        if (holdRef.current >= HOLD_S) interfere();
       }
-      if (k < 1) {
-        raf = requestAnimationFrame(loop);
-      } else {
-        ctx.drawImage(hospital, 0, 0);
-        phaseRef.current = 'revealed';
-        setPhase('revealed');
-      }
+      raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [corrupting, playShockSound, playCrackleSound]);
+  }, [interfere, turn]);
 
-  // Lớp bụi tan → ảnh gốc trong veo, chuông reo → 2 giây sau mở hồi tưởng
-  const revealPhoto = useCallback(() => {
-    if (phaseRef.current !== 'dust') return;
-    phaseRef.current = 'clear';
-    setPhase('clear');
-    setCleanedPercent(100);
-    playNostalgiaChime();
-    holdTimerRef.current = setTimeout(() => {
-      phaseRef.current = 'away';
-      setPhase('away');
-      triggerRef.current?.();
-    }, HOLD_MS);
-  }, [playNostalgiaChime]);
-
-  useEffect(() => () => {
-    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-  }, []);
-
-  // Khởi tạo Canvas lớp bụi tĩnh điện (Scratch layer)
+  // ---------------- Chuột / bàn phím ----------------
+  const onKnobDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    void ac();
+    dragRef.current = { x: e.clientX, y: e.clientY };
+  };
+  const onKnobMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    // Kéo lên hoặc sang phải là tăng tiêu cự
+    turn(((e.clientX - d.x) - (e.clientY - d.y)) * DRAG_RATE);
+    dragRef.current = { x: e.clientX, y: e.clientY };
+  };
+  const onKnobUp = () => {
+    dragRef.current = null;
+  };
+  const knobRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    const canvas = dustCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const w = canvas.width;
-    const h = canvas.height;
-
-    // Lớp bụi tro xám phủ kín: hạt mịn + vệt bụi đóng dày hơn ở mép
-    const imgData = ctx.createImageData(w, h);
-    const data = imgData.data;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = (y * w + x) * 4;
-        const edge = Math.min(x, y, w - x, h - y) / 60;
-        const v = 92 + Math.random() * 46 - Math.max(0, 1 - edge) * 22;
-        data[i] = v + 6;
-        data[i + 1] = v + 2;
-        data[i + 2] = v - 4;
-        data[i + 3] = 248;
+    const el = knobRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      void ac();
+      turn(-Math.sign(e.deltaY) * WHEEL_STEP);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [ac, turn]);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      e.stopPropagation();
+      if (k === 'escape') {
+        e.preventDefault();
+        // Chưa khớp tiêu cự: thoát, không tính là xong. Đã lộ vòng tay: coi như cất ảnh (đã giải xong)
+        if (phaseRef.current === 'focus') cbRef.current.onClose();
+        else if (phaseRef.current === 'revealed') cbRef.current.onComplete();
+        return;
       }
-    }
-    ctx.putImageData(imgData, 0, 0);
-    // Vài vệt bụi xước ngang
-    ctx.strokeStyle = 'rgba(70,64,58,0.35)';
-    for (let i = 0; i < 14; i++) {
-      ctx.lineWidth = 1 + Math.random() * 2;
-      const y0 = Math.random() * h;
-      ctx.beginPath();
-      ctx.moveTo(Math.random() * w * 0.3, y0);
-      ctx.lineTo(w * (0.5 + Math.random() * 0.5), y0 + (Math.random() - 0.5) * 30);
-      ctx.stroke();
-    }
-
-    // Dòng chữ hướng dẫn ở giữa lớp bụi
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = 'bold 12px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(tx('BỤI THỜI GIAN PHỦ KÍN'), w / 2, h / 2 - 10);
-    ctx.font = '11px monospace';
-    ctx.fillStyle = '#fbcfe8';
-    ctx.fillText(tx('(Dùng chuột hoặc chạm tay để lau sạch)'), w / 2, h / 2 + 12);
-  }, []);
-
-  // Tính toán phần trăm diện tích đã được lau sạch (đọc lại cả lớp bụi nên giới hạn ~8 lần/giây)
-  const lastCheckRef = useRef(0);
-  const checkProgress = useCallback((force = false) => {
-    const now = performance.now();
-    if (!force && now - lastCheckRef.current < 120) return;
-    lastCheckRef.current = now;
-    const canvas = dustCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    try {
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imgData.data;
-      let transparentCount = 0;
-      const totalPixels = data.length / 4;
-      const step = 8; // Lấy mẫu bước nhảy để tối ưu hiệu năng
-      for (let i = 3; i < data.length; i += 4 * step) {
-        if (data[i] < 60) transparentCount++;
+      if (['w', 'a', 's', 'd', 'e', 'i', 'tab', ' ', 'enter', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
+      if ((k === ' ' || k === 'enter') && phaseRef.current === 'revealed') {
+        cbRef.current.onComplete();
+        return;
       }
-      const percent = Math.min(100, Math.round((transparentCount / (totalPixels / step)) * 100));
-      setCleanedPercent(percent);
+      keysRef.current.add(k);
+      void ac();
+    };
+    const up = (e: KeyboardEvent) => keysRef.current.delete(e.key.toLowerCase());
+    window.addEventListener('keydown', down, true);
+    window.addEventListener('keyup', up, true);
+    return () => {
+      window.removeEventListener('keydown', down, true);
+      window.removeEventListener('keyup', up, true);
+    };
+  }, [ac]);
 
-      if (percent >= REVEAL_PERCENT) revealPhoto();
-    } catch {}
-  }, [revealPhoto]);
-
-  // Hành vi lau sạch khi di chuyển chuột / ngón tay: cọ mềm (gradient tròn), rải đều trên đường kéo
-  const lastWipeRef = useRef<{ x: number; y: number } | null>(null);
-  const wipeAt = (clientX: number, clientY: number) => {
-    const canvas = dustCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const x = (clientX - rect.left) * scaleX;
-    const y = (clientY - rect.top) * scaleY;
-    const from = lastWipeRef.current ?? { x, y };
-    lastWipeRef.current = { x, y };
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'destination-out';
-    const dist = Math.hypot(x - from.x, y - from.y);
-    const steps = Math.max(1, Math.ceil(dist / (BRUSH_RADIUS * 0.35)));
-    for (let i = 1; i <= steps; i++) {
-      const px = from.x + ((x - from.x) * i) / steps;
-      const py = from.y + ((y - from.y) * i) / steps;
-      const brush = ctx.createRadialGradient(px, py, 0, px, py, BRUSH_RADIUS);
-      brush.addColorStop(0, 'rgba(0,0,0,0.55)');
-      brush.addColorStop(0.6, 'rgba(0,0,0,0.3)');
-      brush.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = brush;
-      ctx.fillRect(px - BRUSH_RADIUS, py - BRUSH_RADIUS, BRUSH_RADIUS * 2, BRUSH_RADIUS * 2);
-    }
-    ctx.restore();
-
-    playWipeSound();
-    checkProgress();
-  };
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    isInteractingRef.current = true;
-    lastWipeRef.current = null;
-    wipeAt(e.clientX, e.clientY);
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (isInteractingRef.current) {
-      wipeAt(e.clientX, e.clientY);
-    }
-  };
-
-  const handlePointerUp = () => {
-    isInteractingRef.current = false;
-    lastWipeRef.current = null;
-    checkProgress(true);
-  };
+  const inBand = inBandOf(focus, center);
+  const angle = -135 + (focus / 100) * 270;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md font-mono select-none animate-fade-in overflow-y-auto">
-      <div
-        className={`relative w-full max-w-lg max-h-[94vh] overflow-y-auto bg-zinc-950 border-2 rounded-lg p-4 sm:p-5 transition-all duration-300 ${
-          corrupting
-            ? 'border-red-500 animate-pulse'
-            : phase === 'clear' || phase === 'away'
-            ? 'border-amber-400/80'
-            : 'border-fuchsia-800/80'
-        }`}
-      >
-        {/* Tiêu đề & Nút bỏ qua (Đảm bảo không bao giờ rớt chữ xuống dòng) */}
-        <div className="flex justify-between items-center pb-2.5 border-b border-fuchsia-900/50 mb-3 gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="w-2.5 h-2.5 rounded-full bg-fuchsia-400 animate-ping inline-block shrink-0" />
-            <h2 className="text-xs sm:text-sm font-bold text-fuchsia-300 uppercase tracking-wider truncate">
-              {tx('Bức Ảnh Kỷ Niệm • Ghế Đá Hoàng Hôn')}
-            </h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-[11px] text-zinc-400 hover:text-white px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded transition-colors shrink-0 cursor-pointer"
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-3 bg-black/90 font-mono select-none overflow-y-auto">
+      <style>{'@keyframes pol-shake{0%,100%{transform:translate(0,0) rotate(0)}20%{transform:translate(-5px,2px) rotate(-1deg)}40%{transform:translate(4px,-3px) rotate(1deg)}60%{transform:translate(-3px,-1px)}80%{transform:translate(3px,2px)}}'}</style>
+      <div className="w-full max-w-xl my-auto bg-zinc-950 border border-zinc-700 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-zinc-200 text-sm font-bold tracking-widest">{tx('Bức Ảnh Kỷ Niệm • Ghế Đá Hoàng Hôn')}</div>
+          <div className="text-xs text-zinc-500 tabular-nums">{tx('Tiêu cự')} {Math.round(focus)}%</div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          {/* Tấm ảnh Polaroid trên bàn gỗ */}
+          <div
+            className="relative w-[300px] max-w-full aspect-340/360 border border-zinc-700 bg-black shrink-0"
+            style={shake ? { animation: 'pol-shake 0.12s linear infinite' } : undefined}
           >
-            {tx('[ESC] Bỏ qua')}
-          </button>
-        </div>
-
-        <p className="text-xs text-zinc-300 mb-3 leading-relaxed font-sans text-justify">
-          {tx('Tấm ảnh Polaroid đặt trên ghế đá ven sông bị phủ một lớp bụi tro dày, như đã nằm đó rất lâu.')}
-          <span className="text-fuchsia-300 font-semibold block mt-0.5">
-            {tx('Lau sạch bề mặt bức ảnh để khôi phục lại khoảnh khắc ngày 17/05.')}
-          </span>
-        </p>
-
-        {/* Khung xếp chồng Canvas Polaroid & Lớp bụi (Tỉ lệ chuẩn ảnh crop 895x950) */}
-        <div className="relative mx-auto w-[330px] h-[350px] sm:w-[340px] sm:h-[360px] max-w-full rounded shadow-2xl overflow-hidden border border-zinc-700 bg-black flex items-center justify-center shrink-0">
-          {/* Canvas bức ảnh bên dưới */}
-          <canvas
-            ref={photoCanvasRef}
-            width={340}
-            height={360}
-            className="absolute inset-0 block w-full h-full"
-          />
-
-          {/* Canvas lớp bụi phủ bên trên để lau */}
-          <canvas
-            ref={dustCanvasRef}
-            width={340}
-            height={360}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
-            className={`absolute inset-0 block w-full h-full cursor-crosshair touch-none transition-opacity duration-700 ${
-              revealed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-            }`}
-          />
-        </div>
-
-        {/* Tiến trình lau sạch */}
-        <div className="mt-2.5 flex justify-between items-center text-xs text-zinc-400">
-          <span>{tx('Tiến độ làm sạch:')} <strong className="text-fuchsia-400">{cleanedPercent}%</strong></span>
-          {!revealed ? (
-            <button
-              onClick={revealPhoto}
-              className="text-[11px] text-fuchsia-400/80 hover:text-fuchsia-300 underline cursor-pointer"
+            <canvas ref={photoCanvasRef} width={W} height={H} className="absolute inset-0 block w-full h-full" />
+          </div>
+          {/* Núm "Tiêu Cự Ký Ức" */}
+          <div className="flex flex-col items-center gap-2">
+            <div
+              ref={knobRef}
+              onPointerDown={onKnobDown}
+              onPointerMove={onKnobMove}
+              onPointerUp={onKnobUp}
+              onPointerCancel={onKnobUp}
+              className="relative w-24 h-24 rounded-full bg-zinc-800 border-4 border-zinc-600 cursor-grab active:cursor-grabbing touch-none"
+              style={{ transform: `rotate(${angle}deg)` }}
+              title={tx('Kéo hoặc lăn chuột để vặn tiêu cự')}
             >
-              {tx('[Tự động lau sạch]')}
-            </button>
-          ) : corrupting ? (
-            <span className="text-red-400 font-bold animate-pulse">{tx('BỨC ẢNH ĐANG BIẾN DẠNG...')}</span>
-          ) : phase === 'revealed' ? (
-            <span className="text-red-400 font-bold">{tx('ĐÃ LAU SẠCH 100%')}</span>
+              <span className="absolute left-1/2 -translate-x-1/2 top-1.5 w-1.5 h-6 bg-zinc-200" />
+              {Array.from({ length: 12 }, (_, i) => (
+                <span key={i} className="absolute left-1/2 top-1/2 w-0.5 h-2 bg-zinc-500" style={{ transform: `rotate(${i * 30}deg) translateY(-44px)` }} />
+              ))}
+            </div>
+            <div className="text-xs text-zinc-400 text-center">{tx('TIÊU CỰ KÝ ỨC')}</div>
+            <div className="w-24 h-1.5 bg-zinc-800 relative">
+              <div className="absolute inset-y-0 left-0 bg-zinc-400" style={{ width: `${focus}%` }} />
+            </div>
+          </div>
+        </div>
+
+        <div className={`text-sm leading-relaxed min-h-10 ${phase === 'revealed' ? 'text-zinc-100' : phase === 'interfere' ? 'text-red-400' : 'text-zinc-300'}`}>
+          {phase === 'revealed' ? (
+            <><span className="text-emerald-400 font-bold">An: </span><span className="italic">{tx(REVEAL_LINE)}</span></>
+          ) : phase === 'interfere' || phase === 'away' ? (
+            tx('Hai lớp ảnh khớp vào nhau. Tay Miên đang nắm lấy... không có gì cả.')
+          ) : inBand ? (
+            tx('Khoan... ảnh sắc nét hẳn. Giữ yên núm, chỗ mình ngồi có gì đó lạ lắm.')
+          ) : focus < 40 ? (
+            tx('Bến An Yên chiều tà. Miên cười bên cạnh mình. Hình như còn một lớp nữa bên dưới.')
+          ) : focus > 60 ? (
+            tx('Màu ảnh nhợt đi. Miên vẫn ngồi đó... còn chỗ của mình thì nhoè trắng.')
           ) : (
-            <span className="text-amber-300 font-bold">{tx('ĐÃ LAU SẠCH 100%')}</span>
+            tx('Hai cảnh chồng nhoè lên nhau, chưa khớp.')
           )}
         </div>
 
-        {/* Độc thoại của An khi ảnh thật lộ ra */}
-        {phase === 'revealed' && (
-          <div className="mt-3 px-3 py-2 bg-black/80 border border-emerald-800/70 rounded text-xs leading-relaxed text-zinc-100 text-justify" style={{ animation: 'polaroid-line-in 1.2s ease-out' }}>
-            <style>{'@keyframes polaroid-line-in { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }'}</style>
-            <span className="text-emerald-400 font-bold">An: </span>
-            <span className="italic">{tx(REVEAL_LINE)}</span>
-          </div>
-        )}
-
-        {/* NÚT HOÀN TẤT KHI ẢNH ĐÃ BIẾN DẠNG XONG */}
         {phase === 'revealed' && (
           <button
-            onClick={onComplete}
-            className="w-full mt-3.5 py-2.5 px-4 bg-red-800 hover:bg-red-700 active:scale-98 text-white font-bold text-xs sm:text-sm rounded border border-red-500 animate-pulse transition-all cursor-pointer flex items-center justify-center gap-2 tracking-wider"
+            onClick={() => cbRef.current.onComplete()}
+            className="w-full py-2 text-sm font-bold text-zinc-100 bg-zinc-800 border border-zinc-600 hover:bg-zinc-700 cursor-pointer"
           >
-            <span>{tx('[ CẤT BỨC ẢNH VÀO TÚI ]')}</span>
+            {tx('[ CẤT BỨC ẢNH VÀO TÚI ]')}
           </button>
         )}
+
+        <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-zinc-400 border-t border-zinc-800 pt-2">
+          <span><Key>{tx('Kéo núm')}</Key><Key>{tx('Lăn chuột')}</Key><Key>A</Key><Key>D</Key>{tx('Vặn tiêu cự, dừng ở chỗ ảnh sắc nét')}</span>
+          <span><Key>Esc</Key>{tx('Thoát')}</span>
+        </div>
       </div>
     </div>
   );
 };
+
+/** Ô phím bấm trong dòng hướng dẫn */
+const Key: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <span className="inline-block min-w-6 px-1.5 py-0.5 mr-1 text-center text-zinc-100 bg-zinc-800 border border-zinc-600">{children}</span>
+);

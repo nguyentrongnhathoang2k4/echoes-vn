@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { DialogueZoom, isMoveKey, type FocusPoint } from './pixel/DialogueZoom';
 import { MusicBoxMinigame } from './minigames/MusicBoxMinigame';
 import { PolaroidMinigame } from './minigames/PolaroidMinigame';
 import { RadioMinigame } from './minigames/RadioMinigame';
@@ -10,7 +11,7 @@ import {
   buildPostLayer,
   createFollowLight, updateFollowLight, drawFollowVignette,
 } from './pixel/pixelKit';
-import { drawSpriteFrame, getSpriteFrame, stepWalk, stopWalk, bodyBob, mienFloat, drawSwayingFigure, drawHoloShadow, drawHoloDust } from './pixel/spriteKit';
+import { drawSpriteFrame, getSpriteFrame, stepWalk, stopWalk, bodyBob, drawSwayingFigure } from './pixel/spriteKit';
 import { useFrameScale } from './pixel/useFrameScale';
 import { useMouseParallax } from './pixel/useMouseParallax';
 import { useLanguage } from '../context/LanguageContext';
@@ -18,7 +19,7 @@ import { EmoteDirector, createEmoteDirector, emoteNow, updateEmotes, drawEmotes 
 import { tx } from '../locales/tx';
 import {
   useCinematicSubtitle, CinematicSubtitle, StageClock, ClueFlash, useClueFlash,
-  InteractLabel, NearLabel, useAutoHideHints, HintBar, HintKey,
+  InteractLabel, NearLabel, placeLabel, labelKey, useAutoHideHints, HintBar, HintKey,
 } from './StageHud';
 
 interface InteractableObject {
@@ -51,6 +52,8 @@ interface SunsetStageProps {
   onCutsceneChange?: (active: boolean) => void;
   /** Người chơi đang điều khiển An (không mở thoại / menu): bộ đếm ký ức chờ tới lúc này mới sáng */
   active?: boolean;
+  /** true khi khung thoại VN đang mở: camera tiến về đồ vật vừa tương tác */
+  inDialogue?: boolean;
 }
 
 type Direction = 'down' | 'left' | 'right' | 'up';
@@ -510,10 +513,14 @@ function drawRiver(ctx: CanvasRenderingContext2D, fr: SunsetFrame, streams: Data
     px(ctx, x, y, 6 + hash(i * 2) * 8, 1, `rgba(244,180,255,${a})`);
   }
   // Dòng mã nhị phân / ký ức trôi lững lờ dưới mặt nước
+  // Chưa nhìn kỹ mặt sông: chỉ thấp thoáng vài chữ rất mờ, phải để ý mới thấy; mã nhị phân chỉ lộ sau khi xem
+  const seen = fr.interacted.has('ch2_river');
   ctx.font = '8px monospace';
   for (const s of streams) {
+    if (!seen && !s.word) continue;
     const yy = s.y + Math.sin(fr.t * 1.2 + s.x * 0.02) * 1.5;
-    ctx.fillStyle = s.word ? `rgba(165,243,252,${s.alpha})` : `rgba(45,212,191,${s.alpha * 0.55})`;
+    const a = seen ? s.alpha : s.alpha * 0.12;
+    ctx.fillStyle = s.word ? `rgba(165,243,252,${a})` : `rgba(45,212,191,${a * 0.55})`;
     ctx.fillText(s.text, Math.round(s.x), Math.round(yy));
   }
   // Bóng cầu đổ trên mặt nước hai bên
@@ -544,20 +551,7 @@ function drawDock(ctx: CanvasRenderingContext2D, fr: SunsetFrame) {
   px(ctx, lx - 6, ly - 3, 4, 3, '#f9a8d4');
   px(ctx, lx + 2, ly - 3, 4, 3, '#f9a8d4');
   px(ctx, lx - 1, ly - 5, 2, 3, '#fef08a');
-  // Tín hiệu glitch gợi ý tương tác
-  if (!fr.interacted.has('ch2_river')) {
-    const ph = (fr.t * 1.5) % 1;
-    ctx.strokeStyle = `rgba(34,211,238,${(1 - ph) * 0.8})`;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.ellipse(x + w / 2, y + 2, 8 + ph * 24, (8 + ph * 24) * 0.35, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    if (Math.sin(fr.t * 6) > 0) {
-      ctx.font = 'bold 8px monospace';
-      ctx.fillStyle = '#22d3ee';
-      ctx.fillText('01', x + 30, y - 16 - ((fr.t * 10) % 10));
-    }
-  }
+  // (Không còn vòng nháy / chữ "01" chỉ điểm: người chơi tự để ý)
 }
 
 /** Cầu gỗ cong mộc mạc: ván sàn sáng dần ở giữa (vòm), lan can + cột, bồ câu & hộp nhạc trên lan can */
@@ -585,7 +579,7 @@ function drawBridge(ctx: CanvasRenderingContext2D, fr: SunsetFrame) {
 }
 
 /** Đôi bồ câu trắng đông cứng trên lan can (không một sợi lông lay động) */
-function drawPigeons(ctx: CanvasRenderingContext2D, fr: SunsetFrame) {
+function drawPigeons(ctx: CanvasRenderingContext2D) {
   const { x, y } = PIGEONS;
   const x2 = x + 16;
   const y2 = y + 2;
@@ -615,16 +609,7 @@ function drawPigeons(ctx: CanvasRenderingContext2D, fr: SunsetFrame) {
   // Hạt kê vàng
   px(ctx, x + 12, y + 5, 2, 2, '#fde047');
   px(ctx, x2 + 10, y2 + 5, 2, 2, '#fde047');
-  // Đông cứng: viền xanh + mã lỗi 0xDEAD (chỉ khi chưa kiểm tra)
-  if (!fr.interacted.has('ch2_pigeon')) {
-    ctx.strokeStyle = 'rgba(34,211,238,0.85)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x - 5.5, y - 3.5, 28, 18);
-    if (Math.sin(fr.t * 4) > 0.4) {
-      ctx.font = 'bold 7px monospace';
-      outlinedText(ctx, '0xDEAD', x - 3, y - 6, '#22d3ee');
-    }
-  }
+  // (Đôi chim đứng im giữa gió là đủ; không viền xanh, không mã lỗi chỉ điểm)
 }
 
 /** Hộp âm nhạc gỗ gụ trên lan can phải: bánh răng, nốt nhạc pixel bay lơ lửng */
@@ -670,9 +655,12 @@ function drawSign(ctx: CanvasRenderingContext2D, fr: SunsetFrame) {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#fef08a';
   ctx.fillText(tx('BẾN AN YÊN'), x + 8, y - 6);
-  ctx.font = '6px monospace';
-  ctx.fillStyle = Math.sin(fr.t * 6) > 0.7 ? '#22d3ee' : '#94a3b8';
-  ctx.fillText('SEC_1705', x + 8, y - 1);
+  // Mã sector chỉ hiện ra khi thế giới đã nứt (từ 3 manh mối)
+  if (fr.anomalies >= 3) {
+    ctx.font = '6px monospace';
+    ctx.fillStyle = Math.sin(fr.t * 6) > 0.7 ? '#22d3ee' : '#94a3b8';
+    ctx.fillText('SEC_1705', x + 8, y - 1);
+  }
   ctx.textAlign = 'left';
 }
 
@@ -939,15 +927,12 @@ function drawBicycle(ctx: CanvasRenderingContext2D, fr: SunsetFrame) {
   ctx.stroke();
 }
 
-/** Miên (AURA Hologram): lơ lửng trong nắng chiều, tóc & tà váy lay theo gió, bóng ma toả tím, bụi sáng bay quanh */
+/** Miên đứng hẳn trên vỉa hè như người thật (không lơ lửng, không hào quang): chỉ tóc & tà váy lay theo gió */
 function drawMien(ctx: CanvasRenderingContext2D, fr: SunsetFrame, sprites: SunsetSprites) {
-  const float = mienFloat(fr.t);
   const footY = MIEN.y + SPRITE_H - 4;
   const cx = MIEN.x + SPRITE_W / 2;
-  const my = MIEN.y + float;
-  longShadow(ctx, cx, footY, 46, 6, 0.3);
-  drawHoloShadow(ctx, cx, footY, float, fr.t);
-  drawHoloDust(ctx, cx, my + SPRITE_H / 2, SPRITE_W, SPRITE_H, fr.t, 'back', 10);
+  const my = MIEN.y;
+  longShadow(ctx, cx, footY, 46, 6, 0.38);
   if (sprites.mien) {
     // Đứng thẳng ở frame 1, quay mặt xuống
     const f = getSpriteFrame(sprites.mien, 1, DIR_ROW.down, false, SPRITE_W, SPRITE_H);
@@ -959,7 +944,6 @@ function drawMien(ctx: CanvasRenderingContext2D, fr: SunsetFrame, sprites: Sunse
     drawSwayingFigure(ctx, f, MIEN.x, my - 1, fr.t);
     ctx.restore();
   }
-  drawHoloDust(ctx, cx, my + SPRITE_H / 2, SPRITE_W, SPRITE_H, fr.t, 'front', 10);
 }
 
 /** An + bóng đổ dài theo hướng nắng */
@@ -1024,8 +1008,6 @@ function drawSunsetLighting(ctx: CanvasRenderingContext2D, fr: SunsetFrame) {
   };
   if (fr.anomalies < 4) glow(LAMP_POST.x + 2, LAMP_POST.y + 30, 90, '251,191,36', 0.22);
   else if (Math.sin(fr.t * 12) > 0.3) glow(LAMP_POST.x + 2, LAMP_POST.y + 30, 60, '239,68,68', 0.2);
-  // Hào quang hồng quanh Miên (pháo đài cuối cùng của ký ức)
-  glow(MIEN.x + 21, MIEN.y + 20, 75, '244,114,182', fr.anomalies >= 4 ? 0.26 : 0.18);
   ctx.restore();
 }
 
@@ -1163,7 +1145,7 @@ export function drawBenAnYenSunset(ctx: CanvasRenderingContext2D, t: number, opt
   drawDock(ctx, fr);
   if (opts.bridge !== false) {
     drawBridge(ctx, fr);
-    if (opts.pigeons !== false) drawPigeons(ctx, fr);
+    if (opts.pigeons !== false) drawPigeons(ctx);
     drawMusicBox(ctx, fr);
   }
   drawSign(ctx, fr);
@@ -1226,8 +1208,9 @@ export function drawBenAnYenMorning(ctx: CanvasRenderingContext2D, t: number) {
 function drawSunsetHUD(ctx: CanvasRenderingContext2D, fr: SunsetFrame, interactables: InteractableObject[]) {
   for (const item of interactables) {
     if (item.id === 'ch2_mien' || item === fr.nearest) continue;
-    if (CORE_ANOMALY_IDS.includes(item.id) && !fr.interacted.has(item.id) && (fr.t * 60 + item.x) % 60 < 20) {
-      px(ctx, item.x + item.w / 2 - 1, item.y + item.h / 2 - 1, 3, 3, 'rgba(251,191,36,0.75)');
+    // Chỉ chấm mờ cho đồ thường (ô, xe đạp); 5 điểm bất thường không được chỉ điểm, người chơi tự tìm
+    if (!CORE_ANOMALY_IDS.includes(item.id) && !fr.interacted.has(item.id) && (fr.t * 60 + item.x) % 60 < 20) {
+      px(ctx, item.x + item.w / 2 - 1, item.y + item.h / 2 - 1, 3, 3, 'rgba(251,191,36,0.45)');
     }
   }
 }
@@ -1304,6 +1287,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
   parallax = true,
   onCutsceneChange,
   active = true,
+  inDialogue = false,
 }) => {
   const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1489,107 +1473,107 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
   const interactables = useRef<InteractableObject[]>([
     {
       id: 'ch2_river',
-      name: 'Dòng Sông Mã Nhị Phân',
+      name: 'Bến Sông',
       label: 'Bến sông',
-      actionText: '[E] Nhìn kỹ dòng nước nhị phân bên bến đá',
+      actionText: '[E] Nhìn xuống mặt sông',
       x: 180,
       y: 200,
       w: 70,
       h: 35,
       triggerNodeId: 'obj_ch2_river',
       canRepeat: false,
-      checkedMonologue: 'Dòng nước vẫn cuộn trôi những con số vô hồn. Không có rêu, không có cá, chỉ có rác bộ nhớ.',
+      checkedMonologue: 'Chiếc lá lại trôi qua đúng chỗ ấy.',
     },
     {
       id: 'ch2_pigeon',
-      name: 'Đàn Bồ Câu Bất Động',
+      name: 'Đôi Bồ Câu',
       label: 'Bồ câu',
-      actionText: '[E] Chạm vào đôi bồ câu trên lan can cầu',
+      actionText: '[E] Lại gần đôi bồ câu',
       x: 285,
       y: 135,
       w: 45,
       h: 40,
       triggerNodeId: 'obj_ch2_pigeon',
       canRepeat: false,
-      checkedMonologue: 'Lông chim không hề lay động trước gió. Một mô hình quên bật vật lý chuyển động.',
+      checkedMonologue: 'Gió vẫn thổi. Lông chim vẫn không lay.',
     },
     {
       id: 'ch2_coffee',
-      name: 'Tách Cà Phê Bất Tử',
+      name: 'Ly Bạc Xỉu',
       label: 'Ly cà phê',
-      actionText: '[E] Ngồi xuống bàn cà phê ven đường',
+      actionText: '[E] Ngồi xuống bàn cà phê',
       x: 120,
       y: 295,
       w: 55,
       h: 50,
       triggerNodeId: 'obj_ch2_coffee',
       canRepeat: false,
-      checkedMonologue: 'Hương thơm nồng nàn nhưng ly cà phê không hề nguội đi dù một độ. Một vòng lặp 2 giây hoàn hảo.',
+      checkedMonologue: 'Khói vẫn bốc lên. Ly vẫn không ấm.',
     },
     {
       id: 'ch2_bench',
-      name: 'Băng Ghế Hoàng Hôn',
+      name: 'Ghế Đá',
       label: 'Ghế đá',
-      actionText: '[E] Ngắm hoàng hôn dưới tán hoa tím',
+      actionText: '[E] Ngồi xuống ghế đá',
       x: 630,
       y: 310,
       w: 65,
       h: 45,
       triggerNodeId: 'obj_ch2_bench',
       canRepeat: false,
-      checkedMonologue: 'Bức ảnh trên ghế đá... Khuôn mặt quấn đầy băng gạc y tế... Mình thực sự đang nằm hôn mê ở bệnh viện sao?',
+      checkedMonologue: 'Chỗ mình ngồi trong ảnh vẫn trống không.',
     },
     {
       id: 'ch2_music_box',
-      name: 'Hộp Âm Nhạc Bị Kẹt Cót',
+      name: 'Hộp Nhạc',
       label: 'Hộp nhạc',
-      actionText: '[E] Lên dây cót chiếc hộp âm nhạc',
+      actionText: '[E] Lên dây cót hộp nhạc',
       x: 395,
       y: 135,
       w: 30,
       h: 25,
       triggerNodeId: 'obj_ch2_music_box',
       canRepeat: true,
-      checkedMonologue: 'Tiếng tút dài của máy thở bên trong hộp nhạc... Nhịp tim của mình đang tụt dốc.',
+      checkedMonologue: 'Hai nốt cuối cứ lặp mãi. Như đĩa xước.',
     },
     {
       id: 'ch2_bicycle',
-      name: 'Chiếc Xe Đạp Sinh Viên Cũ',
+      name: 'Xe Đạp Cũ',
       label: 'Xe đạp',
-      actionText: '[E] Nhìn ngắm chiếc xe đạp cũ dựng bên cây',
+      actionText: '[E] Nhìn chiếc xe đạp',
       x: 700,
       y: 295,
       w: 45,
       h: 40,
       triggerNodeId: 'obj_ch2_bicycle',
       canRepeat: true,
-      checkedMonologue: 'Chiếc xe đạp Thống Nhất màu xanh rêu... Mình từng chở Miên qua bao nhiêu con dốc sau giờ tan trường.',
+      checkedMonologue: 'Chiếc Thống Nhất xanh rêu. Hồi đó chở Miên lên dốc cầu, thở không ra hơi.',
     },
     {
       id: 'ch2_umbrella',
-      name: 'Chiếc Ô Trong Suốt Đêm Mưa',
+      name: 'Chiếc Ô Trong Suốt',
       label: 'Chiếc ô',
-      actionText: '[E] Chạm vào chiếc ô ướt đẫm nước mưa',
+      actionText: '[E] Nhìn chiếc ô',
       x: 75,
       y: 295,
       w: 35,
       h: 40,
       triggerNodeId: 'obj_ch2_umbrella',
       canRepeat: true,
-      checkedMonologue: 'Chiếc ô ướt sũng nước mưa đêm 17/05... Ký ức về vụ tai nạn kinh hoàng đang ùa về.',
+      checkedMonologue: 'Chiếc ô vẫn ướt. Chiều nay trời không mưa.',
     },
     {
       id: 'ch2_mien',
-      name: 'Miên (Người Tạo Tác)',
+      name: 'Miên',
       label: 'Miên',
-      actionText: '[E] Tâm sự cùng Miên bên cầu hoàng hôn',
+      actionText: '[E] Nói chuyện với Miên',
       x: 390,
       y: 275,
       w: 45,
       h: 65,
       triggerNodeId: 'ch2_meet_mien',
       canRepeat: true,
-      checkedMonologue: 'Miên mỉm cười nhìn bạn, trong mắt cô ấy phản chiếu ánh hoàng hôn dịu dàng nhưng phảng phất nét âu lo...',
+      checkedMonologue: 'Miên mỉm cười nhìn bạn.',
     },
   ]);
 
@@ -1649,6 +1633,15 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     }
   }, [localInteractedIds, onTrigger, playGlitchSound, playMusicBoxSound, showMonologueWhisper]);
 
+  // Đang hội thoại / tạm dừng / chuyển cảnh: khoá điều khiển, xả các phím đang giữ để An không tự đi tiếp
+  // Đồ vật vừa tương tác: khung thoại mở ra thì camera tiến lại gần nó
+  const [dialogFocus, setDialogFocus] = useState<FocusPoint | null>(null);
+  const activeRef = useRef(active);
+  useEffect(() => {
+    activeRef.current = active;
+    if (!active) keysHeld.current.clear();
+  }, [active]);
+
   // Xử lý bàn phím
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1659,8 +1652,10 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
         }
         return;
       }
+      if (!activeRef.current) return; // Khung thoại đang mở: phím thuộc về hộp thoại
 
       keysHeld.current.add(e.key.toLowerCase());
+      if (isMoveKey(e.key)) setDialogFocus(null);
 
       if (e.key.toLowerCase() === 'e' || e.key === ' ' || e.key === 'Enter') {
         const p = playerRef.current;
@@ -1671,6 +1666,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
         });
 
         if (target) {
+          setDialogFocus({ x: target.x + target.w / 2, y: target.y + target.h / 2 });
           handleInteractWith(target);
         }
       }
@@ -1780,10 +1776,11 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
         return Math.hypot(p.x - cx, p.y - cy) < INTERACT_RADIUS;
       }) ?? null;
       const labelText = nearTarget ? promptLabelFor(nearTarget, snap.interacted) : null;
-      const promptKey = nearTarget && labelText ? `${nearTarget.id}|${labelText}` : '';
+      const placedLabel = nearTarget && labelText ? placeLabel(nearTarget, labelText, p, CANVAS_HEIGHT) : null;
+      const promptKey = labelKey(nearTarget?.id ?? '', placedLabel);
       if (promptKey !== promptKeyRef.current) {
         promptKeyRef.current = promptKey;
-        setNearLabel(nearTarget && labelText ? { x: nearTarget.x + nearTarget.w / 2, y: nearTarget.y, text: labelText } : null);
+        setNearLabel(placedLabel);
       }
       // An bước đi thì phụ đề độc thoại mờ sớm
       if (p.isMoving) fadeSubtitleOnMove();
@@ -1828,7 +1825,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
       drawRiver(ctx, fr, sim.streams);
       drawDock(ctx, fr);
       drawBridge(ctx, fr);
-      drawPigeons(ctx, fr);
+      drawPigeons(ctx);
       drawMusicBox(ctx, fr);
       drawGroundObjects(ctx, fr, sprites);
       drawPetals(ctx, sim.petals);
@@ -1840,7 +1837,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
         ctx,
         em,
         { cx: p.x, headY: p.y - SPRITE_H + 20 },
-        { cx: MIEN.x + SPRITE_W / 2, headY: MIEN.y + mienFloat(t) + 2 },
+        { cx: MIEN.x + SPRITE_W / 2, headY: MIEN.y + 2 },
       );
       drawSunsetHUD(ctx, fr, interactables.current);
 
@@ -1863,6 +1860,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
     <div className="relative w-full h-full flex flex-col items-center justify-center bg-black overflow-hidden select-none">
       {/* Khung Canvas hiển thị Thị Trấn Hoàng Hôn */}
       <div className="relative border-4 border-fuchsia-950/80 rounded-sm overflow-hidden" ref={frameRef} style={{ width: `min(96vw, calc((100vh - 60px) * ${CANVAS_WIDTH / CANVAS_HEIGHT}))`, aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, marginTop: 44 }}>
+        <DialogueZoom focus={dialogFocus} active={inDialogue} width={CANVAS_WIDTH} height={CANVAS_HEIGHT}>
         <canvas
           ref={canvasRef}
           width={CANVAS_WIDTH}
@@ -1870,10 +1868,11 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
           className="pixelated block cursor-pointer w-full h-full"
           style={{ imageRendering: 'pixelated' }}
         />
+        </DialogueZoom>
         <div className="absolute top-0 left-0" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `scale(${uiScale})`, transformOrigin: 'top left' }}>
 
         {/* Nhãn [E] mini nổi ngay trên đầu vật thể (kèm bong bóng thoại pixel); manh mối đã xem thì không hiện */}
-        <InteractLabel label={nearLabel} bubble />
+        <InteractLabel label={inDialogue ? null : nearLabel} bubble />
 
         {/* Phụ đề độc thoại kiểu điện ảnh sát đáy khung hình: tự mờ sau vài giây hoặc khi An bước đi */}
         <CinematicSubtitle subtitle={subtitle} />
@@ -1898,6 +1897,7 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
       {activeMinigame === 'MUSIC_BOX' && (
         <MusicBoxMinigame
           volume={volume}
+          onPenalty={() => setSanity?.(prev => Math.max(5, prev - 2))}
           onComplete={() => {
             setActiveMinigame(null);
             setSanity?.(prev => Math.max(10, prev - 5));
@@ -1907,14 +1907,8 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
             }
             onTrigger('obj_ch2_music_box');
           }}
-          onClose={() => {
-            setActiveMinigame(null);
-            if (!localInteractedIds.includes('ch2_music_box')) {
-              setLocalInteractedIds(prev => [...prev, 'ch2_music_box']);
-              onMarkInteracted?.('ch2_music_box');
-            }
-            onTrigger('obj_ch2_music_box');
-          }}
+          // Thoát giữa chừng: không tính là xong, lần sau mở lại chơi từ đầu
+          onClose={() => setActiveMinigame(null)}
         />
       )}
 
@@ -1932,14 +1926,8 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
             }
             onTrigger('obj_ch2_bench');
           }}
-          onClose={() => {
-            setActiveMinigame(null);
-            if (!localInteractedIds.includes('ch2_bench')) {
-              setLocalInteractedIds(prev => [...prev, 'ch2_bench']);
-              onMarkInteracted?.('ch2_bench');
-            }
-            onTrigger('obj_ch2_bench');
-          }}
+          // Thoát giữa chừng: không tính là xong, lần sau mở lại chơi từ đầu
+          onClose={() => setActiveMinigame(null)}
         />
       )}
 
@@ -1961,14 +1949,8 @@ export const SunsetStage: React.FC<SunsetStageProps> = ({
             }
             onTrigger('obj_ch2_umbrella');
           }}
-          onClose={() => {
-            setActiveMinigame(null);
-            if (!localInteractedIds.includes('ch2_umbrella')) {
-              setLocalInteractedIds(prev => [...prev, 'ch2_umbrella']);
-              onMarkInteracted?.('ch2_umbrella');
-            }
-            onTrigger('obj_ch2_umbrella');
-          }}
+          // Thoát giữa chừng: không tính là xong, lần sau mở lại chơi từ đầu
+          onClose={() => setActiveMinigame(null)}
         />
       )}
     </div>

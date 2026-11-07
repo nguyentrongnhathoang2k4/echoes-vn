@@ -134,7 +134,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
     }
   }, [getAudioContext]);
 
-  // 3. Tiếng từ chối / nút bị khóa (Deny Buzz)
+  // 3. Tiếng từ chối / nút bị khoá (Deny Buzz)
   const playTerminalDeny = useCallback(() => {
     const ctx = getAudioContext();
     if (!ctx) return;

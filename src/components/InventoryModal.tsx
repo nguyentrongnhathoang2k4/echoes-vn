@@ -135,7 +135,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
     } catch {}
   }, [volume, getAudioContext]);
 
-  // Tự động chọn item đầu tiên nếu item đang chọn bị xóa hoặc chưa chọn
+  // Tự động chọn item đầu tiên nếu item đang chọn bị xoá hoặc chưa chọn
   useEffect(() => {
     if (!selectedId && items.length > 0) {
       setSelectedId(items[0].id);
