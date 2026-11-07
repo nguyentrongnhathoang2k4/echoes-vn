@@ -9,8 +9,9 @@ import { useUiLayer } from '../../services/uiLayers';
 /**
  * TIÊU CỰ GIAO THOA HAI THỰC TẠI (Màn 2) — một thao tác: vặn núm "Tiêu Cự Ký Ức" 0–100%.
  *   0–40%  : Bến An Yên chiều tà, Miên cười rạng rỡ bên An.
- *   60–100%: hoàng hôn tan rã, phòng hồi sức lạnh lẽo, An quấn băng trên giường bệnh.
- *   48–52% : điểm giao thoa — hai ảnh chồng khít, cổ tay An lộ rõ vòng nhựa "BV TRUNG HOÀ • 17/05".
+ *   60–100%: cùng ghế đá nhưng màu nhợt lạnh, chỉ còn Miên; chỗ An ngồi là vệt nhiễu chưa render xong.
+ *   Điểm giao thoa (ngẫu nhiên 25–75%): hai lớp khớp nhau, chỗ của An hiện rõ là khoảng trống.
+ * Màn 2 chưa được lộ bệnh viện: chỉ là dị tượng của một thế giới mô phỏng.
  * Dừng núm trong vùng giao thoa một nhịp: ảnh rung giật, mở đoạn hồi tưởng chân tướng.
  */
 type Phase = 'focus' | 'interfere' | 'away' | 'revealed';
@@ -18,16 +19,16 @@ type Phase = 'focus' | 'interfere' | 'away' | 'revealed';
 const W = 340;
 const H = 360;
 // Điểm hai thực tại chồng khít đổi chỗ mỗi lần mở (25–75%): phải nhìn ảnh, không học thuộc được
-const BAND_HALF = 2;
+const BAND_HALF = 3;
 const rollCenter = () => 25 + Math.round(Math.random() * 50);
-const HOLD_S = 1.2;
+const HOLD_S = 1.0;
 const KEY_RATE = 22;          // % / giây khi giữ A/D
 const WHEEL_STEP = 1;
 const DRAG_RATE = 0.35;       // % / px kéo núm
 const SHAKE_MS = 1300;
-// Chi tiết lộ ra trên cổ tay An
+// Điều lộ ra khi lấy nét đúng
 const REVEAL_LINE =
-  'Cổ tay mình trong ảnh đeo một cái vòng nhựa trắng. Chữ in mờ: "BV TRUNG HOÀ • 17/05". ... Mình chưa từng đến đó. Đúng không?';
+  'Chỗ mình ngồi trong ảnh chỉ là một vệt nhiễu. Tay Miên đang nắm vào khoảng không.';
 
 interface PolaroidMinigameProps {
   onComplete: () => void;
@@ -39,7 +40,7 @@ interface PolaroidMinigameProps {
   flashbackDone?: boolean;
 }
 
-/** Tỉ lệ trộn ảnh bệnh viện theo tiêu cự */
+/** Tỉ lệ trộn lớp ký ức lỗi theo tiêu cự */
 const blendOf = (f: number, c: number) => Math.min(1, Math.max(0, (f - (c - 10)) / 20));
 const inBandOf = (f: number, c: number) => Math.abs(f - c) <= BAND_HALF;
 
@@ -53,7 +54,7 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
   useUiLayer(true);
   const photoCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sweetRef = useRef<HTMLCanvasElement | null>(null);
-  const hospitalRef = useRef<HTMLCanvasElement | null>(null);
+  const ghostRef = useRef<HTMLCanvasElement | null>(null);
   const labelRectRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const [center] = useState(rollCenter);
   const centerRef = useRef(center);
@@ -142,13 +143,13 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
     const canvas = photoCanvasRef.current;
     const ctx = canvas?.getContext('2d');
     const sweet = sweetRef.current;
-    const hospital = hospitalRef.current;
-    if (!canvas || !ctx || !sweet || !hospital) return;
+    const ghost = ghostRef.current;
+    if (!canvas || !ctx || !sweet || !ghost) return;
     const ph = phaseRef.current;
     const f = focusRef.current;
     ctx.globalAlpha = 1;
     if (ph === 'revealed') {
-      ctx.drawImage(hospital, 0, 0);
+      ctx.drawImage(ghost, 0, 0);
       return;
     }
     const c = centerRef.current;
@@ -159,7 +160,7 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
     ctx.drawImage(sweet, 0, 0);
     if (k > 0) {
       ctx.globalAlpha = k;
-      ctx.drawImage(hospital, 0, 0);
+      ctx.drawImage(ghost, 0, 0);
       ctx.globalAlpha = 1;
     }
     if (blur > 0 && k > 0 && k < 1) {
@@ -168,10 +169,10 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
       ctx.drawImage(canvas, -blur, 0);
       ctx.globalAlpha = 1;
     }
-    // Giao thoa: cổ tay An và nhãn vòng nhựa hiện rõ nét giữa hai thực tại
+    // Giao thoa: chỗ ngồi trống của An hiện rõ nét giữa hai lớp ảnh
     const r = labelRectRef.current;
     if (r && (inBand || ph === 'interfere')) {
-      ctx.drawImage(hospital, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+      ctx.drawImage(ghost, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
     }
   }, []);
   const redrawRef = useRef(redraw);
@@ -180,7 +181,7 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
   }, [redraw]);
 
   // Vẽ bức ảnh Polaroid bằng chính đồ hoạ trong game, hai phiên bản cùng bố cục:
-  // ảnh gốc (Miên và An trên ghế đá Bến An Yên lúc hoàng hôn) và ảnh thật (An quấn băng trong phòng hồi sức)
+  // ảnh gốc (Miên và An trên ghế đá lúc hoàng hôn) và ký ức lỗi (Miên một mình, chỗ An chỉ còn nhiễu)
   useEffect(() => {
     const canvas = photoCanvasRef.current;
     if (!canvas) return;
@@ -283,91 +284,70 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
       g.fillRect(0, 0, PW, PH);
       g.restore();
 
-      // ---- Ảnh thật: phòng hồi sức, cùng bố cục. Ghế đá thành giường bệnh, chỗ Miên ngồi trống trơn ----
-      const icu = mk(PW, PH);
-      const k = icu.g;
+      // ---- Ký ức lỗi: cùng ghế đá Bến An Yên, màu nhợt lạnh; Miên ngồi một mình, chỗ của An chỉ là vệt nhiễu chưa render xong ----
+      const ghost = mk(PW, PH);
+      const k = ghost.g;
       if (!k) return;
-      k.fillStyle = '#a7c4c0';
-      k.fillRect(0, 0, PW, PH);
-      k.fillStyle = '#8fb0ab';
-      for (let y = 0; y < PH * 0.72; y += 10) k.fillRect(0, y, PW, 1);
-      for (let x = 0; x < PW; x += 12) k.fillRect(x, 0, 1, PH * 0.72);
-      k.fillStyle = '#6b8580';
-      k.fillRect(0, PH * 0.72, PW, PH * 0.28);
-      // Máy đo nhịp tim trên tường
-      k.fillStyle = '#1f2937';
-      k.fillRect(PW - 40, 12, 32, 20);
-      k.fillStyle = '#052e16';
-      k.fillRect(PW - 38, 14, 28, 14);
-      k.fillStyle = '#4ade80';
-      [[0, 6], [4, 6], [6, 2], [8, 10], [10, 6], [16, 6], [18, 3], [20, 9], [22, 6], [27, 6]].forEach(([dx, dy]) => k.fillRect(PW - 37 + dx, 14 + dy, 2, 1));
-      // Cọc truyền dịch + túi dịch
-      k.fillStyle = '#cbd5e1';
-      k.fillRect(PW - 10, 8, 1, PH * 0.72);
-      k.fillStyle = 'rgba(226,240,255,0.85)';
-      k.fillRect(PW - 14, 10, 7, 11);
-      k.fillStyle = '#93c5fd';
-      k.fillRect(PW - 13, 15, 5, 5);
-      // Giường bệnh (ga trắng) thay cho ghế đá
-      const bedY = seatY + 2;
-      k.fillStyle = '#e5e7eb';
-      k.fillRect(0, bedY - 12, PW, 14);
-      k.fillStyle = '#9ca3af';
-      k.fillRect(0, bedY + 2, PW, 3);
-      // An ngồi trên giường, quấn băng trán
+      k.drawImage(world.c, skyX, BEN_AN_YEN.horizon - 58, PW, SPLIT, 0, 0, PW, SPLIT);
+      k.drawImage(world.c, skyX, BEN_AN_YEN.promenadeTop - 4, PW, PH - SPLIT, 0, SPLIT, PW, PH - SPLIT);
+      block(k, benchX, seatY - 12, 101, 8, '#a8a29e', '#d6d3d1', '#78716c');
       k.save();
       k.beginPath();
-      k.rect(anX - 4, anY - 4, 50, bedY - 12 - anY + 4);
+      k.rect(mienX - 4, 0, 50, seatY + 2);
       k.clip();
-      drawSpriteFrame(k, an, 1, 0, false, anX, anY, 42, 63);
+      drawSpriteFrame(k, mien, 1, 0, false, mienX, seatY - 50, 42, 63);
       k.restore();
-      k.fillStyle = '#f8fafc';
-      k.fillRect(anX + 11, anY + 12, 21, 3);
-      k.fillStyle = '#b91c1c';
-      k.fillRect(anX + 25, anY + 12, 3, 2);
-      // Vòng tay nhựa bệnh viện trên cổ tay phải (nhãn trắng + vạch đỏ)
-      k.fillStyle = '#f1f5f9';
-      k.fillRect(anX + 32, anY + 36, 5, 2);
-      k.fillStyle = '#dc2626';
-      k.fillRect(anX + 34, anY + 36, 1, 2);
-      // Chỗ Miên từng ngồi: vài hạt pixel hồng còn sót lại
-      for (let i = 0; i < 9; i++) {
-        k.fillStyle = i % 2 ? '#f9a8d4' : '#e7e5e4';
-        k.fillRect(mienX + 12 + Math.floor(hash(i * 7) * 20), seatY - 44 + Math.floor(hash(i * 3 + 1) * 40), 1, 1);
+      // Vệt sẫm ướt trên cổ tay áo len của Miên
+      k.fillStyle = 'rgba(40,30,60,0.75)';
+      k.fillRect(mienX + 31, anY + 35, 5, 3);
+      k.fillStyle = 'rgba(40,30,60,0.4)';
+      k.fillRect(mienX + 32, anY + 38, 3, 2);
+      // Chỗ An ngồi: giữ dáng sprite nhưng thay từng điểm ảnh bằng nhiễu hạt xám, như chưa render xong
+      const sil = mk(50, 70);
+      if (sil.g) {
+        drawSpriteFrame(sil.g, an, 1, 0, false, 4, 0, 42, 63);
+        const img = sil.g.getImageData(0, 0, 50, 70);
+        const d = img.data;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] < 40) continue;
+          const n = hash(i * 0.37);
+          if (n < 0.35) {
+            d[i + 3] = 0;
+            continue;
+          }
+          const v = 150 + Math.floor(n * 90);
+          d[i] = v;
+          d[i + 1] = v;
+          d[i + 2] = v + 8;
+          d[i + 3] = 120 + Math.floor(n * 100);
+        }
+        sil.g.putImageData(img, 0, 0);
+        k.save();
+        k.beginPath();
+        k.rect(anX - 4, 0, 50, seatY + 2);
+        k.clip();
+        k.drawImage(sil.c, anX - 4, anY);
+        k.restore();
       }
-      // Ánh sáng lạnh, tái nhợt
-      k.fillStyle = 'rgba(30,58,80,0.28)';
+      block(k, benchX - 2, seatY, 105, 9, '#a8a29e', '#d6d3d1', '#78716c');
+      block(k, benchX + 5, seatY + 9, 8, 13, '#57534e', '#78716c', '#3f3a36');
+      block(k, benchX + 88, seatY + 9, 8, 13, '#57534e', '#78716c', '#3f3a36');
+      // Rút bớt màu, phủ lạnh: hoàng hôn như đã nguội
+      k.save();
+      k.globalCompositeOperation = 'saturation';
+      k.fillStyle = 'rgba(128,128,128,0.75)';
       k.fillRect(0, 0, PW, PH);
+      k.globalCompositeOperation = 'source-over';
+      k.fillStyle = 'rgba(40,62,90,0.3)';
+      k.fillRect(0, 0, PW, PH);
+      k.restore();
 
       const sweetFramed = frame(sweet.c, tx('Bến An Yên cùng em'), 'rgba(90,50,10,0.25)');
-      const hospitalFramed = frame(icu.c, tx('Bến An Yên cùng em... 17/05'), 'rgba(10,20,30,0.45)');
-      // Nhãn vòng tay phóng to, đọc được: chú thích ngay cạnh cổ tay
-      const hg = hospitalFramed.getContext('2d');
-      if (hg) {
-        const wx = pad + (anX + 34) * 2;
-        const wy = pad + (anY + 37) * 2;
-        const label = tx('BV TRUNG HOÀ • 17/05');
-        hg.font = 'bold 10px monospace';
-        const tw = hg.measureText(label).width;
-        const lx = Math.min(w - pad - tw - 10, wx + 14);
-        const ly = wy + 34;
-        hg.strokeStyle = 'rgba(220,38,38,0.85)';
-        hg.lineWidth = 1;
-        hg.beginPath();
-        hg.moveTo(wx, wy + 3);
-        hg.lineTo(lx + 4, ly - 6);
-        hg.stroke();
-        hg.fillStyle = '#f8fafc';
-        hg.fillRect(lx, ly - 11, tw + 8, 15);
-        hg.fillStyle = '#dc2626';
-        hg.fillRect(lx, ly - 11, 3, 15);
-        hg.fillStyle = '#1f2937';
-        hg.fillText(label, lx + 6, ly);
-        // Vùng nhãn vòng tay + cổ tay: ở điểm giao thoa vùng này hiện rõ nét
-        labelRectRef.current = { x: Math.max(0, wx - 14), y: Math.max(0, wy - 14), w: lx + tw + 12 - (wx - 14), h: ly + 8 - (wy - 14) };
-      }
+      const ghostFramed = frame(ghost.c, tx('Bến An Yên — chỉ còn em'), 'rgba(10,20,30,0.45)');
+      // Vùng chỗ ngồi của An: ở điểm giao thoa vùng này hiện rõ nét
+      labelRectRef.current = { x: pad + (anX - 4) * 2, y: pad + (anY - 2) * 2, w: 50 * 2, h: (seatY - anY + 4) * 2 };
       sweetRef.current = sweetFramed;
-      hospitalRef.current = hospitalFramed;
+      ghostRef.current = ghostFramed;
       redrawRef.current();
     };
 
@@ -424,7 +404,8 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
       if (keys.has('a') || keys.has('arrowleft') || keys.has('arrowdown')) d -= KEY_RATE * dt;
       if (d !== 0) turn(d);
       const f = focusRef.current;
-      if (phaseRef.current === 'focus' && d === 0 && dragRef.current === null && inBandOf(f, centerRef.current)) {
+      // Núm đứng yên (kể cả đang giữ chuột trên núm) đúng vùng khớp đủ lâu → mở hồi tưởng; xoay qua thì không tính
+      if (phaseRef.current === 'focus' && d === 0 && inBandOf(f, centerRef.current)) {
         holdRef.current += dt;
         if (holdRef.current >= HOLD_S) interfere();
       }
@@ -494,9 +475,9 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
   const angle = -135 + (focus / 100) * 270;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/90 font-mono select-none overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-3 bg-black/90 font-mono select-none overflow-y-auto">
       <style>{'@keyframes pol-shake{0%,100%{transform:translate(0,0) rotate(0)}20%{transform:translate(-5px,2px) rotate(-1deg)}40%{transform:translate(4px,-3px) rotate(1deg)}60%{transform:translate(-3px,-1px)}80%{transform:translate(3px,2px)}}'}</style>
-      <div className="w-full max-w-xl bg-zinc-950 border border-zinc-700 p-4 space-y-3">
+      <div className="w-full max-w-xl my-auto bg-zinc-950 border border-zinc-700 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="text-zinc-200 text-sm font-bold tracking-widest">{tx('Bức Ảnh Kỷ Niệm • Ghế Đá Hoàng Hôn')}</div>
           <div className="text-xs text-zinc-500 tabular-nums">{tx('Tiêu cự')} {Math.round(focus)}%</div>
@@ -538,13 +519,13 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
           {phase === 'revealed' ? (
             <><span className="text-emerald-400 font-bold">An: </span><span className="italic">{tx(REVEAL_LINE)}</span></>
           ) : phase === 'interfere' || phase === 'away' ? (
-            tx('Hai thực tại chồng khít lên nhau. Tay Miên bên hoàng hôn đang nắm lấy cổ tay mình bên giường bệnh...')
+            tx('Hai lớp ảnh khớp vào nhau. Tay Miên đang nắm lấy... không có gì cả.')
           ) : inBand ? (
-            tx('Khoan... ngay giữa hai lớp ảnh, trên cổ tay mình có thứ gì đó hiện rõ dần.')
+            tx('Khoan... ảnh sắc nét hẳn. Giữ yên núm, chỗ mình ngồi có gì đó lạ lắm.')
           ) : focus < 40 ? (
-            tx('Bến An Yên chiều tà. Miên cười híp mắt bên cạnh mình. Tấm ảnh này... hình như còn một lớp nữa bên dưới.')
+            tx('Bến An Yên chiều tà. Miên cười bên cạnh mình. Hình như còn một lớp nữa bên dưới.')
           ) : focus > 60 ? (
-            tx('Hoàng hôn tan đi. Một căn phòng trắng lạnh, mình nằm đó, đầu quấn băng.')
+            tx('Màu ảnh nhợt đi. Miên vẫn ngồi đó... còn chỗ của mình thì nhoè trắng.')
           ) : (
             tx('Hai cảnh chồng nhoè lên nhau, chưa khớp.')
           )}
@@ -560,7 +541,7 @@ export const PolaroidMinigame: React.FC<PolaroidMinigameProps> = ({
         )}
 
         <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-zinc-400 border-t border-zinc-800 pt-2">
-          <span><Key>{tx('Kéo núm')}</Key><Key>{tx('Lăn chuột')}</Key><Key>A</Key><Key>D</Key>{tx('Vặn tiêu cự')}</span>
+          <span><Key>{tx('Kéo núm')}</Key><Key>{tx('Lăn chuột')}</Key><Key>A</Key><Key>D</Key>{tx('Vặn tiêu cự, dừng ở chỗ ảnh sắc nét')}</span>
           <span><Key>Esc</Key>{tx('Thoát')}</span>
         </div>
       </div>

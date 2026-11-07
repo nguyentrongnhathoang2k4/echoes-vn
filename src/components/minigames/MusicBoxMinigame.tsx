@@ -16,7 +16,8 @@ interface MusicBoxMinigameProps {
  * Lược đồng có 4 thanh gảy. Trục gai quét lần lượt từ trái sang phải, nên giai điệu đúng phải đi lên đều:
  * Đồ → Mi → Sol → Đố. Hai thanh giữa bị va đập cắm lộn chỗ (Sol nằm trước Mi) nên valse bị chỏi một nốt.
  * Gợi ý vật lý: thanh càng ngắn kêu càng cao. Bấm một thanh để nghe riêng nó, [CHẠY THỬ] để nghe cả đoạn.
- * Xếp đúng: valse trong veo 3 giây, rồi nốt Đố cao ngân dài, méo dần thành tiếng BÍP phẳng lì 880Hz.
+ * Xếp đúng: valse trong veo, rồi tới cuối câu nhạc thì vấp: hai nốt cuối lặp mãi như đĩa xước, lệch dần cao độ,
+ * rồi nắp hộp bật mở. (Cài ngầm cho vòng lặp hộp nhạc ở Ending B; Màn 2 không nhắc gì tới bệnh viện.)
  * Chống bấm bừa: thứ tự đầu xáo ngẫu nhiên mỗi lần mở (không thanh nào đúng chỗ); chỉ thắng khi bấm
  * [CHẠY THỬ] với đúng thứ tự; chạy thử sai 3 lần thì dây cót bật, lược bị xáo lại và trừ Sanity.
  */
@@ -41,7 +42,9 @@ const shuffleTines = (): number[] => {
 // Đoạn valse 3/4: chỉ số VỊ TRÍ thanh trên lược (trục gai quét theo vị trí)
 const PHRASE = [0, 1, 2, 3, 2, 1, 0, 2, 1, 3, 2, 1];
 const BEAT_S = 0.24;
-const FLATLINE_HZ = 880;
+// Vòng lặp kẹt: hai nốt cuối của câu (vị trí 2 rồi 1) lặp lại, mỗi lượt chùng xuống một chút
+const STUCK_REPEATS = 10;
+const STUCK_DETUNE = 0.006;
 
 export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({ onComplete, onClose, onPenalty, volume = 80 }) => {
   useUiLayer(true);
@@ -52,7 +55,7 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({ onComplete, 
   const [picked, setPicked] = useState<number | null>(null);
   const pickedRef = useRef<number | null>(null);
   const [playing, setPlaying] = useState<number | null>(null);   // Vị trí thanh đang được gảy
-  const [phase, setPhase] = useState<'idle' | 'test' | 'win' | 'flatline' | 'open'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'test' | 'win' | 'stuck' | 'open'>('idle');
   const phaseRef = useRef(phase);
   const [note, setNote] = useState('Nắp hộp nhạc hé mở. Lược đồng bên trong có 4 thanh gảy, bị va đập cắm lộn xộn cả.');
   const cbRef = useRef({ onComplete, onClose, onPenalty });
@@ -122,37 +125,6 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({ onComplete, 
     o.start(t);
     o.stop(t + 0.08);
   }, [ac, vol]);
-  // Nốt Đố cao ngân dài rồi méo dần thành tiếng bíp phẳng lì của máy đo điện tim
-  const playFlatline = useCallback((delay: number) => {
-    const ctx = ac();
-    if (!ctx || vol <= 0) return;
-    const t = ctx.currentTime + delay;
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = 'sine';
-    o.frequency.setValueAtTime(NOTES[3].f, t);
-    o.frequency.linearRampToValueAtTime(FLATLINE_HZ, t + 1.4);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.1 * vol, t + 0.02);
-    g.gain.setValueAtTime(0.1 * vol, t + 1.4);
-    // Chuyển sang sóng vuông phẳng lì của máy monitor
-    const sq = ctx.createOscillator();
-    const sg = ctx.createGain();
-    sq.type = 'square';
-    sq.frequency.setValueAtTime(FLATLINE_HZ, t + 1.2);
-    sg.gain.setValueAtTime(0, t + 1.2);
-    sg.gain.linearRampToValueAtTime(0.035 * vol, t + 1.6);
-    sg.gain.setValueAtTime(0.035 * vol, t + 3.6);
-    sg.gain.linearRampToValueAtTime(0, t + 3.8);
-    g.gain.linearRampToValueAtTime(0, t + 1.8);
-    o.connect(g).connect(ctx.destination);
-    sq.connect(sg).connect(ctx.destination);
-    o.start(t);
-    o.stop(t + 1.9);
-    sq.start(t + 1.2);
-    sq.stop(t + 3.9);
-  }, [ac, vol]);
-
   // Trục gai quét đoạn valse theo thứ tự thanh hiện tại
   const playPhrase = useCallback((ord: number[], onEnd: () => void, repeats = 1) => {
     const seq = Array.from({ length: repeats }, () => PHRASE).flat();
@@ -172,20 +144,29 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({ onComplete, 
   const win = useCallback(() => {
     go('win');
     setNote('Điệu valse vang lên trong veo, đúng như buổi chiều hôm ấy...');
-    const len = playPhrase([0, 1, 2, 3], () => {}, 1);
-    // Cuối đoạn: Đố cao ngân dài rồi méo thành tiếng bíp máy đo tim
-    pluck(NOTES[3].f, len, 0.4);
-    playFlatline(len);
-    later((len + 1.2) * 1000, () => {
-      go('flatline');
-      setNote('Nốt cuối không chịu tắt. Nó kéo dài, phẳng lì... thành tiếng BÍP của máy đo nhịp tim.');
+    const ord = [0, 1, 2, 3];
+    const len = playPhrase(ord, () => {}, 1);
+    // Cuối câu nhạc: trục gai vấp, hai nốt cuối lặp mãi như đĩa xước, cao độ chùng dần
+    const tail = [PHRASE[PHRASE.length - 2], PHRASE[PHRASE.length - 1]];
+    for (let i = 0; i < STUCK_REPEATS; i++) {
+      const pos = tail[i % 2];
+      const at = len + i * BEAT_S;
+      pluck(NOTES[ord[pos]].f * (1 - i * STUCK_DETUNE), at, 0.5);
+      later(at * 1000, () => setPlaying(pos));
+    }
+    later(len * 1000, () => {
+      go('stuck');
+      setNote('Tới cuối câu nhạc thì vấp. Hai nốt cuối cứ lặp đi lặp lại... như đĩa xước.');
     });
-    later((len + 4) * 1000, () => {
+    const end = len + STUCK_REPEATS * BEAT_S;
+    later(end * 1000, () => {
+      setPlaying(null);
+      clack();
       go('open');
-      setNote('Nắp hộp bật tung.');
+      setNote('Nắp hộp bật mở.');
     });
-    later((len + 5.2) * 1000, () => cbRef.current.onComplete());
-  }, [go, later, playFlatline, playPhrase, pluck]);
+    later((end + 1.4) * 1000, () => cbRef.current.onComplete());
+  }, [clack, go, later, playPhrase, pluck]);
 
   const pressBar = useCallback((pos: number) => {
     if (phaseRef.current !== 'idle') return;
@@ -263,31 +244,29 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({ onComplete, 
     return () => window.removeEventListener('keydown', down, true);
   }, [pressBar, test]);
 
-  const spinning = phase === 'test' || phase === 'win';
+  const spinning = phase === 'test' || phase === 'win' || phase === 'stuck';
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-3 font-mono">
+    <div className="fixed inset-0 z-50 bg-black/90 flex items-start justify-center p-3 font-mono overflow-y-auto">
       <style>{'@keyframes mb-spin{from{background-position:0 0}to{background-position:0 24px}}'}</style>
-      <div className="w-full max-w-lg bg-zinc-950 border border-zinc-700 p-4 space-y-3">
+      <div className="w-full max-w-lg my-auto bg-zinc-950 border border-zinc-700 p-3 sm:p-4 space-y-2 sm:space-y-3">
         <div className="flex items-center justify-between">
           <div className="text-zinc-200 text-sm font-bold tracking-widest">{tx('HỘP NHẠC GỖ • BẾN AN YÊN')}</div>
-          <div className="text-xs text-zinc-500">{phase === 'flatline' || phase === 'open'
-            ? 'HR: 0'
-            : `${tx('Dây cót')} ${'■'.repeat(wrongTests)}${'□'.repeat(MAX_WRONG_TESTS - wrongTests)}`}</div>
+          <div className="text-xs text-zinc-500">{`${tx('Dây cót')} ${'■'.repeat(wrongTests)}${'□'.repeat(MAX_WRONG_TESTS - wrongTests)}`}</div>
         </div>
 
         {/* Lòng hộp nhạc: trục gai quay + lược đồng 4 thanh */}
-        <div className="relative bg-[#3b2414] border-4 border-[#5b3a22] p-4">
+        <div className="relative bg-[#3b2414] border-4 border-[#5b3a22] p-3">
           <div
-            className="h-8 mb-3 border border-[#8a6a2f]"
+            className="h-6 mb-2 border border-[#8a6a2f]"
             style={{
               background: 'repeating-linear-gradient(180deg, #b08d3c 0 3px, #8a6a2f 3px 6px), #a07a35',
               backgroundSize: '100% 24px',
               animation: spinning ? 'mb-spin 0.4s linear infinite' : undefined,
-              filter: phase === 'flatline' || phase === 'open' ? 'grayscale(1) brightness(0.6)' : undefined,
+              filter: phase === 'stuck' || phase === 'open' ? 'grayscale(1) brightness(0.6)' : undefined,
             }}
           />
-          <div className="flex items-start justify-center gap-6 h-40">
+          <div className="flex items-start justify-center gap-6 h-28">
             {order.map((n, pos) => {
               const nt = NOTES[n];
               const isPicked = picked === pos;
@@ -303,8 +282,8 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({ onComplete, 
                   <span
                     className={`block w-6 border-2 transition-transform ${isPicked ? 'border-amber-300' : 'border-[#5b3a22]'}`}
                     style={{
-                      height: `${nt.len * 120}px`,
-                      background: phase === 'flatline' || phase === 'open' ? '#6b7280' : '#c9a24a',
+                      height: `${nt.len * 92}px`,
+                      background: phase === 'stuck' || phase === 'open' ? '#6b7280' : '#c9a24a',
                       transform: isPlaying ? 'translateX(2px)' : undefined,
                     }}
                   />
@@ -315,7 +294,7 @@ export const MusicBoxMinigame: React.FC<MusicBoxMinigameProps> = ({ onComplete, 
           </div>
         </div>
 
-        <div className={`text-sm leading-relaxed min-h-10 ${phase === 'flatline' || phase === 'open' ? 'text-red-400' : phase === 'win' ? 'text-emerald-300' : 'text-zinc-300'}`}>{tx(note)}</div>
+        <div className={`text-sm leading-relaxed min-h-10 ${phase === 'stuck' || phase === 'open' ? 'text-red-400' : phase === 'win' ? 'text-emerald-300' : 'text-zinc-300'}`}>{tx(note)}</div>
 
         <button
           onClick={test}

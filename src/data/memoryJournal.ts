@@ -25,7 +25,7 @@ const ENTRIES: EntryDef[] = [
   { id: 'K2', text: 'Miên dặn: uống thuốc rồi thì cấm cầm lái.', source: 'Phòng 314', nodes: ['node_pills'], legacyInteract: 'pills' },
   { id: 'K3', text: 'Biên lai phạt chạy quá tốc độ: Trần Hoàng An, tháng 3.', source: 'Bảng ghim, phòng 314', nodes: ['obj_corkboard'] },
   { id: 'K9', text: "Mẹ nhắn: 'Đi đâu trời mưa thì mặc áo mưa vào nhé.'", source: 'Điện thoại', nodes: ['obj_phone_mom'] },
-  { id: 'K4', text: 'Đêm ấy trú mưa ở mái hiên đầu cầu. Chùm chìa khoá móc con mèo sứt tai, trong tay ai đó.', source: 'Chiếc ô, bến An Yên', nodes: ['obj_ch2_umbrella'], legacyInteract: 'ch2_umbrella' },
+  { id: 'K4', text: 'Đêm ấy trú mưa ở mái hiên đầu cầu. Chiếc chìa khoá móc con mèo sứt tai, trong tay ai đó.', source: 'Chiếc ô, bến An Yên', nodes: ['obj_ch2_umbrella'], legacyInteract: 'ch2_umbrella' },
   { id: 'K13', text: "Radio: '...một vụ va chạm trên cầu vượt, đường trơn...'", source: 'Đài bán dẫn, bến An Yên', nodes: ['obj_ch2_umbrella'], legacyInteract: 'ch2_umbrella' },
   { id: 'K5', text: "Miên: 'Hồi đó em nói dối là em chạy xe vững lắm.'", source: 'Bến An Yên', nodes: ['ch2_truth_confront'], legacyFlag: 'ch2_confront' },
   { id: 'K6', text: 'Bìa bệnh án: dòng cơ chế chấn thương đã bị xoá.', source: 'Phòng cấp cứu', nodes: ['obj_ch3_chart'], legacyInteract: 'ch3_chart' },

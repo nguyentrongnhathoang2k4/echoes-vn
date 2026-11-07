@@ -3,10 +3,12 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { tx } from '../locales/tx';
 import { DEDUCTION, DEDUCTION_ATTEMPTS, type MemoryEntry } from '../data/memoryJournal';
 import { MemoryList } from './MemoryJournal';
+import { hasOpenUiLayer } from '../services/uiLayers';
 
 /**
- * GHÉP LẠI ĐÊM 17/05 (Màn 4): biểu mẫu AURA, 3 câu điền chỗ trống.
- * Chỉ báo đúng/sai cho CẢ biểu mẫu (không chỉ ra câu nào sai), 2 lần xác nhận → đoán bừa ~7%.
+ * GHÉP LẠI ĐÊM 17/05 (Màn 4): biểu mẫu AURA, 4 câu điền chỗ trống.
+ * Chỉ báo đúng/sai cho CẢ biểu mẫu (không chỉ ra câu nào sai), 2 lần xác nhận → đoán bừa ~2,5%.
+ * Luôn có dòng nhắc [J] mở Sổ Ký ức (bấm vào thì cuộn xuống danh sách Ký ức bên dưới).
  * Bàn phím: ↑↓ chọn dòng, ←→ hoặc 1-3 chọn đáp án, Enter xác nhận.
  */
 export function DeductionForm({ entries, onResult }: { entries: MemoryEntry[]; onResult: (ok: boolean) => void }) {
@@ -15,6 +17,7 @@ export function DeductionForm({ entries, onResult }: { entries: MemoryEntry[]; o
   const [attempts, setAttempts] = useState(DEDUCTION_ATTEMPTS);
   const [rejected, setRejected] = useState(false);
   const doneRef = useRef(false);
+  const memRef = useRef<HTMLDivElement | null>(null);
   const timerRef = useRef<number | null>(null);
   useEffect(() => () => { if (timerRef.current) window.clearTimeout(timerRef.current); }, []);
 
@@ -48,6 +51,8 @@ export function DeductionForm({ entries, onResult }: { entries: MemoryEntry[]; o
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      // Sổ Ký ức [J] (hoặc menu tạm dừng) đang mở đè lên: không để phím lọt xuống biểu mẫu
+      if (hasOpenUiLayer()) return;
       const k = e.key;
       const n = DEDUCTION.length;
       if (k === 'ArrowUp' || k === 'ArrowDown') {
@@ -80,6 +85,14 @@ export function DeductionForm({ entries, onResult }: { entries: MemoryEntry[]; o
       <div className="text-[clamp(9px,0.85vw,12px)] tracking-widest text-cyan-500">
         {tx('[AURA • TÁI DỰNG PHIÊN 17/05 • CẦN CHỦ THỂ XÁC NHẬN]')}
       </div>
+      {/* Nhắc người chơi tra Ký ức: bấm [J] mở sổ, hoặc bấm dòng này để cuộn xuống danh sách bên dưới */}
+      <button
+        type="button"
+        onClick={() => memRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        className="block text-left text-[clamp(9px,0.9vw,13px)] text-amber-200/90 hover:text-amber-100 cursor-pointer"
+      >
+        {tx('Không nhớ rõ? Bấm [J] để mở Sổ Ký ức, hoặc cuộn xuống xem {0} mục bên dưới.', entries.length)}
+      </button>
 
       {DEDUCTION.map((q, r) => {
         const [before, after] = tx(q.sentence).split('___');
@@ -127,10 +140,12 @@ export function DeductionForm({ entries, onResult }: { entries: MemoryEntry[]; o
         <span className="text-[clamp(9px,0.85vw,12px)] text-zinc-500">{tx('Còn {0} lần xác nhận', attempts)}</span>
       </div>
       {rejected && (
-        <div className="text-[clamp(9px,0.9vw,13px)] text-red-400">{tx('[DỮ LIỆU KHÔNG KHỚP VỚI KÝ ỨC CHỦ THỂ]')}</div>
+        <div className="text-[clamp(9px,0.9vw,13px)] text-red-400">
+          {tx('[DỮ LIỆU KHÔNG KHỚP VỚI KÝ ỨC CHỦ THỂ]')} <span className="text-amber-200">{tx('Bấm [J] để tra lại Ký ức.')}</span>
+        </div>
       )}
 
-      <div className="pt-2 border-t border-cyan-950">
+      <div ref={memRef} className="pt-2 border-t border-cyan-950 scroll-mt-2">
         <div className="text-[clamp(9px,0.85vw,12px)] tracking-widest text-zinc-500 mb-2">{tx('KÝ ỨC')}</div>
         <MemoryList entries={entries} />
       </div>

@@ -13,8 +13,8 @@ interface RadioMinigameProps {
  * DÒ SÓNG GIAO THOA (Màn 2) — một thao tác: vặn núm tần số 88.0–108.0 MHz.
  * Màn oscilloscope có sóng mục tiêu vàng nhạt (cố định) và sóng tín hiệu xanh lá (đổi theo tần số đang dò).
  * Dò qua các đài khác: mưa rào, rè rè, nhạc tiền chiến méo. Lại gần 104.5 MHz (Đài Giao thông): sóng xanh
- * dao động mạnh rồi bị "hút" dần vào sóng vàng. Đồng bộ ≥ 90% một nhịp: tiếng rè tắt hẳn, loa phát còi 115
- * và tiếng Miên khóc nghẹn.
+ * dao động mạnh rồi bị "hút" dần vào sóng vàng. Đồng bộ ≥ 90% một nhịp: sấm rền, mưa quất, một tiếng phanh trượt
+ * ngắn rồi ngắt phụt thành nhiễu; giọng phát thanh viên đứt quãng báo va chạm trên cầu vượt. (Màn 2: chưa nhắc bệnh viện.)
  */
 const F_MIN = 88;
 const F_MAX = 108;
@@ -107,29 +107,54 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({ onComplete, onClos
       return null;
     }
   }, []);
-  // Còi 115 réo khi bắt đúng đài
-  const playSiren = useCallback(() => {
+  // Bắt đúng đài: sấm rền + mưa quất rào rạt + tiếng phanh trượt ngắn, rồi ngắt phụt thành nhiễu tĩnh
+  const playStorm = useCallback(() => {
     const ctx = audioRef.current;
     if (!ctx || vol <= 0) return;
     const t = ctx.currentTime;
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = 'sawtooth';
-    for (let i = 0; i < 6; i++) {
-      o.frequency.setValueAtTime(640, t + i * 0.6);
-      o.frequency.linearRampToValueAtTime(960, t + i * 0.6 + 0.3);
-      o.frequency.linearRampToValueAtTime(640, t + i * 0.6 + 0.6);
-    }
-    const f = ctx.createBiquadFilter();
-    f.type = 'bandpass';
-    f.frequency.value = 900;
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.06 * vol, t + 0.3);
-    g.gain.setValueAtTime(0.06 * vol, t + 3.2);
-    g.gain.linearRampToValueAtTime(0, t + 3.6);
-    o.connect(f).connect(g).connect(ctx.destination);
-    o.start(t);
-    o.stop(t + 3.7);
+    const len = Math.floor(ctx.sampleRate * 3);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const layer = (type: BiquadFilterType, freq: number, q = 1) => {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.setValueAtTime(freq, t);
+      f.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      src.connect(f).connect(g).connect(ctx.destination);
+      src.start(t);
+      src.stop(t + 3);
+      return { f, g };
+    };
+    // Mưa quất
+    const rain = layer('lowpass', 1400);
+    rain.g.gain.linearRampToValueAtTime(0.16 * vol, t + 0.3);
+    rain.g.gain.setValueAtTime(0.16 * vol, t + 2.15);
+    rain.g.gain.linearRampToValueAtTime(0, t + 2.2);
+    // Sấm rền trầm, hai đợt
+    const thunder = layer('lowpass', 110);
+    thunder.g.gain.linearRampToValueAtTime(0.5 * vol, t + 0.15);
+    thunder.g.gain.linearRampToValueAtTime(0.2 * vol, t + 0.7);
+    thunder.g.gain.linearRampToValueAtTime(0.42 * vol, t + 0.95);
+    thunder.g.gain.linearRampToValueAtTime(0, t + 2.1);
+    // Phanh trượt ngắn
+    const skid = layer('bandpass', 2600, 9);
+    skid.f.frequency.setValueAtTime(2600, t + 1.5);
+    skid.f.frequency.exponentialRampToValueAtTime(900, t + 2.15);
+    skid.g.gain.setValueAtTime(0, t + 1.5);
+    skid.g.gain.linearRampToValueAtTime(0.22 * vol, t + 1.6);
+    skid.g.gain.setValueAtTime(0.22 * vol, t + 2.15);
+    skid.g.gain.linearRampToValueAtTime(0, t + 2.2);
+    // Ngắt phụt thành nhiễu tĩnh rồi im
+    const cut = layer('highpass', 3000);
+    cut.g.gain.setValueAtTime(0, t + 2.2);
+    cut.g.gain.linearRampToValueAtTime(0.1 * vol, t + 2.22);
+    cut.g.gain.setValueAtTime(0.1 * vol, t + 2.6);
+    cut.g.gain.linearRampToValueAtTime(0, t + 2.62);
   }, [vol]);
 
   const tune = useCallback((delta: number) => {
@@ -211,14 +236,15 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({ onComplete, onClos
         setFreq(freqRef.current);
       }
       const sync = syncOf(freqRef.current);
-      if (!lockedRef.current && sync >= LOCK_SYNC && idle) {
+      // Giữ chuột trên núm mà không xoay cũng tính là đứng yên
+      if (!lockedRef.current && sync >= LOCK_SYNC && d === 0) {
         holdRef.current += dt;
         if (holdRef.current >= LOCK_HOLD_S) {
           lockedRef.current = true;
           freqRef.current = TARGET;
           setFreq(TARGET);
           setLocked(true);
-          playSiren();
+          playStorm();
           window.setTimeout(() => cbRef.current.onComplete(), 4200);
         }
       }
@@ -282,14 +308,14 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({ onComplete, onClos
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [playSiren, tune, vol]);
+  }, [playStorm, tune, vol]);
 
   const sync = syncOf(freq);
   const angle = -135 + ((freq - F_MIN) / (F_MAX - F_MIN)) * 270;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-3 font-mono">
-      <div ref={panelRef} className="w-full max-w-xl bg-zinc-950 border border-zinc-700 p-4 space-y-3">
+    <div className="fixed inset-0 z-50 bg-black/90 flex items-start justify-center p-3 font-mono overflow-y-auto">
+      <div ref={panelRef} className="w-full max-w-xl my-auto bg-zinc-950 border border-zinc-700 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="text-zinc-200 text-sm font-bold tracking-widest">{tx('ĐÀI BÁN DẪN • DƯỚI CỘT ĐÈN')}</div>
           <div className="text-xs text-zinc-500">{tx('Đồng bộ')} {sync}%</div>
@@ -317,7 +343,7 @@ export const RadioMinigame: React.FC<RadioMinigameProps> = ({ onComplete, onClos
         </div>
         <div className={`text-sm leading-relaxed min-h-10 ${locked ? 'text-red-300' : 'text-zinc-300'}`}>
           {locked
-            ? tx('Tiếng rè tắt hẳn. Còi 115 réo inh ỏi, rồi giọng Miên khóc nghẹn: "Bác sĩ ơi... tim anh ấy ngừng đập rồi... Đừng tắt máy thở mà!"')
+            ? tx('"...Đài Giao thông 104.5... mưa giông lớn khu vực cầu vượt, ghi nhận một vụ va chạm do mặt đường trơn..." Rồi tắt ngấm.')
             : sync >= 60
             ? tx('Sóng xanh giật mạnh, đang bị hút dần vào đường sóng vàng...')
             : Math.abs(freq - STATIONS[0].f) < 0.4

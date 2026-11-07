@@ -218,9 +218,9 @@ export const FuseBoxMinigame: React.FC<FuseBoxMinigameProps> = ({ onComplete, on
   const ok = done;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-3 font-mono">
+    <div className="fixed inset-0 z-50 bg-black/90 flex items-start justify-center p-3 font-mono overflow-y-auto">
       <style>{'@keyframes fuse-shake{0%,100%{transform:translate(0,0)}25%{transform:translate(-3px,1px)}50%{transform:translate(3px,-1px)}75%{transform:translate(-2px,-1px)}}'}</style>
-      <div className="w-full max-w-xl bg-zinc-950 border border-zinc-700 p-4 space-y-3" style={shake ? { animation: 'fuse-shake 0.3s linear infinite' } : undefined}>
+      <div className="w-full max-w-xl my-auto bg-zinc-950 border border-zinc-700 p-4 space-y-3" style={shake ? { animation: 'fuse-shake 0.3s linear infinite' } : undefined}>
         <div className="flex items-center justify-between">
           <div className="text-zinc-200 text-sm font-bold tracking-widest">{tx('HỘP CẦU DAO TẦNG 3')}</div>
           <div className="flex items-center gap-2 text-xs">

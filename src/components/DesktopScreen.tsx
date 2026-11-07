@@ -6,9 +6,9 @@ import { tx } from '../locales/tx';
 // =====================================================================
 // MÀN HÌNH DESKTOP MÁY TÍNH CỦA AN (Màn 1)
 // Hiện ra khi bật máy. Bấm icon → An nói một câu;
-// bấm thư mục Đồ_án_AURA → mở cửa sổ Notepad đọc trích đoạn tài liệu (manh mối Ending S);
+// bấm thư mục Dự_án_AURA → mở cửa sổ Notepad đọc trích đoạn tài liệu (manh mối Ending S);
 // Mở khoá ALBUM_KỶ_NIỆM (Suy luận mật mã từ ký ức): hộp thoại PIN 4 số kiểu Windows cổ.
-// Lời giải không hiện sẵn: thư mục Đồ_án_AURA có nhat_ky.txt ("ngày chiếc mặt dây chuyền được khắc chữ"),
+// Lời giải không hiện sẵn: thư mục Dự_án_AURA có nhat_ky.txt ("ngày chiếc mặt dây chuyền được khắc chữ"),
 // người chơi tự nối với mặt dây chuyền dưới khe cửa #316 (17.05), cốc đánh răng (17.05), lịch tháng 5.
 // Đồng hồ 03:14 là bẫy. Nhập đúng: CRT rít tụ điện, rung một nhịp rồi mở album.
 // Icon là pixel art tự vẽ (không dùng logo thật của hãng nào).
@@ -29,14 +29,14 @@ const ICONS: DesktopIcon[] = [
   { id: 'lol', label: 'LMHT', kind: 'lol', line: 'Trận gần nhất cách đây ba tuần, thua. Miên hứa leo được Vàng thì nấu cơm cho cả tuần. Vẫn kẹt Bạc.' },
   { id: 'code', label: 'VS Code', kind: 'code', line: 'Dự án AURA. 47 tab đang mở, 12 tab chưa lưu. Dòng cuối mình gõ: "// TODO: xong cái này thì ngủ."' },
   { id: 'music', label: 'Nhạc', kind: 'music', line: 'Playlist "Hoàng hôn", 12 bài, Miên chọn hết. Bài đầu tiên chỉ là tiếng một chiếc hộp nhạc.' },
-  { id: 'aura', label: 'Đồ_án_AURA', kind: 'folder', line: 'Tài liệu thiết kế AURA. Trang đầu có chữ Miên: "Mức đồng bộ 100% — KHÔNG BAO GIỜ DÙNG." Gạch chân hai lần.' },
+  { id: 'aura', label: 'Dự_án_AURA', kind: 'folder', line: 'Tài liệu thiết kế AURA. Trang đầu có chữ Miên: "Mức đồng bộ 100% — KHÔNG BAO GIỜ DÙNG." Gạch chân hai lần.' },
   { id: 'backup', label: 'AURA_backup', kind: 'folderGray', line: 'Thư mục trống. Sửa đổi lần cuối: hôm nay, 03:14. Mình đâu có mở nó.' },
   { id: 'album', label: 'ALBUM_KỶ_NIỆM', kind: 'locked' },
 ];
 
 const START_LINE = 'Máy chậm như rùa. Ông bán ở chợ đồ cũ bảo "bền như tình đầu".';
 
-// Trích đoạn tài liệu thiết kế trong thư mục Đồ_án_AURA (cửa sổ Notepad giả lập)
+// Trích đoạn tài liệu thiết kế trong thư mục Dự_án_AURA (cửa sổ Notepad giả lập)
 const AURA_DOC_FILE = 'AURA_thiet_ke_v3.14.txt';
 const AURA_DOC_GOALS = [
   'Ghi lại sóng não trong lúc ngủ, dựng lại ký ức thành một nơi có thể bước vào.',
@@ -63,7 +63,7 @@ const PIN_OPEN_LINE = 'Mật khẩu 4 số... Ngày gì quan trọng ấy nhỉ?
 const PIN_WRONG_LINE = 'Sai rồi... Đầu nhức buốt vì cố nhớ mãi không ra.';
 const PIN_TIME_LINE = 'Đây là giờ đồng hồ chết, không phải ngày kỷ niệm...';
 const PIN_OK_LINE = 'Mở được rồi...';
-// Tệp nhật ký trong thư mục Đồ_án_AURA (manh mối PIN)
+// Tệp nhật ký trong thư mục Dự_án_AURA (manh mối PIN)
 const DIARY_FILE = 'nhat_ky.txt';
 const DIARY_LINE = 'Nhật ký của mình... Em dặn mã album là ngày nào nhỉ.';
 const DIARY_TEXT = [
@@ -171,7 +171,7 @@ export const DesktopScreen: React.FC<DesktopScreenProps> = ({ onSubmitPin, onClo
   const [selected, setSelected] = useState<string | null>(null);
   const [line, setLine] = useState<string>('Màn hình sáng lên. Desktop vẫn bừa bộn như mọi khi.');
   const [colon, setColon] = useState(true);
-  // Cửa sổ Notepad của thư mục Đồ_án_AURA (2 tệp: tài liệu thiết kế + nhật ký) + thông báo mở khoá manh mối
+  // Cửa sổ Notepad của thư mục Dự_án_AURA (2 tệp: tài liệu thiết kế + nhật ký) + thông báo mở khoá manh mối
   const [auraOpen, setAuraOpen] = useState(false);
   const [auraTab, setAuraTab] = useState<'doc' | 'diary'>('doc');
   const [auraToast, setAuraToast] = useState(false);
@@ -372,7 +372,7 @@ export const DesktopScreen: React.FC<DesktopScreenProps> = ({ onSubmitPin, onClo
         ✕ [ESC]
       </button>
 
-      {/* Cửa sổ Notepad thư mục Đồ_án_AURA: tài liệu thiết kế + nhật ký của An */}
+      {/* Cửa sổ Notepad thư mục Dự_án_AURA: tài liệu thiết kế + nhật ký của An */}
       {auraOpen && (
         <div className="absolute inset-x-3 top-3 bottom-12 z-10 flex flex-col bg-[#f5f1e6] border-2 border-zinc-500 rounded-sm shadow-[4px_4px_0_rgba(0,0,0,0.6)] text-zinc-900">
           <div className="flex items-center justify-between h-5 px-1.5 bg-linear-to-r from-sky-800 to-sky-600 text-[10px] text-white font-bold shrink-0">

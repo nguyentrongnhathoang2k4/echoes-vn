@@ -326,10 +326,10 @@ export const DefibrillatorMinigame: React.FC<DefibrillatorMinigameProps> = ({ on
       : tx('RUNG THẤT (V-FIB)');
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-3 font-mono">
+    <div className="fixed inset-0 z-50 bg-black/90 flex items-start justify-center p-3 font-mono overflow-y-auto">
       <style>{'@keyframes defib-shake{0%,100%{transform:translate(0,0)}25%{transform:translate(-6px,2px)}50%{transform:translate(5px,-3px)}75%{transform:translate(-3px,-2px)}}'}</style>
       {flash && <div className="fixed inset-0 z-60 bg-white pointer-events-none" />}
-      <div className="w-full max-w-xl bg-zinc-950 border border-zinc-700 p-4 space-y-3" style={shake ? { animation: 'defib-shake 0.12s linear infinite' } : undefined}>
+      <div className="w-full max-w-xl my-auto bg-zinc-950 border border-zinc-700 p-4 space-y-3" style={shake ? { animation: 'defib-shake 0.12s linear infinite' } : undefined}>
         <div className="flex items-center justify-between">
           <div className="text-zinc-200 text-sm font-bold tracking-widest">{tx('MÁY SỐC TIM • PHÒNG CẤP CỨU')}</div>
           <div className={`text-xs font-bold ${phase === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>{status}</div>

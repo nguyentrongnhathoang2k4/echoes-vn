@@ -71,7 +71,7 @@ interface OverworldStageProps {
   inDialogue?: boolean;
   /** Khung canvas nghiêng nhẹ theo con trỏ chuột (cài đặt) */
   parallax?: boolean;
-  /** Ghi một biến cốt truyện (vd. mở thư mục Đồ_án_AURA trên desktop) */
+  /** Ghi một biến cốt truyện (vd. mở thư mục Dự_án_AURA trên desktop) */
   onSetFlag?: (flag: string) => void;
 }
 

@@ -26,7 +26,7 @@ const H = 300;
 const C = { x: 210, y: 150 };
 const R = 118;
 const TARGET = 134;
-const TOL = 3;
+const TOL = 4;
 const LOCK_HOLD_S = 0.6;
 const WHEEL_STEP = 2;
 const KEY_RATE = 30;          // Độ / giây khi giữ A/D
@@ -283,7 +283,8 @@ export const DiskRestoreMinigame: React.FC<DiskRestoreMinigameProps> = ({ onComp
       if (d !== 0) rotate(d);
 
       // Khớp đúng góc và đứng yên một nhịp: CẠCH
-      if (!doneRef.current && angleDiff(angleRef.current, TARGET) <= TOL && d === 0 && dragRef.current === null) {
+      // Giữ chuột trên đĩa mà không xoay cũng tính là đứng yên
+      if (!doneRef.current && angleDiff(angleRef.current, TARGET) <= TOL && d === 0) {
         holdRef.current += dt;
         if (holdRef.current >= LOCK_HOLD_S) {
           doneRef.current = true;
@@ -293,7 +294,7 @@ export const DiskRestoreMinigame: React.FC<DiskRestoreMinigameProps> = ({ onComp
           playLock();
           window.setTimeout(() => cbRef.current.onComplete(), 1500);
         }
-      } else if (!doneRef.current && d === 0 && dragRef.current === null && DECOY_ANGLES.some((a) => angleDiff(angleRef.current, a) <= TOL)) {
+      } else if (!doneRef.current && d === 0 && DECOY_ANGLES.some((a) => angleDiff(angleRef.current, a) <= TOL)) {
         // Dừng đúng chỗ một mảnh mồi: ghép nhầm, nửa phim bị đẩy văng lệch đi
         holdRef.current += dt;
         if (holdRef.current >= LOCK_HOLD_S) {
@@ -342,8 +343,8 @@ export const DiskRestoreMinigame: React.FC<DiskRestoreMinigameProps> = ({ onComp
   }, [playLock, playReject, rotate]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-3 font-mono">
-      <div className="w-full max-w-lg bg-zinc-950 border border-zinc-700 p-4 space-y-3">
+    <div className="fixed inset-0 z-50 bg-black/90 flex items-start justify-center p-3 font-mono overflow-y-auto">
+      <div className="w-full max-w-lg my-auto bg-zinc-950 border border-zinc-700 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="text-zinc-200 text-sm font-bold tracking-widest">{tx('GHÉP MA TRẬN TỪ TÍNH')}</div>
           <div className="text-xs text-zinc-500 tabular-nums">{Math.round(angle)}°</div>
